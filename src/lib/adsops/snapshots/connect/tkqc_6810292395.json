@@ -1,0 +1,84 @@
+{
+  "client_id": "tkqc_6810292395",
+  "display_name": "GrowVi",
+  "customer_id": "6810292395",
+  "customer_id_dashed": "681-029-2395",
+  "mcc_id": "5321450531",
+  "mcc_id_dashed": "532-145-0531",
+  "mcc_display_name": "Fago Agency",
+  "adapter": "live",
+  "status": "CONNECTED",
+  "title_vi": "Đã gắn nguồn Drive tối ưu",
+  "detail_vi": "Folder nguồn: Growvi. ST VERIFIED_CURRENT, 1784 dòng. Lệch cột = SOURCE-CONFLICT. Chưa sinh FINAL, không apply Google Ads.",
+  "next_step_vi": "Mở tab Data Hub, xem 4 nguồn ST / phủ định / RSA / đấu giá. CONFLICT thì dừng — không đoán cột.",
+  "checklist": [
+    {
+      "id": "oauth_client_id",
+      "label_vi": "OAuth Client ID",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "có"
+    },
+    {
+      "id": "oauth_client_secret",
+      "label_vi": "OAuth Client Secret",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "có"
+    },
+    {
+      "id": "refresh_token",
+      "label_vi": "Refresh token (đăng nhập Google)",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "có"
+    },
+    {
+      "id": "login_customer_id",
+      "label_vi": "MCC (tài khoản quản lý)",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "client_config"
+    },
+    {
+      "id": "customer_id",
+      "label_vi": "Customer ID tài khoản khách",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "client_config"
+    },
+    {
+      "id": "developer_token",
+      "label_vi": "Token nhà phát triển (Google đã bỏ — không bắt buộc)",
+      "present": false,
+      "required": false,
+      "state_vi": "Không bắt buộc",
+      "source": ""
+    }
+  ],
+  "account_name": "Công Ty TNHH MTV Thương Mại Và Du Lịch Quỳnh Thanh",
+  "currency": "VND",
+  "account_timezone": "Asia/Saigon",
+  "is_manager": false,
+  "account_status": "ENABLED",
+  "accessible_count": 16,
+  "target_in_accessible": false,
+  "yaml_file_present": true,
+  "api_version": "v25",
+  "probed_at": "2026-09-21T14:52:02+07:00",
+  "propose_only": true,
+  "pulled_search_terms": false,
+  "pulled_kpis": true,
+  "never_apply_google_ads": true,
+  "error_hint": "",
+  "session": "12-drive-that",
+  "module": "ads_connect",
+  "rule": "CHỈ ĐỀ XUẤT — không tự apply lên Google Ads.",
+  "isolation": "Chọn khách A không thấy số khách B.",
+  "pulled_opt_sources": true
+}

@@ -1,0 +1,264 @@
+{
+  "product": "AdsOps",
+  "module": "optimizer",
+  "rule": "CHỈ ĐỀ XUẤT — không tự apply lên Google Ads.",
+  "isolation": "Chọn khách A không thấy số khách B.",
+  "required_fields": [
+    "target",
+    "reason",
+    "evidence",
+    "source_tab",
+    "do_now",
+    "risk_if_skipped"
+  ],
+  "field_labels": {
+    "target": "Đối tượng",
+    "reason": "Lý do",
+    "evidence": "Bằng chứng",
+    "source_tab": "Tab nguồn",
+    "do_now": "Làm ngay?",
+    "risk_if_skipped": "Rủi ro nếu bỏ qua"
+  },
+  "proposal_rules": [
+    "add_exact",
+    "negative_3_tier",
+    "brand_shield",
+    "qa_rsa"
+  ],
+  "clients": [
+    {
+      "client_id": "tkqc_6419118605",
+      "display_name": "641-911-8605",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "641-911-8605",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_2950312680",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 001",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "295-031-2680",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_5449401095",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 002",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "544-940-1095",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_1002848762",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 003",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "100-284-8762",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_5683242539",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 004",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "568-324-2539",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_5305148570",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 005",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "530-514-8570",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "fago_group",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 006",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "220-413-6068",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_4925480286",
+      "display_name": "CÔNG TY CỔ PHẦN MAXDREAM",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "492-548-0286",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_2956229201",
+      "display_name": "Công Ty TNHH Kiểm Toán Và Tư Vấn Bản Việt",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "295-622-9201",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_6810292395",
+      "display_name": "Công Ty TNHH MTV Thương Mại Và Du Lịch Quỳnh Thanh",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "681-029-2395",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_7904581470",
+      "display_name": "Công Ty TNHH Đầu Tư Phát Triển Thương Mại Dịch Vụ Minh Quân",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "790-458-1470",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_6608871437",
+      "display_name": "Fago - Hạnh Long - 0312539301",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "660-887-1437",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_7167241572",
+      "display_name": "Fago - TCC - 0318902627",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "716-724-1572",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_5709560356",
+      "display_name": "Fago - Điện lạnh Tiên Tiến",
+      "status": "paused",
+      "adapter": "live",
+      "customer_id_dashed": "570-956-0356",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_7117149480",
+      "display_name": "Fago Agency - Tổng đài cứu hộ 119",
+      "status": "paused",
+      "adapter": "live",
+      "customer_id_dashed": "711-714-9480",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_1537771845",
+      "display_name": "Fago Agency - vinhome-smartcity.vn",
+      "status": "paused",
+      "adapter": "live",
+      "customer_id_dashed": "153-777-1845",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_9634070340",
+      "display_name": "Gloka",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "963-407-0340",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_4447912752",
+      "display_name": "Rock Kitchen & Bar",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "444-791-2752",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_5800099027",
+      "display_name": "Strip Việt Nam",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "580-009-9027",
+      "mcc_display_name": "Fago Agency"
+    },
+    {
+      "client_id": "tkqc_1566256433",
+      "display_name": "Tài khoản Google Ads của zzz",
+      "status": "active",
+      "adapter": "live",
+      "customer_id_dashed": "156-625-6433",
+      "mcc_display_name": "Fago Agency"
+    }
+  ],
+  "schema_conflict_example": {
+    "title": "Mẫu file lệch cột",
+    "flag": "SOURCE-CONFLICT",
+    "rule": "Thiếu cột bắt buộc theo DATA-CONTRACT — không đoán cột, không đọc.",
+    "not_a_client": true,
+    "files": [
+      {
+        "file": "search_terms.csv",
+        "label": "Cụm từ tìm kiếm",
+        "flag": "SOURCE-CONFLICT",
+        "present_columns": [
+          "tu_khoa",
+          "chien_dich",
+          "hien_thi"
+        ],
+        "missing_columns": [
+          "window",
+          "query",
+          "campaign_name",
+          "ad_group_name",
+          "label",
+          "classified",
+          "impressions",
+          "clicks",
+          "cost",
+          "conversions"
+        ],
+        "notes": "Thiếu cột bắt buộc ['window', 'query', 'campaign_name', 'ad_group_name', 'label', 'classified', 'impressions', 'clicks', 'cost', 'conversions'] — không đoán cột."
+      },
+      {
+        "file": "auction_insights.csv",
+        "label": "Thị phần & đấu giá",
+        "flag": "SOURCE-CONFLICT",
+        "present_columns": [
+          "date",
+          "campaign_name"
+        ],
+        "missing_columns": [],
+        "notes": "date='19/09/2026' phải YYYY-MM-DD — không đổi 19/09/2026."
+      }
+    ]
+  },
+  "guard_scenarios": [
+    {
+      "id": "stale",
+      "title": "Nguồn cũ",
+      "blurb": "data_through quá hạn — dừng đề xuất, không đoán.",
+      "expected": "HARD_STOP",
+      "gate": "stale"
+    },
+    {
+      "id": "coverage",
+      "title": "Coverage ST chưa đủ",
+      "blurb": "Cụm từ chưa phân loại 100% — việc lớn bị chặn.",
+      "expected": "HARD_STOP",
+      "gate": "coverage"
+    },
+    {
+      "id": "fake_cpa",
+      "title": "CPA ảo / lệch Sale",
+      "blurb": "CPA Google lệch lead sale — không gọi là Qualified Lead.",
+      "expected": "HOLD",
+      "gate": "fake_cpa"
+    },
+    {
+      "id": "source_conflict",
+      "title": "Lệch cột nguồn",
+      "blurb": "Thiếu cột query — SOURCE-CONFLICT, không đoán.",
+      "expected": "HARD_STOP",
+      "gate": "source_conflict"
+    }
+  ],
+  "pinned_now": "2026-09-19T15:00:00+07:00",
+  "never_write_final": true
+}

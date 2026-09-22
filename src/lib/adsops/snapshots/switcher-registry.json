@@ -1,0 +1,24 @@
+{
+  "product": "AdsOps",
+  "module": "client_switcher",
+  "rule": "Chọn khách A không thấy số khách B.",
+  "isolation": "Active_view chỉ mang 5 KPI + campaign của khách đang chọn.",
+  "roles_note": "Phân quyền đầy đủ là giai đoạn 2. MVP: đổi khách = đổi ngữ cảnh.",
+  "active_client_id": "tkqc_6810292395",
+  "control_file": "AdsOps-Control.xlsx",
+  "control_cell": "Switcher!B3",
+  "clients": [
+    {
+      "client_id": "tkqc_6810292395",
+      "display_name": "GrowVi",
+      "status": "active",
+      "adapter": "live"
+    },
+    {
+      "client_id": "fago_group",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group (006)",
+      "status": "active",
+      "adapter": "live"
+    }
+  ]
+}

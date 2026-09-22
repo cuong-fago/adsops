@@ -1,0 +1,110 @@
+{
+  "client_id": "tkqc_6810292395",
+  "display_name": "GrowVi",
+  "customer_id": "6810292395",
+  "timezone": "Asia/Saigon",
+  "currency": "VND",
+  "adapter": "live",
+  "data_through": "2026-09-20",
+  "propose_only": true,
+  "never_apply_google_ads": true,
+  "is_scenario": false,
+  "scenario": null,
+  "overall": "HOLD",
+  "overall_label": "Treo — chờ xác minh",
+  "source_flag": "VERIFIED_CURRENT",
+  "large_actions_blocked": true,
+  "search_term_coverage": 1.0,
+  "classified_search_terms": 404,
+  "total_search_terms": 404,
+  "search_term_rows": 1784,
+  "coverage_note": "Coverage ST 100% (404/404 cụm từ) · 1784 dòng cửa sổ 1/7/14/30.",
+  "conflicted_sources": [],
+  "cpa": {
+    "google_7d": 221190.0,
+    "sale_7d": null,
+    "all_conversions_7d": 221190.0,
+    "currency": "VND",
+    "basis": "all_conversions_fallback",
+    "google_is_not_qualified_lead": true,
+    "all_conversions_is_not_business_lead": true
+  },
+  "conversions_7d": 16.0,
+  "all_conversions_7d": 16.0,
+  "sale_leads_7d": null,
+  "checks": [
+    {
+      "name": "source_conflict",
+      "label": "Lệch schema nguồn",
+      "status": "PASS",
+      "detail": "Không lệch schema DATA-CONTRACT.",
+      "blocks_large_actions": false
+    },
+    {
+      "name": "source_freshness",
+      "label": "Nguồn còn mới",
+      "status": "PASS",
+      "detail": "data_through=2026-09-20 adapter=live tz=Asia/Saigon.",
+      "blocks_large_actions": false
+    },
+    {
+      "name": "required_sources",
+      "label": "Đủ nguồn bắt buộc",
+      "status": "HOLD",
+      "detail": "Thiếu nguồn phụ: ['conversion_actions']. Không đoán. Coverage ST vẫn quyết định việc lớn.",
+      "blocks_large_actions": false
+    },
+    {
+      "name": "search_term_coverage",
+      "label": "Coverage cụm từ tìm kiếm",
+      "status": "PASS",
+      "detail": "Coverage=100% (404/404 cụm từ).",
+      "blocks_large_actions": false
+    },
+    {
+      "name": "primary_in_conversions",
+      "label": "Conversion chính trong cột Conversions",
+      "status": "HOLD",
+      "detail": "Chưa cấu hình conversion chính và chưa có bảng conversion_actions. Không đoán. Không gọi All conv là lead kinh doanh.",
+      "blocks_large_actions": false
+    },
+    {
+      "name": "conversion_drop",
+      "label": "Conversion về 0",
+      "status": "PASS",
+      "detail": "7D conversions=16.00 (cột Conversions — primary, không phải All conv).",
+      "blocks_large_actions": false
+    },
+    {
+      "name": "cpa_google_vs_sale",
+      "label": "CPA Google vs CPA Sale",
+      "status": "HOLD",
+      "detail": "Chưa có lead sale xác nhận. Không được gọi CPA Google là Qualified Lead. Không scale nếu hard stop yêu cầu sale.",
+      "blocks_large_actions": true
+    },
+    {
+      "name": "all_conv_not_business",
+      "label": "All conversions không phải lead",
+      "status": "PASS",
+      "detail": "All conversions không cao hơn cột Conversions trong cửa sổ 7D.",
+      "blocks_large_actions": false
+    },
+    {
+      "name": "negative_audit",
+      "label": "Đã audit negative",
+      "status": "PASS",
+      "detail": "13814 negative đã đưa vào audit.",
+      "blocks_large_actions": false
+    },
+    {
+      "name": "all_conv_label",
+      "label": "Nhãn All conversions",
+      "status": "PASS",
+      "detail": "All conversions không được trình bày là lead kinh doanh / qualified lead.",
+      "blocks_large_actions": false
+    }
+  ],
+  "verdict": "HOLD — chờ xác minh (required_sources, primary_in_conversions, cpa_google_vs_sale). Không copy việc lớn. Việc lớn bị chặn.",
+  "final_blocked": false,
+  "final_block_reason": null
+}

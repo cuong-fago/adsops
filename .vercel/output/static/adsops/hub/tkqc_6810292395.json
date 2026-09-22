@@ -1,0 +1,1085 @@
+{
+  "client_id": "tkqc_6810292395",
+  "display_name": "GrowVi",
+  "customer_id": "6810292395",
+  "timezone": "Asia/Saigon",
+  "currency": "VND",
+  "status": "active",
+  "adapter": "live",
+  "data_through": "2026-09-20",
+  "lookback_days": 90,
+  "day_count": 90,
+  "date_start": "2026-06-23",
+  "source_flag": "FAIL",
+  "propose_only": true,
+  "kpis": [
+    {
+      "id": "cost",
+      "label": "Chi tiêu"
+    },
+    {
+      "id": "impressions",
+      "label": "Hiển thị"
+    },
+    {
+      "id": "clicks",
+      "label": "Lượt nhấp"
+    },
+    {
+      "id": "conversions",
+      "label": "Chuyển đổi"
+    },
+    {
+      "id": "cpc",
+      "label": "CPC"
+    }
+  ],
+  "windows": {
+    "7": {
+      "days": 7,
+      "cost": 3539035.0,
+      "impressions": 602,
+      "clicks": 68,
+      "conversions": 16.0,
+      "cpc": 52045.0,
+      "ctr": 0.113,
+      "cpa_google": 221190.0,
+      "all_conversions": 16.0,
+      "previous": {
+        "days": 7,
+        "cost": 4803603.0,
+        "impressions": 753,
+        "clicks": 83,
+        "conversions": 14.0,
+        "cpc": 57875.0,
+        "ctr": 0.1102,
+        "cpa_google": 343114.0,
+        "all_conversions": 14.0
+      },
+      "delta": {
+        "cost": -0.2633,
+        "impressions": -0.2005,
+        "clicks": -0.1807,
+        "conversions": 0.1429,
+        "cpc": -0.1007
+      }
+    },
+    "14": {
+      "days": 14,
+      "cost": 8342638.0,
+      "impressions": 1355,
+      "clicks": 151,
+      "conversions": 30.0,
+      "cpc": 55249.0,
+      "ctr": 0.1114,
+      "cpa_google": 278088.0,
+      "all_conversions": 30.0,
+      "previous": {
+        "days": 14,
+        "cost": 7484531.0,
+        "impressions": 1209,
+        "clicks": 126,
+        "conversions": 19.0,
+        "cpc": 59401.0,
+        "ctr": 0.1042,
+        "cpa_google": 393923.0,
+        "all_conversions": 19.0
+      },
+      "delta": {
+        "cost": 0.1147,
+        "impressions": 0.1208,
+        "clicks": 0.1984,
+        "conversions": 0.5789,
+        "cpc": -0.0699
+      }
+    },
+    "30": {
+      "days": 30,
+      "cost": 16406433.0,
+      "impressions": 2767,
+      "clicks": 290,
+      "conversions": 50.0,
+      "cpc": 56574.0,
+      "ctr": 0.1048,
+      "cpa_google": 328129.0,
+      "all_conversions": 50.0,
+      "previous": {
+        "days": 30,
+        "cost": 16110522.0,
+        "impressions": 3226,
+        "clicks": 268,
+        "conversions": 25.0,
+        "cpc": 60114.0,
+        "ctr": 0.0831,
+        "cpa_google": 644421.0,
+        "all_conversions": 25.0
+      },
+      "delta": {
+        "cost": 0.0184,
+        "impressions": -0.1423,
+        "clicks": 0.0821,
+        "conversions": 1.0,
+        "cpc": -0.0589
+      }
+    },
+    "90": {
+      "days": 90,
+      "cost": 32516955.0,
+      "impressions": 5993,
+      "clicks": 558,
+      "conversions": 75.0,
+      "cpc": 58274.0,
+      "ctr": 0.0931,
+      "cpa_google": 433559.0,
+      "all_conversions": 75.0,
+      "previous": null,
+      "delta": null
+    }
+  },
+  "campaigns": {
+    "7": [
+      {
+        "campaign_id": "24100388145",
+        "campaign_name": "Search | Facebook Ads | HCM",
+        "campaign_type": "SEARCH",
+        "cost": 1553935.0,
+        "impressions": 263,
+        "clicks": 33,
+        "conversions": 8.0,
+        "cpc": 47089.0
+      },
+      {
+        "campaign_id": "24082075830",
+        "campaign_name": "Search | Website | HCM | Lead",
+        "campaign_type": "SEARCH",
+        "cost": 1462527.0,
+        "impressions": 274,
+        "clicks": 26,
+        "conversions": 6.0,
+        "cpc": 56251.0
+      },
+      {
+        "campaign_id": "24092042083",
+        "campaign_name": "Search | Google Ads | HCM",
+        "campaign_type": "SEARCH",
+        "cost": 522573.0,
+        "impressions": 65,
+        "clicks": 9,
+        "conversions": 2.0,
+        "cpc": 58064.0
+      }
+    ],
+    "14": [
+      {
+        "campaign_id": "24082075830",
+        "campaign_name": "Search | Website | HCM | Lead",
+        "campaign_type": "SEARCH",
+        "cost": 3480143.0,
+        "impressions": 663,
+        "clicks": 55,
+        "conversions": 11.0,
+        "cpc": 63275.0
+      },
+      {
+        "campaign_id": "24100388145",
+        "campaign_name": "Search | Facebook Ads | HCM",
+        "campaign_type": "SEARCH",
+        "cost": 3297275.0,
+        "impressions": 559,
+        "clicks": 72,
+        "conversions": 17.0,
+        "cpc": 45795.0
+      },
+      {
+        "campaign_id": "24092042083",
+        "campaign_name": "Search | Google Ads | HCM",
+        "campaign_type": "SEARCH",
+        "cost": 1565220.0,
+        "impressions": 133,
+        "clicks": 24,
+        "conversions": 2.0,
+        "cpc": 65218.0
+      }
+    ],
+    "30": [
+      {
+        "campaign_id": "24100388145",
+        "campaign_name": "Search | Facebook Ads | HCM",
+        "campaign_type": "SEARCH",
+        "cost": 6824523.0,
+        "impressions": 1126,
+        "clicks": 134,
+        "conversions": 26.0,
+        "cpc": 50929.0
+      },
+      {
+        "campaign_id": "24082075830",
+        "campaign_name": "Search | Website | HCM | Lead",
+        "campaign_type": "SEARCH",
+        "cost": 6356926.0,
+        "impressions": 1318,
+        "clicks": 107,
+        "conversions": 20.0,
+        "cpc": 59411.0
+      },
+      {
+        "campaign_id": "24092042083",
+        "campaign_name": "Search | Google Ads | HCM",
+        "campaign_type": "SEARCH",
+        "cost": 3224984.0,
+        "impressions": 323,
+        "clicks": 49,
+        "conversions": 4.0,
+        "cpc": 65816.0
+      }
+    ],
+    "90": [
+      {
+        "campaign_id": "24082075830",
+        "campaign_name": "Search | Website | HCM | Lead",
+        "campaign_type": "SEARCH",
+        "cost": 13828697.0,
+        "impressions": 3367,
+        "clicks": 258,
+        "conversions": 31.0,
+        "cpc": 53600.0
+      },
+      {
+        "campaign_id": "24100388145",
+        "campaign_name": "Search | Facebook Ads | HCM",
+        "campaign_type": "SEARCH",
+        "cost": 10895753.0,
+        "impressions": 1829,
+        "clicks": 191,
+        "conversions": 37.0,
+        "cpc": 57046.0
+      },
+      {
+        "campaign_id": "24092042083",
+        "campaign_name": "Search | Google Ads | HCM",
+        "campaign_type": "SEARCH",
+        "cost": 7792505.0,
+        "impressions": 797,
+        "clicks": 109,
+        "conversions": 7.0,
+        "cpc": 71491.0
+      }
+    ]
+  },
+  "daily": [
+    {
+      "date": "2026-06-23",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-06-24",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-06-25",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-06-26",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-06-27",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-06-28",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-06-29",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-06-30",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-01",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-02",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-03",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-04",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-05",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-06",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-07",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-08",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-09",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-10",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-11",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-12",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-13",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-14",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-15",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-16",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-17",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-18",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-19",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-20",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-21",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-22",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-23",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-24",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-25",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-26",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-27",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-28",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-29",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-30",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-07-31",
+      "cost": 1049505.0,
+      "impressions": 264,
+      "clicks": 24,
+      "conversions": 0.0,
+      "cpc": 43729.0
+    },
+    {
+      "date": "2026-08-01",
+      "cost": 636516.0,
+      "impressions": 153,
+      "clicks": 15,
+      "conversions": 0.0,
+      "cpc": 42434.0
+    },
+    {
+      "date": "2026-08-02",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-08-03",
+      "cost": 588362.0,
+      "impressions": 232,
+      "clicks": 21,
+      "conversions": 0.0,
+      "cpc": 28017.0
+    },
+    {
+      "date": "2026-08-04",
+      "cost": 384987.0,
+      "impressions": 150,
+      "clicks": 17,
+      "conversions": 0.0,
+      "cpc": 22646.0
+    },
+    {
+      "date": "2026-08-05",
+      "cost": 81669.0,
+      "impressions": 40,
+      "clicks": 2,
+      "conversions": 2.0,
+      "cpc": 40834.0
+    },
+    {
+      "date": "2026-08-06",
+      "cost": 836988.0,
+      "impressions": 168,
+      "clicks": 18,
+      "conversions": 1.0,
+      "cpc": 46499.0
+    },
+    {
+      "date": "2026-08-07",
+      "cost": 621102.0,
+      "impressions": 225,
+      "clicks": 11,
+      "conversions": 0.0,
+      "cpc": 56464.0
+    },
+    {
+      "date": "2026-08-08",
+      "cost": 839151.0,
+      "impressions": 169,
+      "clicks": 14,
+      "conversions": 2.0,
+      "cpc": 59939.0
+    },
+    {
+      "date": "2026-08-09",
+      "cost": 85386.0,
+      "impressions": 19,
+      "clicks": 3,
+      "conversions": 2.0,
+      "cpc": 28462.0
+    },
+    {
+      "date": "2026-08-10",
+      "cost": 1296731.0,
+      "impressions": 189,
+      "clicks": 14,
+      "conversions": 3.0,
+      "cpc": 92624.0
+    },
+    {
+      "date": "2026-08-11",
+      "cost": 1226477.0,
+      "impressions": 277,
+      "clicks": 17,
+      "conversions": 0.0,
+      "cpc": 72146.0
+    },
+    {
+      "date": "2026-08-12",
+      "cost": 2434682.0,
+      "impressions": 220,
+      "clicks": 14,
+      "conversions": 2.0,
+      "cpc": 173906.0
+    },
+    {
+      "date": "2026-08-13",
+      "cost": 802946.0,
+      "impressions": 63,
+      "clicks": 12,
+      "conversions": 1.0,
+      "cpc": 66912.0
+    },
+    {
+      "date": "2026-08-14",
+      "cost": 885835.0,
+      "impressions": 145,
+      "clicks": 11,
+      "conversions": 1.0,
+      "cpc": 80530.0
+    },
+    {
+      "date": "2026-08-15",
+      "cost": 807136.0,
+      "impressions": 85,
+      "clicks": 9,
+      "conversions": 1.0,
+      "cpc": 89682.0
+    },
+    {
+      "date": "2026-08-16",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-08-17",
+      "cost": 765047.0,
+      "impressions": 147,
+      "clicks": 12,
+      "conversions": 3.0,
+      "cpc": 63754.0
+    },
+    {
+      "date": "2026-08-18",
+      "cost": 815745.0,
+      "impressions": 227,
+      "clicks": 17,
+      "conversions": 3.0,
+      "cpc": 47985.0
+    },
+    {
+      "date": "2026-08-19",
+      "cost": 806214.0,
+      "impressions": 222,
+      "clicks": 17,
+      "conversions": 1.0,
+      "cpc": 47424.0
+    },
+    {
+      "date": "2026-08-20",
+      "cost": 641653.0,
+      "impressions": 72,
+      "clicks": 13,
+      "conversions": 1.0,
+      "cpc": 49358.0
+    },
+    {
+      "date": "2026-08-21",
+      "cost": 504389.0,
+      "impressions": 159,
+      "clicks": 7,
+      "conversions": 2.0,
+      "cpc": 72056.0
+    },
+    {
+      "date": "2026-08-22",
+      "cost": 579264.0,
+      "impressions": 203,
+      "clicks": 13,
+      "conversions": 1.0,
+      "cpc": 44559.0
+    },
+    {
+      "date": "2026-08-23",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-08-24",
+      "cost": 614808.0,
+      "impressions": 154,
+      "clicks": 8,
+      "conversions": 2.0,
+      "cpc": 76851.0
+    },
+    {
+      "date": "2026-08-25",
+      "cost": 574029.0,
+      "impressions": 90,
+      "clicks": 14,
+      "conversions": 2.0,
+      "cpc": 41002.0
+    },
+    {
+      "date": "2026-08-26",
+      "cost": 583376.0,
+      "impressions": 246,
+      "clicks": 13,
+      "conversions": 0.0,
+      "cpc": 44875.0
+    },
+    {
+      "date": "2026-08-27",
+      "cost": 928018.0,
+      "impressions": 155,
+      "clicks": 16,
+      "conversions": 1.0,
+      "cpc": 58001.0
+    },
+    {
+      "date": "2026-08-28",
+      "cost": 706151.0,
+      "impressions": 151,
+      "clicks": 12,
+      "conversions": 2.0,
+      "cpc": 58846.0
+    },
+    {
+      "date": "2026-08-29",
+      "cost": 675459.0,
+      "impressions": 133,
+      "clicks": 14,
+      "conversions": 3.0,
+      "cpc": 48247.0
+    },
+    {
+      "date": "2026-08-30",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-08-31",
+      "cost": 825390.0,
+      "impressions": 91,
+      "clicks": 17,
+      "conversions": 2.0,
+      "cpc": 48552.0
+    },
+    {
+      "date": "2026-09-01",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-09-02",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-09-03",
+      "cost": 143580.0,
+      "impressions": 16,
+      "clicks": 4,
+      "conversions": 0.0,
+      "cpc": 35895.0
+    },
+    {
+      "date": "2026-09-04",
+      "cost": 1234195.0,
+      "impressions": 105,
+      "clicks": 16,
+      "conversions": 3.0,
+      "cpc": 77137.0
+    },
+    {
+      "date": "2026-09-05",
+      "cost": 1199525.0,
+      "impressions": 68,
+      "clicks": 12,
+      "conversions": 4.0,
+      "cpc": 99960.0
+    },
+    {
+      "date": "2026-09-06",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-09-07",
+      "cost": 1207548.0,
+      "impressions": 179,
+      "clicks": 15,
+      "conversions": 4.0,
+      "cpc": 80503.0
+    },
+    {
+      "date": "2026-09-08",
+      "cost": 1140877.0,
+      "impressions": 203,
+      "clicks": 21,
+      "conversions": 4.0,
+      "cpc": 54327.0
+    },
+    {
+      "date": "2026-09-09",
+      "cost": 765274.0,
+      "impressions": 141,
+      "clicks": 16,
+      "conversions": 0.0,
+      "cpc": 47830.0
+    },
+    {
+      "date": "2026-09-10",
+      "cost": 672591.0,
+      "impressions": 58,
+      "clicks": 9,
+      "conversions": 0.0,
+      "cpc": 74732.0
+    },
+    {
+      "date": "2026-09-11",
+      "cost": 511549.0,
+      "impressions": 79,
+      "clicks": 8,
+      "conversions": 4.0,
+      "cpc": 63944.0
+    },
+    {
+      "date": "2026-09-12",
+      "cost": 505764.0,
+      "impressions": 93,
+      "clicks": 14,
+      "conversions": 2.0,
+      "cpc": 36126.0
+    },
+    {
+      "date": "2026-09-13",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    },
+    {
+      "date": "2026-09-14",
+      "cost": 698214.0,
+      "impressions": 97,
+      "clicks": 10,
+      "conversions": 3.0,
+      "cpc": 69821.0
+    },
+    {
+      "date": "2026-09-15",
+      "cost": 546980.0,
+      "impressions": 68,
+      "clicks": 14,
+      "conversions": 3.0,
+      "cpc": 39070.0
+    },
+    {
+      "date": "2026-09-16",
+      "cost": 569349.0,
+      "impressions": 192,
+      "clicks": 12,
+      "conversions": 1.0,
+      "cpc": 47446.0
+    },
+    {
+      "date": "2026-09-17",
+      "cost": 566057.0,
+      "impressions": 98,
+      "clicks": 12,
+      "conversions": 2.0,
+      "cpc": 47171.0
+    },
+    {
+      "date": "2026-09-18",
+      "cost": 554277.0,
+      "impressions": 59,
+      "clicks": 9,
+      "conversions": 4.0,
+      "cpc": 61586.0
+    },
+    {
+      "date": "2026-09-19",
+      "cost": 604159.0,
+      "impressions": 88,
+      "clicks": 11,
+      "conversions": 3.0,
+      "cpc": 54924.0
+    },
+    {
+      "date": "2026-09-20",
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null
+    }
+  ],
+  "opt_sources": {
+    "flag": "VERIFIED_CURRENT",
+    "tables": [
+      {
+        "id": "search_terms",
+        "label": "Cụm từ tìm kiếm",
+        "flag": "VERIFIED_CURRENT",
+        "rows": 1784,
+        "coverage": 1.0,
+        "missing_columns": [],
+        "notes": "Đúng dialect ops_drive_v1. Nhãn keep/add_exact không có trên Drive — gắn hold, classified=false, không đề xuất lớn. Không đọc tab CPA."
+      },
+      {
+        "id": "negatives",
+        "label": "Từ khóa phủ định",
+        "flag": "VERIFIED_CURRENT",
+        "rows": 13814,
+        "coverage": null,
+        "missing_columns": [],
+        "notes": "Đúng dialect ops_drive_v1. Danh sách dùng chung → tầng account (đã ghi)."
+      },
+      {
+        "id": "rsa_ads",
+        "label": "Mẫu RSA",
+        "flag": "VERIFIED_CURRENT",
+        "rows": 11,
+        "coverage": null,
+        "missing_columns": [],
+        "notes": "Đúng dialect ops_drive_v1. Drive không có Ad ID — ad_id = campaign|ad_group|landing (đã ghi)."
+      },
+      {
+        "id": "auction_insights",
+        "label": "Thị phần & đấu giá",
+        "flag": "VERIFIED_CURRENT",
+        "rows": 3,
+        "coverage": null,
+        "missing_columns": [],
+        "notes": "Đúng dialect ops_drive_v1. Chỉ cửa sổ CURRENT. Ô <10% → trống, không bịa số."
+      }
+    ],
+    "search_term_preview": [
+      {
+        "query": "thiết kế web",
+        "campaign_name": "Search | Website | HCM | Lead",
+        "label": "keep",
+        "classified": true
+      },
+      {
+        "query": "thiết kế web",
+        "campaign_name": "Search | Website | HCM | Lead",
+        "label": "keep",
+        "classified": true
+      },
+      {
+        "query": "thiết kế web",
+        "campaign_name": "Search | Website | HCM | Lead",
+        "label": "keep",
+        "classified": true
+      },
+      {
+        "query": "thiết kế web",
+        "campaign_name": "Search | Website | HCM | Lead",
+        "label": "keep",
+        "classified": true
+      },
+      {
+        "query": "chạy quảng cáo google",
+        "campaign_name": "Search | Google Ads | HCM",
+        "label": "keep",
+        "classified": true
+      },
+      {
+        "query": "chạy quảng cáo google",
+        "campaign_name": "Search | Google Ads | HCM",
+        "label": "keep",
+        "classified": true
+      },
+      {
+        "query": "chạy quảng cáo google",
+        "campaign_name": "Search | Google Ads | HCM",
+        "label": "keep",
+        "classified": true
+      },
+      {
+        "query": "chạy quảng cáo google",
+        "campaign_name": "Search | Google Ads | HCM",
+        "label": "keep",
+        "classified": true
+      }
+    ],
+    "search_term_coverage": 1.0,
+    "rule": "Lệch schema = SOURCE-CONFLICT — không đoán cột, không trộn vào 5 KPI.",
+    "propose_only": true
+  }
+}

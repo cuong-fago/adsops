@@ -1,0 +1,119 @@
+{
+  "product": "AdsOps",
+  "module": "analytics",
+  "rule": "Chọn A không thấy số B. All conversions không lên màn Phân tích. Không đoán kho cho tài khoản chưa kéo.",
+  "clients": [
+    {
+      "client_id": "tkqc_6419118605",
+      "display_name": "641-911-8605",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-06-24",
+      "day_count": 89
+    },
+    {
+      "client_id": "tkqc_2950312680",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 001",
+      "data_through": "2026-09-19",
+      "warehouse_start": "2026-06-24",
+      "day_count": 38
+    },
+    {
+      "client_id": "tkqc_5449401095",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 002",
+      "data_through": "2026-08-17",
+      "warehouse_start": "2026-06-24",
+      "day_count": 54
+    },
+    {
+      "client_id": "tkqc_1002848762",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 003",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-06-24",
+      "day_count": 90
+    },
+    {
+      "client_id": "tkqc_5683242539",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 004",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-06-24",
+      "day_count": 76
+    },
+    {
+      "client_id": "tkqc_5305148570",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 005",
+      "data_through": "2026-08-27",
+      "warehouse_start": "2026-08-05",
+      "day_count": 13
+    },
+    {
+      "client_id": "fago_group",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 006",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-09-18",
+      "day_count": 4
+    },
+    {
+      "client_id": "tkqc_2956229201",
+      "display_name": "Công Ty TNHH Kiểm Toán Và Tư Vấn Bản Việt",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-06-24",
+      "day_count": 64
+    },
+    {
+      "client_id": "tkqc_6810292395",
+      "display_name": "Công Ty TNHH MTV Thương Mại Và Du Lịch Quỳnh Thanh",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-07-31",
+      "day_count": 44
+    },
+    {
+      "client_id": "tkqc_7904581470",
+      "display_name": "Công Ty TNHH Đầu Tư Phát Triển Thương Mại Dịch Vụ Minh Quân",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-06-24",
+      "day_count": 77
+    },
+    {
+      "client_id": "tkqc_6608871437",
+      "display_name": "Fago - Hạnh Long - 0312539301",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-07-21",
+      "day_count": 61
+    },
+    {
+      "client_id": "tkqc_7167241572",
+      "display_name": "Fago - TCC - 0318902627",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-06-24",
+      "day_count": 75
+    },
+    {
+      "client_id": "tkqc_5709560356",
+      "display_name": "Fago - Điện lạnh Tiên Tiến",
+      "data_through": "2026-09-08",
+      "warehouse_start": "2026-08-28",
+      "day_count": 6
+    },
+    {
+      "client_id": "tkqc_9634070340",
+      "display_name": "Gloka",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-06-24",
+      "day_count": 90
+    },
+    {
+      "client_id": "tkqc_4447912752",
+      "display_name": "Rock Kitchen & Bar",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-06-24",
+      "day_count": 84
+    },
+    {
+      "client_id": "tkqc_5800099027",
+      "display_name": "Strip Việt Nam",
+      "data_through": "2026-09-21",
+      "warehouse_start": "2026-06-24",
+      "day_count": 90
+    }
+  ]
+}

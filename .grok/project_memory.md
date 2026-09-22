@@ -1,0 +1,4 @@
+- AdsOps giai đoạn 1 fixture đã xong (phiên 01–09 + 20–27). Root code: artifacts/AdsOps-handoff-2026-09-21/AdsOps. Brief: AdsOps-PROJECT-BRIEF.md. [2026-09-21]
+- Khách fixture chạy được: demo_clinic, demo_dental. Live đã có CID chưa CONNECTED: fago_group (220-413-6068), tkqc_6810292395 GrowVi (681-029-2395), MCC Fago Agency 532-145-0531. [2026-09-21]
+- Token/OAuth không có trên máy này (không có config/google-ads.yaml). Probe GrowVi = MISSING_CREDENTIALS vì thiếu 3 mảnh OAuth, không vì developer token. Không kéo ST/5 KPI/FINAL live khi chưa CONNECTED. Không apply Google Ads. [2026-09-21]
+- Màn Kết nối GrowVi: kéo/thả yaml hoặc 3 ô OAuth (mật khẩu) rồi Lưu trên máy rồi thử gọi. File CHANGE_ME bị từ chối, không lưu. Chỉ mở 11-doi-chieu-5kpi khi phiếu ĐÃ NỐI. [2026-09-21]

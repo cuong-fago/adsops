@@ -1,0 +1,34 @@
+{
+  "product": "AdsOps",
+  "module": "client_report",
+  "audience": "client_viewer",
+  "rule": "Bìa khách = 5 KPI + lời. Không nhét tab kỹ thuật. CPA Google ≠ lead sale.",
+  "isolation": "Chọn khách A không thấy số khách B.",
+  "kpis": [
+    "cost",
+    "impressions",
+    "clicks",
+    "conversions",
+    "cpc"
+  ],
+  "cadences": [
+    "daily",
+    "weekly"
+  ],
+  "cover_sheets": [
+    "Bia",
+    "Theo_chien_dich"
+  ],
+  "clients": [
+    {
+      "client_id": "tkqc_6810292395",
+      "display_name": "GrowVi",
+      "status": "active"
+    },
+    {
+      "client_id": "fago_group",
+      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group (006)",
+      "status": "active"
+    }
+  ]
+}

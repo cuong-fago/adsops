@@ -1,0 +1,24 @@
+{
+  "client_id": "tkqc_6810292395",
+  "display_name": "GrowVi",
+  "currency": "VND",
+  "timezone": "Asia/Saigon",
+  "separate_from_guard": true,
+  "status": "missing",
+  "missing_label": "Chưa có chi trong ngày.",
+  "firing": false,
+  "hours_elapsed": 0,
+  "today": "2026-09-20",
+  "tickets": [],
+  "ok": [],
+  "email": {
+    "channel": "email",
+    "to": [],
+    "subject": "",
+    "body": "",
+    "status": "not_sent",
+    "not_merged_with_guard": true,
+    "sent": false,
+    "note": "Không đủ chi trong ngày để lập phiếu ngân sách. Tách Guard."
+  }
+}

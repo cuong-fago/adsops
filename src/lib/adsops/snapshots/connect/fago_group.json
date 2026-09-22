@@ -1,0 +1,83 @@
+{
+  "client_id": "fago_group",
+  "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group (006)",
+  "customer_id": "2204136068",
+  "customer_id_dashed": "220-413-6068",
+  "mcc_id": "5321450531",
+  "mcc_id_dashed": "532-145-0531",
+  "mcc_display_name": "Fago Agency",
+  "adapter": "live",
+  "status": "CONNECTED",
+  "title_vi": "Engine gọi được Google Ads API",
+  "detail_vi": "Đã đọc được tài khoản 220-413-6068 — Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 006. Phiên này chưa kéo search term, chưa đối chiếu 5 KPI, chưa sinh FINAL.",
+  "next_step_vi": "Phiên 11-doi-chieu-5kpi: kéo Chi tiêu / Hiển thị / Click / Chuyển đổi / CPC và đối chiếu UI.",
+  "checklist": [
+    {
+      "id": "oauth_client_id",
+      "label_vi": "OAuth Client ID",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "có"
+    },
+    {
+      "id": "oauth_client_secret",
+      "label_vi": "OAuth Client Secret",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "có"
+    },
+    {
+      "id": "refresh_token",
+      "label_vi": "Refresh token (đăng nhập Google)",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "có"
+    },
+    {
+      "id": "login_customer_id",
+      "label_vi": "MCC (tài khoản quản lý)",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "client_config"
+    },
+    {
+      "id": "customer_id",
+      "label_vi": "Customer ID tài khoản khách",
+      "present": true,
+      "required": true,
+      "state_vi": "Có",
+      "source": "client_config"
+    },
+    {
+      "id": "developer_token",
+      "label_vi": "Token nhà phát triển (Google đã bỏ — không bắt buộc)",
+      "present": false,
+      "required": false,
+      "state_vi": "Không bắt buộc",
+      "source": ""
+    }
+  ],
+  "account_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 006",
+  "currency": "VND",
+  "account_timezone": "Asia/Saigon",
+  "is_manager": false,
+  "account_status": "ENABLED",
+  "accessible_count": 16,
+  "target_in_accessible": false,
+  "yaml_file_present": true,
+  "api_version": "v25",
+  "probed_at": "2026-09-21T13:53:25+07:00",
+  "propose_only": true,
+  "pulled_search_terms": false,
+  "pulled_kpis": false,
+  "never_apply_google_ads": true,
+  "error_hint": "",
+  "module": "ads_connect",
+  "rule": "CHỈ ĐỀ XUẤT — không tự apply lên Google Ads.",
+  "session": "10-ket-noi-ads",
+  "isolation": "Chọn khách A không thấy số khách B."
+}

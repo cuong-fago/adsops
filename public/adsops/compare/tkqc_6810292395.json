@@ -1,0 +1,240 @@
+{
+  "module": "kpi_compare",
+  "session": "11-doi-chieu-5kpi",
+  "client_id": "tkqc_6810292395",
+  "display_name": "GrowVi",
+  "customer_id": "6810292395",
+  "customer_id_dashed": "681-029-2395",
+  "timezone": "Asia/Saigon",
+  "currency": "VND",
+  "adapter": "live",
+  "data_through": "2026-09-20",
+  "lookback_days": 90,
+  "day_count": 90,
+  "pulled_kpis": true,
+  "pulled_search_terms": false,
+  "never_apply_google_ads": true,
+  "propose_only": true,
+  "kpis": [
+    {
+      "id": "cost",
+      "label": "Chi tiêu"
+    },
+    {
+      "id": "impressions",
+      "label": "Hiển thị"
+    },
+    {
+      "id": "clicks",
+      "label": "Lượt nhấp"
+    },
+    {
+      "id": "conversions",
+      "label": "Chuyển đổi"
+    },
+    {
+      "id": "cpc",
+      "label": "CPC"
+    }
+  ],
+  "metric_map_vi": {
+    "cost": "Chi tiêu = Cost trên Google Ads (đơn vị tiền tài khoản, không micros)",
+    "impressions": "Hiển thị = Impr.",
+    "clicks": "Lượt nhấp = Clicks",
+    "conversions": "Chuyển đổi = cột Conversions (không phải All conv.)",
+    "cpc": "CPC = Chi tiêu / Lượt nhấp = Avg. CPC"
+  },
+  "compare_howto": [
+    "Mở Google Ads đúng tài khoản 681-029-2395.",
+    "Timezone Asia/Saigon. Hôm nay không nằm trong số — chốt ngày 2026-09-20.",
+    "Chọn khoảng ngày tùy chỉnh trùng đúng Từ → Đến của cửa sổ đang soi. Đừng chọn “7 ngày qua” nếu UI gồm hôm nay.",
+    "Đối chiếu 5 số bìa: Chi tiêu, Hiển thị, Lượt nhấp, Chuyển đổi, CPC.",
+    "Chuyển đổi = cột Conversions (primary), không phải All conversions, không phải lead sale.",
+    "CPC = Chi tiêu / Lượt nhấp (Avg. CPC). Chi tiêu = Cost, đã chia micros."
+  ],
+  "windows": {
+    "1": {
+      "days": 1,
+      "cost": 0.0,
+      "impressions": 0,
+      "clicks": 0,
+      "conversions": 0.0,
+      "cpc": null,
+      "ctr": null,
+      "cpa_google": null,
+      "all_conversions": 0.0,
+      "previous": {
+        "days": 1,
+        "cost": 604159.0,
+        "impressions": 88,
+        "clicks": 11,
+        "conversions": 3.0,
+        "cpc": 54924.0,
+        "ctr": 0.125,
+        "cpa_google": 201386.0,
+        "all_conversions": 3.0
+      },
+      "delta": {
+        "cost": -1.0,
+        "impressions": -1.0,
+        "clicks": -1.0,
+        "conversions": -1.0,
+        "cpc": null
+      }
+    },
+    "7": {
+      "days": 7,
+      "cost": 3539035.0,
+      "impressions": 602,
+      "clicks": 68,
+      "conversions": 16.0,
+      "cpc": 52045.0,
+      "ctr": 0.113,
+      "cpa_google": 221190.0,
+      "all_conversions": 16.0,
+      "previous": {
+        "days": 7,
+        "cost": 4803603.0,
+        "impressions": 753,
+        "clicks": 83,
+        "conversions": 14.0,
+        "cpc": 57875.0,
+        "ctr": 0.1102,
+        "cpa_google": 343114.0,
+        "all_conversions": 14.0
+      },
+      "delta": {
+        "cost": -0.2633,
+        "impressions": -0.2005,
+        "clicks": -0.1807,
+        "conversions": 0.1429,
+        "cpc": -0.1007
+      }
+    },
+    "14": {
+      "days": 14,
+      "cost": 8342638.0,
+      "impressions": 1355,
+      "clicks": 151,
+      "conversions": 30.0,
+      "cpc": 55249.0,
+      "ctr": 0.1114,
+      "cpa_google": 278088.0,
+      "all_conversions": 30.0,
+      "previous": {
+        "days": 14,
+        "cost": 7484531.0,
+        "impressions": 1209,
+        "clicks": 126,
+        "conversions": 19.0,
+        "cpc": 59401.0,
+        "ctr": 0.1042,
+        "cpa_google": 393923.0,
+        "all_conversions": 19.0
+      },
+      "delta": {
+        "cost": 0.1147,
+        "impressions": 0.1208,
+        "clicks": 0.1984,
+        "conversions": 0.5789,
+        "cpc": -0.0699
+      }
+    },
+    "30": {
+      "days": 30,
+      "cost": 16406433.0,
+      "impressions": 2767,
+      "clicks": 290,
+      "conversions": 50.0,
+      "cpc": 56574.0,
+      "ctr": 0.1048,
+      "cpa_google": 328129.0,
+      "all_conversions": 50.0,
+      "previous": {
+        "days": 30,
+        "cost": 16110522.0,
+        "impressions": 3226,
+        "clicks": 268,
+        "conversions": 25.0,
+        "cpc": 60114.0,
+        "ctr": 0.0831,
+        "cpa_google": 644421.0,
+        "all_conversions": 25.0
+      },
+      "delta": {
+        "cost": 0.0184,
+        "impressions": -0.1423,
+        "clicks": 0.0821,
+        "conversions": 1.0,
+        "cpc": -0.0589
+      }
+    },
+    "90": {
+      "days": 90,
+      "cost": 32516955.0,
+      "impressions": 5993,
+      "clicks": 558,
+      "conversions": 75.0,
+      "cpc": 58274.0,
+      "ctr": 0.0931,
+      "cpa_google": 433559.0,
+      "all_conversions": 75.0,
+      "previous": null,
+      "delta": null
+    }
+  },
+  "window_ranges": {
+    "1": {
+      "start": "2026-09-20",
+      "end": "2026-09-20"
+    },
+    "7": {
+      "start": "2026-09-14",
+      "end": "2026-09-20"
+    },
+    "14": {
+      "start": "2026-09-07",
+      "end": "2026-09-20"
+    },
+    "30": {
+      "start": "2026-08-22",
+      "end": "2026-09-20"
+    },
+    "90": {
+      "start": "2026-06-23",
+      "end": "2026-09-20"
+    }
+  },
+  "campaigns_7d": [
+    {
+      "campaign_id": "24100388145",
+      "campaign_name": "Search | Facebook Ads | HCM",
+      "campaign_type": "SEARCH",
+      "cost": 1553935.0,
+      "impressions": 263,
+      "clicks": 33,
+      "conversions": 8.0,
+      "cpc": 47089.0
+    },
+    {
+      "campaign_id": "24082075830",
+      "campaign_name": "Search | Website | HCM | Lead",
+      "campaign_type": "SEARCH",
+      "cost": 1462527.0,
+      "impressions": 274,
+      "clicks": 26,
+      "conversions": 6.0,
+      "cpc": 56251.0
+    },
+    {
+      "campaign_id": "24092042083",
+      "campaign_name": "Search | Google Ads | HCM",
+      "campaign_type": "SEARCH",
+      "cost": 522573.0,
+      "impressions": 65,
+      "clicks": 9,
+      "conversions": 2.0,
+      "cpc": 58064.0
+    }
+  ]
+}
