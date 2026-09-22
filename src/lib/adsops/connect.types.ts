@@ -81,3 +81,24 @@ export type PullKpisResult = {
   hub?: Json | null;
   error_vi?: string | null;
 };
+
+export type PullAnalyticsWarehouseResult = {
+  ok: boolean;
+  client_id?: string;
+  analytics?: Json | null;
+  lookback_days?: number;
+  warehouse_start?: string | null;
+  warehouse_end?: string | null;
+  day_count?: number;
+  layers?: {
+    account: number;
+    campaign: number;
+    ad_group: number;
+    keyword: number;
+    search_term: number;
+  };
+  persisted_neon?: boolean;
+  persisted_fs?: boolean;
+  error_vi?: string | null;
+  note_vi?: string | null;
+};
