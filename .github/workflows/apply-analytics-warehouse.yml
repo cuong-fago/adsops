@@ -1,6 +1,10 @@
 name: apply-analytics-warehouse
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".grok/warehouse-push/manifest.json"
+      - ".grok/warehouse-push/warehouse.part*.b64"
 jobs:
   apply:
     runs-on: ubuntu-latest
@@ -8,21 +12,27 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Assemble warehouse.server.ts from b64 parts
+      - name: Assemble warehouse.server.ts from zlib+b64 parts
         run: |
           set -euo pipefail
           python3 <<'PY'
-          import base64, json, hashlib
+          import base64, json, hashlib, zlib
           from pathlib import Path
-          man = json.loads(Path('.grok/warehouse-push/manifest.json').read_text())
+          man = json.loads(Path(".grok/warehouse-push/manifest.json").read_text())
           parts = []
-          for i in range(man['parts']):
-            parts.append(Path(f'.grok/warehouse-push/warehouse.part{i}.b64').read_text().strip())
-          raw = base64.b64decode(''.join(parts))
+          for i in range(man["parts"]):
+              parts.append(Path(f".grok/warehouse-push/warehouse.part{i}.b64").read_text().strip())
+          blob = base64.b64decode("".join(parts))
+          if man.get("encoding") == "zlib+b64":
+              raw = zlib.decompress(blob)
+          else:
+              raw = blob
           digest = hashlib.sha256(raw).hexdigest()
-          assert digest == man['sha256'], (digest, man['sha256'])
-          Path(man['path']).write_bytes(raw)
-          print('wrote', man['path'], len(raw), digest[:12])
+          assert digest == man["sha256"], (digest, man["sha256"])
+          dest = Path(man["path"])
+          dest.parent.mkdir(parents=True, exist_ok=True)
+          dest.write_bytes(raw)
+          print("wrote", dest, len(raw), digest[:12])
           PY
       - name: Commit
         run: |
@@ -30,7 +40,9 @@ jobs:
           git config user.name "cuong-fago"
           git config user.email "cuong@fagogroup.vn"
           git add -A src/lib/adsops/warehouse.server.ts
-          git status
-          git diff --cached --stat
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
           git commit -m "feat(analytics): add warehouse.server.ts pull 180d into Neon"
           git push
