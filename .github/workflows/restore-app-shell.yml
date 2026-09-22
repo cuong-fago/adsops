@@ -1,0 +1,35 @@
+name: restore-app-shell
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/_restore_app_shell/GO"
+permissions:
+  contents: write
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode app-shell and commit
+        run: |
+          set -euo pipefail
+          cat scripts/_restore_app_shell/chunk*.b64 | tr -d '\n' | base64 -d > src/components/adsops/app-shell.tsx
+          python3 - <<'PY'
+          import hashlib
+          b = open("src/components/adsops/app-shell.tsx", "rb").read()
+          print("bytes", len(b))
+          print("sha256", hashlib.sha256(b).hexdigest())
+          assert len(b) == 26330
+          assert hashlib.sha256(b).hexdigest() == "0a9840bb95299baca5abee2d4269a75a9ee3f5f78d76839ecc07640c3e1a742e"
+          assert b"TAB_MODULES" in b
+          assert b"modules: primary" in b
+          PY
+          rm -rf scripts/_restore_app_shell
+          rm -f .github/workflows/restore-app-shell.yml
+          git config user.name "cuong-fago"
+          git config user.email "cuong@fagogroup.vn"
+          git add -A
+          git status
+          git commit -m "perf: wire app-shell to lazy-load pack by tab" -m "Server modules filter was live but the UI still fetched the full workspace pack. FINAL now requests final+connect+guard first and fills the rest in the background."
+          git push
