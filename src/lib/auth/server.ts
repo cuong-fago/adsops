@@ -43,11 +43,38 @@ function previewAuthSecret(): string {
   return globalAuthRef.__adsopsAuthPreviewSecret__;
 }
 
-/** Read an env var, treating empty/whitespace as unset. */
+/**
+ * Read an env var at RUNTIME.
+ *
+ * Use bracket access (`process.env[key]`) so Vite/Nitro cannot statically
+ * replace the name with an empty string at build time (Sensitive Vercel secrets
+ * are unavailable during `vite build`, which would otherwise bake auth off).
+ */
 const env = (key: string): string | undefined => {
   const value = process.env[key]?.trim();
   return value ? value : undefined;
 };
+
+/** Snapshot of which auth-related env keys are present (never values). */
+export function getAuthEnvProbe() {
+  const googleClientId = env("GOOGLE_CLIENT_ID");
+  const googleClientSecret = env("GOOGLE_CLIENT_SECRET");
+  const authDisabled = env("VITE_AUTH_ENABLED") === "false";
+  const authConfigured =
+    !authDisabled && Boolean(googleClientId && googleClientSecret);
+  return {
+    authDisabled,
+    authConfigured,
+    hasGoogleClientId: Boolean(googleClientId),
+    hasGoogleClientSecret: Boolean(googleClientSecret),
+    googleClientIdSuffix: googleClientId ? googleClientId.slice(-12) : null,
+    hasBetterAuthSecret: Boolean(env("BETTER_AUTH_SECRET")),
+    betterAuthUrl: env("BETTER_AUTH_URL") ?? null,
+    hasDatabaseUrl: Boolean(env("DATABASE_URL")),
+    viteAuthEnabled: env("VITE_AUTH_ENABLED") ?? null,
+    providers: AUTH_PROVIDERS.map((p) => p.providerId),
+  };
+}
 
 // Explicit off-switch. Set `VITE_AUTH_ENABLED=true` when provisioning auth;
 // set it to "false" to force auth off everywhere (dev user).
@@ -59,6 +86,12 @@ const googleClientSecret = env("GOOGLE_CLIENT_SECRET");
 /** True when Google social sign-in is active (real auth is enforced). */
 export const authConfigured =
   !authDisabled && Boolean(googleClientId && googleClientSecret);
+
+if (!authDisabled && !authConfigured) {
+  console.warn(
+    "[adsops-auth] Google social provider OFF: missing GOOGLE_CLIENT_ID and/or GOOGLE_CLIENT_SECRET in this runtime (Preview needs both on the Preview environment).",
+  );
+}
 
 // This app's own Better Auth origin. When deployed, set BETTER_AUTH_URL to the
 // public URL. Without it, Better Auth derives the origin per-request from the
@@ -121,8 +154,11 @@ export const auth = betterAuth({
     ? {
         socialProviders: {
           google: {
-            clientId: googleClientId as string,
-            clientSecret: googleClientSecret as string,
+            // Re-read via bracket access at config build (cold start) so Sensitive
+            // Vercel secrets available only at runtime are not lost to build-time
+            // empty replacement of `process.env.GOOGLE_*`.
+            clientId: env("GOOGLE_CLIENT_ID") as string,
+            clientSecret: env("GOOGLE_CLIENT_SECRET") as string,
             // Always show the account chooser so users can switch Google accounts.
             prompt: "select_account" as const,
           },
