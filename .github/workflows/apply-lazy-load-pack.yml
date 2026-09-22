@@ -1,0 +1,33 @@
+name: apply-lazy-load-pack
+on:
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore and patch access.server.ts
+        run: |
+          set -euo pipefail
+          git checkout 1b5afd4f3792775f63ee0ed0a0a756a362e5c83c -- src/lib/adsops/access.server.ts
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path("src/lib/adsops/access.server.ts")
+          text = p.read_text()
+          start = text.index("export async function loadWorkspacePack(userId: string, clientId: string): Promise<WorkspacePack> {")
+          end = text.index("export async function loadWorkspaceScene")
+          new_pack = Path("src/lib/adsops/load-workspace-pack.snippet.ts").read_text()
+          p.write_text(text[:start] + new_pack + text[end:])
+          print("patched", p.stat().st_size)
+          PY
+          rm -f src/lib/adsops/load-workspace-pack.snippet.ts
+          git config user.name "cuong-fago"
+          git config user.email "cuong@fagogroup.vn"
+          git add -A src/lib/adsops/access.server.ts
+          git status
+          git commit -m "perf: optional modules filter on loadWorkspacePack"
+          git push
