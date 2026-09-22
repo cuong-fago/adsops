@@ -2,18 +2,37 @@ import { createFileRoute } from "@tanstack/react-router";
 import { auth, getAuthEnvProbe } from "@/lib/auth/server";
 import { adaptAuthRequest } from "@/lib/adsops/auth-origin.server";
 
-async function handleAuth({ request }: { request: Request }) {
-  const url = new URL(request.url);
-  const path = url.pathname.replace(/\/+$/, "") || "/";
+type AuthHandlerArgs = {
+  request: Request;
+  params?: Record<string, string | undefined>;
+};
 
-  // Short-circuit probes BEFORE Better Auth so we can see runtime env even when
-  // social providers failed to register (PROVIDER_NOT_FOUND).
-  if (path.endsWith("/config-probe") || path.endsWith("/ok")) {
+function isProbePath(path: string, splat: string, rawUrl: string): boolean {
+  if (path.endsWith("/ok") || path.endsWith("/config-probe")) return true;
+  if (splat === "ok" || splat === "config-probe" || splat.endsWith("/ok")) return true;
+  if (rawUrl.includes("/api/auth/ok") || rawUrl.includes("config-probe")) return true;
+  return false;
+}
+
+async function handleAuth({ request, params }: AuthHandlerArgs) {
+  const rawUrl = request.url;
+  let path = rawUrl;
+  try {
+    path = new URL(rawUrl).pathname.replace(/\/+$/, "") || "/";
+  } catch {
+    /* keep raw */
+  }
+  const splat = String(params?._splat ?? params?.["$"] ?? "");
+
+  if (isProbePath(path, splat, rawUrl)) {
+    const envKeys = Object.keys(process.env)
+      .filter((k) => /GOOGLE|BETTER_AUTH|VITE_AUTH|DATABASE|VERCEL/i.test(k))
+      .sort();
     return Response.json({
       ...getAuthEnvProbe(),
       ok: true,
-      path,
-      commitHint: "auth-env-probe-v3",
+      debug: { path, splat, rawUrl, envKeys },
+      commitHint: "auth-env-probe-v5",
     });
   }
 
