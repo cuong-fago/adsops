@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import type { InstallAndProbeResult, PullKpisResult } from "./connect.types.ts";
+import type { InstallAndProbeResult, PullKpisResult, PullAnalyticsWarehouseResult } from "./connect.types.ts";
 
-export type { ConnectPublic, InstallAndProbeResult, InstallMeta, PullKpisResult } from "./connect.types.ts";
+export type { ConnectPublic, InstallAndProbeResult, InstallMeta, PullKpisResult, PullAnalyticsWarehouseResult } from "./connect.types.ts";
 
 type Intake = {
   clientId: string;
@@ -71,4 +71,28 @@ export const pullClientKpis = createServerFn({ method: "POST" })
     await assertOps(context.userId);
     const { pullKpis } = await import("./connect.server.ts");
     return pullKpis(data.clientId) as Promise<PullKpisResult>;
+  });
+
+function asWarehousePull(data: unknown): { clientId: string; lookbackDays?: number } {
+  if (!data || typeof data !== "object") {
+    throw new Error("Thiếu khách");
+  }
+  const d = data as { clientId?: unknown; lookbackDays?: unknown };
+  const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+  if (!clientId) throw new Error("Thiếu khách");
+  const lookbackDays =
+    typeof d.lookbackDays === "number" && Number.isFinite(d.lookbackDays)
+      ? d.lookbackDays
+      : undefined;
+  return { clientId, lookbackDays };
+}
+
+export const pullAnalyticsWarehouseFn = createServerFn({ method: "POST" })
+  .validator(asWarehousePull)
+  .middleware([authMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertOps } = await import("./access.server.ts");
+    await assertOps(context.userId);
+    const { pullAnalyticsWarehouse } = await import("./warehouse.server.ts");
+    return pullAnalyticsWarehouse(data.clientId, data.lookbackDays) as Promise<PullAnalyticsWarehouseResult>;
   });
