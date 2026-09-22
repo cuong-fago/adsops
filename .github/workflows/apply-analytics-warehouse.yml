@@ -5,6 +5,7 @@ on:
     paths:
       - ".grok/warehouse-push/manifest.json"
       - ".grok/warehouse-push/warehouse.part*.b64"
+      - ".github/workflows/apply-analytics-warehouse.yml"
 jobs:
   apply:
     runs-on: ubuntu-latest
@@ -18,6 +19,13 @@ jobs:
           python3 <<'PY'
           import base64, json, hashlib, zlib
           from pathlib import Path
+          # Fix known one-char corruption if present (P vs K)
+          p1 = Path(".grok/warehouse-push/warehouse.part1.b64")
+          t = p1.read_text()
+          if "XHyuP59FJTK" in t:
+              t = t.replace("XHyuP59FJTK", "XHyuK59FJTK", 1)
+              p1.write_text(t)
+              print("fixed part1 typo XHyuP->XHyuK")
           man = json.loads(Path(".grok/warehouse-push/manifest.json").read_text())
           parts = []
           for i in range(man["parts"]):
@@ -39,7 +47,7 @@ jobs:
           set -euo pipefail
           git config user.name "cuong-fago"
           git config user.email "cuong@fagogroup.vn"
-          git add -A src/lib/adsops/warehouse.server.ts
+          git add -A src/lib/adsops/warehouse.server.ts .grok/warehouse-push/warehouse.part1.b64
           if git diff --cached --quiet; then
             echo "no changes"
             exit 0
