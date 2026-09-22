@@ -1,0 +1,34 @@
+function loadSecrets(): Secrets {
+  let fromFile: Secrets = {};
+  try {
+    if (existsSync(SECRET_FILE)) {
+      const raw = JSON.parse(readFileSync(SECRET_FILE, "utf8")) as Secrets;
+      if (raw && typeof raw === "object") fromFile = raw;
+    }
+  } catch {
+    /* ignore */
+  }
+  const fromEnv: Secrets = {
+    client_id:
+      process.env.GOOGLE_ADS_CLIENT_ID?.trim() ||
+      process.env.GOOGLE_ADS_OAUTH_CLIENT_ID?.trim() ||
+      undefined,
+    client_secret:
+      process.env.GOOGLE_ADS_CLIENT_SECRET?.trim() ||
+      process.env.GOOGLE_ADS_OAUTH_CLIENT_SECRET?.trim() ||
+      undefined,
+    refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim() || undefined,
+    login_customer_id:
+      process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.trim() ||
+      process.env.GOOGLE_ADS_MCC_ID?.trim() ||
+      undefined,
+    developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() || undefined,
+  };
+  return {
+    client_id: fromFile.client_id || fromEnv.client_id,
+    client_secret: fromFile.client_secret || fromEnv.client_secret,
+    refresh_token: fromFile.refresh_token || fromEnv.refresh_token,
+    login_customer_id: fromFile.login_customer_id || fromEnv.login_customer_id || MCC_ID,
+    developer_token: fromFile.developer_token || fromEnv.developer_token,
+  };
+}

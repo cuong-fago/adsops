@@ -1,0 +1,18 @@
+/** Prefer Neon warehouse for analytics (survives redeploys); fall back to static JSON. */
+async function readAnalyticsModule(clientId: string): Promise<Json | null> {
+  try {
+    const { readAnalyticsWarehouseFromNeon } = await import("./warehouse.server.ts");
+    const fromNeon = await readAnalyticsWarehouseFromNeon(clientId);
+    if (fromNeon && typeof fromNeon === "object" && !Array.isArray(fromNeon)) {
+      const daily = (fromNeon as { daily?: { account?: unknown[] } }).daily;
+      if (Array.isArray(daily?.account)) {
+        // Keep warm cache in sync so subsequent JSON reads see the same snapshot.
+        jsonCache.set(`analytics/${clientId}.json`, { at: Date.now(), value: fromNeon });
+        return fromNeon;
+      }
+    }
+  } catch {
+    /* table missing or DB error — fall back */
+  }
+  return readFolder("analytics", clientId);
+}

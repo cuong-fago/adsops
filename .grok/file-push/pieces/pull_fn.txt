@@ -1,0 +1,23 @@
+
+  async function pullWarehouse() {
+    const id = clientId || snap.client_id;
+    if (!id || !canPull) return;
+    setPullBusy(true);
+    setPullError("");
+    setPullNote("");
+    try {
+      const result = (await pullAnalyticsWarehouseFn({
+        data: { clientId: id, lookbackDays: 180 },
+      })) as PullAnalyticsWarehouseResult;
+      if (result.error_vi) setPullError(result.error_vi);
+      if (result.note_vi) setPullNote(result.note_vi);
+      if (result.ok && result.analytics && typeof result.analytics === "object") {
+        onWarehousePulled?.(result.analytics as AnalyticsSnap);
+      }
+    } catch {
+      setPullError("Không kéo được kho phân tích. Kiểm tra OAuth trên tab Kết nối. Không dán token vào chat.");
+    } finally {
+      setPullBusy(false);
+    }
+  }
+
