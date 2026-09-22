@@ -1,0 +1,59 @@
+name: apply-staged-files
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".grok/file-push/ALL.json"
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble staged zlib+b64 files
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import base64, json, hashlib, zlib
+          from pathlib import Path
+          root = Path(".grok/file-push")
+          mans = json.loads((root / "ALL.json").read_text())
+          for man in mans:
+              parts = []
+              for i in range(man["parts"]):
+                  text = (root / f"{man['safe']}.part{i}.b64").read_text().strip()
+                  text = "".join(text.split())
+                  expected = (man.get("part_sha256") or [None] * man["parts"])[i]
+                  got = hashlib.sha256(text.encode()).hexdigest()
+                  if expected and got != expected:
+                      raise SystemExit(f"part hash mismatch {man['safe']} part{i}: {got} != {expected}")
+                  parts.append(text)
+              blob = base64.b64decode("".join(parts))
+              if man.get("encoding") == "zlib+b64":
+                  raw = zlib.decompress(blob)
+              else:
+                  raw = blob
+              digest = hashlib.sha256(raw).hexdigest()
+              assert digest == man["sha256"], (man["path"], digest, man["sha256"])
+              dest = Path(man["path"])
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              dest.write_bytes(raw)
+              print("wrote", dest, len(raw), digest[:12])
+          PY
+      - name: Commit
+        run: |
+          set -euo pipefail
+          git config user.name "cuong-fago"
+          git config user.email "cuong@fagogroup.vn"
+          git add -A \
+            src/lib/adsops/connect.server.ts \
+            src/lib/adsops/access.server.ts \
+            src/components/adsops/analytics-view.tsx \
+            src/components/adsops/app-shell.tsx
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "feat(analytics): wire Neon warehouse load + UI pull 180d"
+          git push
