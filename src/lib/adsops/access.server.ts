@@ -1,1 +1,1 @@
-PLACEHOLDER_ACCESS
+{{INCLUDE_FROM:/workspace/adsops-json-opt/access.server.ts}}

@@ -1,1 +1,1 @@
-PLACEHOLDER_VITE
+{{INCLUDE_FROM:/workspace/adsops-json-opt/vite.config.ts}}
