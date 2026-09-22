@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { getAuthPublicOrigin } from "@/lib/adsops/login-origin.functions";
-import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
+import { AUTH_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
 export const Route = createFileRoute("/login")({ component: Login });
@@ -9,10 +9,10 @@ export const Route = createFileRoute("/login")({ component: Login });
 function oauthErrorVi(raw: string): string {
   const msg = raw.toLowerCase();
   if (msg.includes("invalid origin") || msg.includes("invalid_origin") || msg.includes("callback")) {
-    return "Google/X chưa nhận domain này. Bấm lại — hệ thống sẽ mở đúng cửa sổ đăng nhập. Hoặc dùng email bên dưới.";
+    return "Google chưa nhận domain này. Bấm lại — hệ thống sẽ mở đúng cửa sổ đăng nhập. Hoặc dùng email bên dưới.";
   }
   if (msg.includes("popup")) return "Trình duyệt chặn cửa sổ. Cho phép pop-up rồi bấm lại.";
-  return raw || "Không đăng nhập được bằng Google/X.";
+  return raw || "Không đăng nhập được bằng Google.";
 }
 
 function Login() {
@@ -55,7 +55,7 @@ function Login() {
     if (isPending || user || !authEnabled) return;
     if (authOrigin === null) return;
     const idp = new URLSearchParams(window.location.search).get("idp") || "";
-    if (!GROK_PROVIDERS.some((p) => p.providerId === idp)) return;
+    if (!AUTH_PROVIDERS.some((p) => p.providerId === idp)) return;
     if (started.current) return;
     if (authOrigin && window.location.origin !== authOrigin) return;
     started.current = true;
@@ -111,7 +111,7 @@ function Login() {
         {authEnabled ? (
           <>
             <div className="mt-5 flex flex-col gap-2">
-              {GROK_PROVIDERS.map((p) => (
+              {AUTH_PROVIDERS.map((p) => (
                 <button
                   key={p.providerId}
                   type="button"
