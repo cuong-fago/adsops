@@ -1,0 +1,36 @@
+name: apply-analytics-warehouse
+on:
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble warehouse.server.ts from b64 parts
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import base64, json, hashlib
+          from pathlib import Path
+          man = json.loads(Path('.grok/warehouse-push/manifest.json').read_text())
+          parts = []
+          for i in range(man['parts']):
+            parts.append(Path(f'.grok/warehouse-push/warehouse.part{i}.b64').read_text().strip())
+          raw = base64.b64decode(''.join(parts))
+          digest = hashlib.sha256(raw).hexdigest()
+          assert digest == man['sha256'], (digest, man['sha256'])
+          Path(man['path']).write_bytes(raw)
+          print('wrote', man['path'], len(raw), digest[:12])
+          PY
+      - name: Commit
+        run: |
+          set -euo pipefail
+          git config user.name "cuong-fago"
+          git config user.email "cuong@fagogroup.vn"
+          git add -A src/lib/adsops/warehouse.server.ts
+          git status
+          git diff --cached --stat
+          git commit -m "feat(analytics): add warehouse.server.ts pull 180d into Neon"
+          git push
