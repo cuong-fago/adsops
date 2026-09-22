@@ -13,7 +13,6 @@ import type {
   WorkspaceScene,
 } from "./access.types.ts";
 
-const PUBLIC_DIR = "/workspace/public/adsops";
 const CLIENT_ID_RE = /^[a-z0-9_]+$/;
 const PINNED_CLIENTS = ["tkqc_6810292395", "fago_group"];
 const SCENE_IDS = new Set(["stale", "coverage", "fake_cpa", "source_conflict", "conv_zero"]);
@@ -26,10 +25,59 @@ type MembershipRow = {
   client_id: string | null;
 };
 
-function readJsonFile(path: string): Json | null {
-  if (!existsSync(path)) return null;
+function candidateDataDirs(): string[] {
+  const dirs = [
+    process.env.ADSOPS_DATA_DIR?.trim(),
+    "/workspace/public/adsops",
+    join(process.cwd(), "public/adsops"),
+    join(process.cwd(), "src/lib/adsops/snapshots"),
+  ].filter((d): d is string => Boolean(d));
+  return [...new Set(dirs)];
+}
+
+let resolvedDataDir: string | null | undefined;
+
+function resolveDataDir(): string | null {
+  if (resolvedDataDir !== undefined) return resolvedDataDir;
+  for (const dir of candidateDataDirs()) {
+    if (existsSync(join(dir, "mcc.json"))) {
+      resolvedDataDir = dir;
+      return dir;
+    }
+  }
+  resolvedDataDir = null;
+  return null;
+}
+
+function dataBaseUrl(): string | null {
+  const explicit = process.env.ADSOPS_DATA_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+  const auth = process.env.BETTER_AUTH_URL?.trim();
+  if (auth) return auth.replace(/\/$/, "");
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) return `https://${vercel.replace(/^https?:\/\//, "")}`;
+  return null;
+}
+
+async function readJsonRelative(relativePath: string): Promise<Json | null> {
+  const rel = relativePath.replace(/^\/+/, "").replace(/\\/g, "/");
+  const dir = resolveDataDir();
+  if (dir) {
+    const full = join(dir, rel);
+    if (existsSync(full)) {
+      try {
+        return JSON.parse(readFileSync(full, "utf8")) as Json;
+      } catch {
+        /* fall through to HTTP */
+      }
+    }
+  }
+  const base = dataBaseUrl();
+  if (!base) return null;
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as Json;
+    const res = await fetch(`${base}/adsops/${rel}`);
+    if (!res.ok) return null;
+    return (await res.json()) as Json;
   } catch {
     return null;
   }
@@ -40,12 +88,12 @@ function asRec(value: Json | null): { [key: string]: Json } | null {
   return null;
 }
 
-function readFolder(folder: string, clientId: string): Json | null {
-  return readJsonFile(join(PUBLIC_DIR, folder, `${clientId}.json`));
+async function readFolder(folder: string, clientId: string): Promise<Json | null> {
+  return readJsonRelative(`${folder}/${clientId}.json`);
 }
 
-function rosterClients(): AccessClient[] {
-  const raw = asRec(readJsonFile(join(PUBLIC_DIR, "mcc.json")));
+async function rosterClients(): Promise<AccessClient[]> {
+  const raw = asRec(await readJsonRelative("mcc.json"));
   const accounts = Array.isArray(raw?.accounts) ? raw.accounts : [];
   return accounts
     .filter((a): a is { [key: string]: Json } => Boolean(a && typeof a === "object" && !Array.isArray(a) && a.client_id && !a.is_manager))
@@ -58,9 +106,9 @@ function rosterClients(): AccessClient[] {
     }));
 }
 
-function mergeOpsClients(): AccessClient[] {
-  const registry = asRec(readJsonFile(join(PUBLIC_DIR, "registry.json")));
-  const connect = asRec(readJsonFile(join(PUBLIC_DIR, "connect-registry.json")));
+async function mergeOpsClients(): Promise<AccessClient[]> {
+  const registry = asRec(await readJsonRelative("registry.json"));
+  const connect = asRec(await readJsonRelative("connect-registry.json"));
   const by = new Map<string, AccessClient>();
   const push = (row: { [key: string]: Json }) => {
     const id = String(row.client_id || "");
@@ -83,7 +131,7 @@ function mergeOpsClients(): AccessClient[] {
     if (row && typeof row === "object" && !Array.isArray(row)) push(row);
   }
   if (!by.size) {
-    for (const row of rosterClients()) by.set(row.client_id, row);
+    for (const row of await rosterClients()) by.set(row.client_id, row);
   }
   return [...by.values()].sort((a, b) => {
     const ia = PINNED_CLIENTS.indexOf(a.client_id);
@@ -93,8 +141,8 @@ function mergeOpsClients(): AccessClient[] {
   });
 }
 
-function readMcc(): MccRosterSnap | null {
-  const raw = asRec(readJsonFile(join(PUBLIC_DIR, "mcc.json")));
+async function readMcc(): Promise<MccRosterSnap | null> {
+  const raw = asRec(await readJsonRelative("mcc.json"));
   if (!raw) return null;
   const accounts = Array.isArray(raw.accounts) ? raw.accounts : [];
   return {
@@ -181,7 +229,7 @@ export async function loadAccess(userId: string): Promise<AccessSnap> {
   }
 
   const isOps = rows.some((r) => r.role === "ops");
-  const roster = rosterClients();
+  const roster = await rosterClients();
   if (isOps) {
     return {
       role: "ops",
@@ -231,7 +279,7 @@ export async function assertClientAccess(userId: string, clientId: string): Prom
 export async function listMembers(userId: string): Promise<MemberRow[]> {
   await assertOps(userId);
   const sql = await getSql();
-  const roster = new Map(rosterClients().map((c) => [c.client_id, c.display_name]));
+  const roster = new Map((await rosterClients()).map((c) => [c.client_id, c.display_name]));
   const rows = await sql<MembershipRow>`
     select id, user_id, email, role, client_id
     from memberships
@@ -278,7 +326,7 @@ export async function grantAccess(
   }
   const wanted = [...new Set(input.clientIds.filter((id) => CLIENT_ID_RE.test(id)))];
   if (!wanted.length) throw new Error("Chọn ít nhất một tài khoản quảng cáo.");
-  const allowed = new Set(rosterClients().map((c) => c.client_id));
+  const allowed = new Set((await rosterClients()).map((c) => c.client_id));
   for (const clientId of wanted) {
     if (!allowed.has(clientId)) throw new Error("Tài khoản không thuộc MCC.");
     const exists = await sql<{ id: string }>`
@@ -346,7 +394,7 @@ export async function loadWorkspaceDirectory(userId: string): Promise<WorkspaceD
     return { access, clients: [], mcc: null };
   }
   if (access.role === "ops") {
-    return { access, clients: mergeOpsClients(), mcc: readMcc() };
+    return { access, clients: await mergeOpsClients(), mcc: await readMcc() };
   }
   return { access, clients: access.clients, mcc: null };
 }
@@ -354,8 +402,8 @@ export async function loadWorkspaceDirectory(userId: string): Promise<WorkspaceD
 export async function loadWorkspacePack(userId: string, clientId: string): Promise<WorkspacePack> {
   const access = await assertClientAccess(userId, clientId);
   const viewer = access.role === "sale" || access.role === "client";
-  const report = asRec(readFolder("report", clientId));
-  const compare = asRec(readFolder("compare", clientId));
+  const report = asRec(await readFolder("report", clientId));
+  const compare = asRec(await readFolder("compare", clientId));
   if (viewer) {
     const pack = emptyPack();
     pack.report = report ? { ...report, ...(compare ? { compare } : {}) } : null;
@@ -363,16 +411,16 @@ export async function loadWorkspacePack(userId: string, clientId: string): Promi
   }
   return {
     report: report ? { ...report, ...(compare ? { compare } : {}) } : null,
-    alerts: readFolder("alerts", clientId),
-    guard: readFolder("guard", clientId),
-    hub: readFolder("hub", clientId),
-    proposals: readFolder("proposals", clientId),
-    classify: readFolder("classify", clientId),
-    final: readFolder("final", clientId),
-    connect: readFolder("connect", clientId),
-    sop: readJsonFile(join(PUBLIC_DIR, "sop.json")),
-    analytics: readFolder("analytics", clientId),
-    pace: readFolder("budget-email", clientId),
+    alerts: await readFolder("alerts", clientId),
+    guard: await readFolder("guard", clientId),
+    hub: await readFolder("hub", clientId),
+    proposals: await readFolder("proposals", clientId),
+    classify: await readFolder("classify", clientId),
+    final: await readFolder("final", clientId),
+    connect: await readFolder("connect", clientId),
+    sop: await readJsonRelative("sop.json"),
+    analytics: await readFolder("analytics", clientId),
+    pace: await readFolder("budget-email", clientId),
   };
 }
 
@@ -388,11 +436,11 @@ export async function loadWorkspaceScene(
   }
   const alertId = scenario === "fake_cpa" || scenario === "source_conflict" ? "" : scenario;
   const sceneFile = (folder: string, suffix: string) =>
-    readJsonFile(join(PUBLIC_DIR, folder, "scenarios", `${clientId}__${suffix}.json`));
+    readJsonRelative(`${folder}/scenarios/${clientId}__${suffix}.json`);
   return {
-    final: sceneFile("final", scenario),
-    guard: sceneFile("guard", scenario),
-    proposals: sceneFile("proposals", scenario),
-    alerts: alertId ? sceneFile("alerts", alertId) : null,
+    final: await sceneFile("final", scenario),
+    guard: await sceneFile("guard", scenario),
+    proposals: await sceneFile("proposals", scenario),
+    alerts: alertId ? await sceneFile("alerts", alertId) : null,
   };
 }
