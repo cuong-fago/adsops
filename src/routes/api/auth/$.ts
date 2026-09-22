@@ -2,37 +2,23 @@ import { createFileRoute } from "@tanstack/react-router";
 import { auth, getAuthEnvProbe } from "@/lib/auth/server";
 import { adaptAuthRequest } from "@/lib/adsops/auth-origin.server";
 
-type AuthHandlerArgs = {
+/** Force Google provider registration using live process.env on each request. */
+async function handleAuth(ctx: {
   request: Request;
   params?: Record<string, string | undefined>;
-};
+}) {
+  const request = ctx.request;
+  const rawUrl = String(request?.url ?? "");
 
-function isProbePath(path: string, splat: string, rawUrl: string): boolean {
-  if (path.endsWith("/ok") || path.endsWith("/config-probe")) return true;
-  if (splat === "ok" || splat === "config-probe" || splat.endsWith("/ok")) return true;
-  if (rawUrl.includes("/api/auth/ok") || rawUrl.includes("config-probe")) return true;
-  return false;
-}
-
-async function handleAuth({ request, params }: AuthHandlerArgs) {
-  const rawUrl = request.url;
-  let path = rawUrl;
-  try {
-    path = new URL(rawUrl).pathname.replace(/\/+$/, "") || "/";
-  } catch {
-    /* keep raw */
-  }
-  const splat = String(params?._splat ?? params?.["$"] ?? "");
-
-  if (isProbePath(path, splat, rawUrl)) {
-    const envKeys = Object.keys(process.env)
-      .filter((k) => /GOOGLE|BETTER_AUTH|VITE_AUTH|DATABASE|VERCEL/i.test(k))
-      .sort();
+  // Temporary: any GET whose URL mentions ok|debug|probe returns env probe.
+  if (request.method.toUpperCase() === "GET" && /ok|debug|probe/i.test(rawUrl)) {
     return Response.json({
       ...getAuthEnvProbe(),
       ok: true,
-      debug: { path, splat, rawUrl, envKeys },
-      commitHint: "auth-env-probe-v5",
+      via: "tanstack-auth-splat",
+      rawUrl,
+      paramKeys: Object.keys(ctx.params ?? {}),
+      commitHint: "auth-env-probe-v6",
     });
   }
 
