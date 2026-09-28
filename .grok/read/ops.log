@@ -1,5 +1,0 @@
-ok
-68:export function resolveDataDir(): string | null {
-69-  if (resolvedDataDir) return resolvedDataDir;
-70-  for (const dir of candidateDataDirs()) {
-71-    if (existsSync(join(dir, "mcc.json"))) {
