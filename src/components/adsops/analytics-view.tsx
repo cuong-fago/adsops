@@ -1,10 +1,13 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import {
   type AnalyticsSnap,
+  type DeepLayerBlock,
+  type DeepLayerId,
   type LayerBlock,
   type LayerRow,
   defaultRange,
+  isDeepLayer,
   layerRows,
   monthsOverlapping,
   previousEqualRange,
@@ -13,6 +16,7 @@ import {
   warehouseDates,
   windowCoverage,
 } from "@/lib/adsops/analytics";
+import { readDeepLayerFn } from "@/lib/adsops/connect.functions";
 import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
 import { cn } from "@/lib/cn";
 import { BudgetBanner } from "@/components/adsops/budget-banner";
@@ -62,7 +66,7 @@ function formatRangeShort(start: string, end: string) {
   return `${a[2]}/${a[1]}–${b[2]}/${b[1]}`;
 }
 
-export function AnalyticsView({ snap, allowCompare = true }: { snap: AnalyticsSnap; allowCompare?: boolean }) {
+export function AnalyticsView({ snap, allowCompare = true, deepEpoch = 0 }: { snap: AnalyticsSnap; allowCompare?: boolean; deepEpoch?: number }) {
   const range0 = defaultRange(snap);
   const warehouseEnd = snap.warehouse_end || snap.data_through;
   const [draftStart, setDraftStart] = useState(range0.start);
@@ -105,18 +109,71 @@ export function AnalyticsView({ snap, allowCompare = true }: { snap: AnalyticsSn
     () => layerRows(snap, { layer: "account", start, end }),
     [snap, start, end],
   );
-  const current = useMemo(
+  const campaignBlock = useMemo(
     () =>
-      layerRows(snap, {
-        layer,
+      layer === "campaign"
+        ? layerRows(snap, {
+            layer: "campaign",
+            start,
+            end,
+            campaignId,
+            adGroupId,
+            onlyWithConv: onlyConv,
+          })
+        : null,
+    [snap, layer, start, end, campaignId, adGroupId, onlyConv],
+  );
+
+  const [deepBlock, setDeepBlock] = useState<DeepLayerBlock | null>(null);
+  const [deepLoading, setDeepLoading] = useState(false);
+  const [deepError, setDeepError] = useState("");
+
+  useEffect(() => {
+    if (!isDeepLayer(layer) || snap.campaigns.find((c) => c.id === campaignId)?.pmax) {
+      setDeepBlock(null);
+      setDeepError("");
+      setDeepLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDeepLoading(true);
+    setDeepError("");
+    readDeepLayerFn({
+      data: {
+        clientId: snap.client_id,
+        layer: layer as DeepLayerId,
         start,
         end,
         campaignId,
         adGroupId,
         onlyWithConv: onlyConv,
-      }),
-    [snap, layer, start, end, campaignId, adGroupId, onlyConv],
-  );
+      },
+    })
+      .then((block) => {
+        if (!cancelled) {
+          setDeepBlock(block);
+          setDeepLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setDeepBlock(null);
+          setDeepError(err instanceof Error ? err.message : "Không đọc được lớp nhóm / từ khoá.");
+          setDeepLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [snap.client_id, snap.campaigns, layer, start, end, campaignId, adGroupId, onlyConv, deepEpoch]);
+
+  const pmaxSelected = Boolean(snap.campaigns.find((c) => c.id === campaignId)?.pmax);
+  const current: LayerBlock | DeepLayerBlock | null =
+    layer === "campaign"
+      ? campaignBlock
+      : pmaxSelected
+        ? { complete: true, rows: [], pmax_note: snap.pmax_note || "PMax không có search term / keyword chuẩn" }
+        : deepBlock;
 
   const prevRange = allowCompare && prevEqual ? previousEqualRange(start, end) : null;
   const prevAccount = useMemo(
@@ -175,7 +232,8 @@ export function AnalyticsView({ snap, allowCompare = true }: { snap: AnalyticsSn
   const metrics = accountRow?.metrics || {};
   const prevMetrics = prevAccount?.rows[0]?.metrics;
   const campaignName = snap.campaigns.find((c) => c.id === campaignId)?.name;
-  const adGroupName = snap.ad_groups?.find((g) => g.id === adGroupId)?.name;
+  const [adGroupLabel, setAdGroupLabel] = useState("");
+  const adGroupName = snap.ad_groups?.find((g) => g.id === adGroupId)?.name || (adGroupId ? adGroupLabel : "");
   const canDrill = layer === "campaign" || layer === "ad_group";
 
   function drill(row: LayerRow) {
@@ -185,6 +243,7 @@ export function AnalyticsView({ snap, allowCompare = true }: { snap: AnalyticsSn
       setLayer(row.pmax ? "search_term" : "ad_group");
     } else if (layer === "ad_group") {
       setAdGroupId(row.id);
+      setAdGroupLabel(row.name);
       setLayer("keyword");
     }
   }
@@ -465,14 +524,24 @@ export function AnalyticsView({ snap, allowCompare = true }: { snap: AnalyticsSn
           ) : null}
         </nav>
         <div className="mt-4">
-          <WorkTable
-            snap={snap}
-            layer={layer}
-            block={current}
-            groups={groups}
-            canDrill={canDrill}
-            onDrill={drill}
-          />
+          {isDeepLayer(layer) && deepLoading && !pmaxSelected ? (
+            <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">Đang đọc nhóm / từ khoá…</p>
+          ) : deepError ? (
+            <p className="rounded-md bg-inset px-4 py-6 text-sm text-warn">{deepError}</p>
+          ) : current ? (
+            <WorkTable
+              snap={snap}
+              layer={layer}
+              block={current}
+              groups={groups}
+              canDrill={canDrill}
+              onDrill={drill}
+            />
+          ) : (
+            <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">
+              Chưa kéo lớp này. Dùng nút &quot;Kéo nhóm / từ khoá&quot; phía trên (admin / trưởng phòng Ads / người tối ưu).
+            </p>
+          )}
         </div>
       </section>
     </div>
@@ -807,6 +876,30 @@ function MetricRow({
   );
 }
 
+function coverageNote(block: LayerBlock | DeepLayerBlock, layer: string): string | null {
+  if (!("coverage" in block)) return null;
+  const deep = block as DeepLayerBlock;
+  const ranges = deep.coverage;
+  if (!ranges.length) {
+    if (layer === "search_term") {
+      return `Search terms: kho tối đa ${deep.search_term_cap_days ?? 90} ngày gần nhất; chưa kéo phần này trong khoảng đã chọn. Không đoán số.`;
+    }
+    return "Chưa kéo lớp này trong khoảng đã chọn. Không đoán số.";
+  }
+  const rangeText = ranges.map((r) => `${r.start.split("-").reverse().join("/")} → ${r.end.split("-").reverse().join("/")}`).join("; ");
+  const bits = [
+    layer === "ad_group"
+      ? `Nhóm quảng cáo có số từ ${rangeText}`
+      : layer === "keyword"
+        ? `Từ khoá có số từ ${rangeText}`
+        : `Search terms có số từ ${rangeText}`,
+  ];
+  if (!deep.complete) bits.push("ngoài khoảng này chưa kéo — tổng chỉ gồm ngày đã kéo, không điền 0");
+  if (layer === "search_term") bits.push(`kho search term tối đa ${deep.search_term_cap_days ?? 90} ngày gần nhất`);
+  if (deep.truncated) bits.push(`hiển thị ${deep.rows.length}/${deep.row_count} dòng (theo chi tiêu)`);
+  return bits.join(". ") + ".";
+}
+
 function WorkTable({
   snap,
   layer,
@@ -817,11 +910,12 @@ function WorkTable({
 }: {
   snap: AnalyticsSnap;
   layer: string;
-  block: LayerBlock;
+  block: LayerBlock | DeepLayerBlock;
   groups: { id: string; label: string; metric: string }[];
   canDrill: boolean;
   onDrill: (row: LayerRow) => void;
 }) {
+  const note = coverageNote(block, layer);
   if (block.pmax_note && block.rows.length === 0) {
     return (
       <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">
@@ -831,16 +925,23 @@ function WorkTable({
   }
   if (block.rows.length === 0) {
     return (
-      <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">
-        {block.complete
-          ? "Không có dòng trong cửa sổ ngày."
-          : "Thiếu dữ liệu — mốc chưa đủ ngày; API không trả hết cửa sổ. Không đoán số."}
-      </p>
+      <div className="space-y-2">
+        {note ? <p className="rounded-md bg-warn-bg px-3 py-2 text-sm text-warn">{note}</p> : null}
+        <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">
+          {block.complete
+            ? "Không có dòng trong cửa sổ ngày."
+            : note || "Thiếu dữ liệu — mốc chưa đủ ngày; API không trả hết cửa sổ. Không đoán số."}
+        </p>
+      </div>
     );
   }
   const showMatch = layer === "keyword" || layer === "search_term";
+  const deep = "coverage" in block ? (block as DeepLayerBlock) : null;
+  const totals = deep?.totals || null;
+  const showConvSplit = deep ? deep.conv_split : true;
   return (
     <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+      {note ? <p className="mb-3 rounded-md bg-warn-bg px-3 py-2 text-sm text-warn">{note}</p> : null}
       <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
         <thead>
           <tr className="text-xs font-medium text-muted">
@@ -883,7 +984,9 @@ function WorkTable({
               ) : null}
               <td className="py-2.5 pr-4 text-right tabular-nums">{dong(row.metrics.cost || 0)}</td>
               <td className="py-2.5 pr-4 text-right tabular-nums">{num(row.metrics.clicks || 0)}</td>
-              <td className="py-2.5 pr-4 text-right tabular-nums">{invalidLabel(row.metrics)}</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">
+                {deep ? "—" : invalidLabel(row.metrics)}
+              </td>
               <td className="py-2.5 pr-4 text-right tabular-nums">{convNum(row.metrics.conversions || 0)}</td>
               <td className="py-2.5 pr-4 text-right tabular-nums">{dong(row.metrics.cpc || 0)}</td>
               <td className="py-2.5 pr-4 text-right tabular-nums">
@@ -891,11 +994,33 @@ function WorkTable({
               </td>
               {groups.map((g) => (
                 <td key={g.id} className="py-2.5 pr-4 text-right tabular-nums">
-                  {convNum(Number(row.metrics[g.metric] || 0))}
+                  {showConvSplit ? convNum(Number(row.metrics[g.metric] || 0)) : "—"}
                 </td>
               ))}
             </tr>
           ))}
+          {totals ? (
+            <tr className="border-t-2 border-ink/20 bg-inset/40 font-medium">
+              <td className="sticky left-0 bg-inset/40 py-2.5 pr-4" colSpan={showMatch ? 3 : 2}>
+                Tổng (chỉ ngày đã kéo
+                {deep && deep.coverage.length
+                  ? `: ${deep.coverage.map((r) => `${r.start}→${r.end}`).join("; ")}`
+                  : ""}
+                )
+              </td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">{dong(totals.cost || 0)}</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">{num(totals.clicks || 0)}</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">—</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">{convNum(totals.conversions || 0)}</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">{dong(totals.cpc || 0)}</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">{dong(totals.cost_per_conversion || 0)}</td>
+              {groups.map((g) => (
+                <td key={g.id} className="py-2.5 pr-4 text-right tabular-nums">
+                  {showConvSplit ? convNum(Number(totals[g.metric] || 0)) : "—"}
+                </td>
+              ))}
+            </tr>
+          ) : null}
         </tbody>
       </table>
       {canDrill ? (

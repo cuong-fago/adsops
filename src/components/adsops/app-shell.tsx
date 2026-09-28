@@ -24,7 +24,7 @@ import { stopViewAs } from "@/lib/adsops/admin.functions";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
 import { clientSignOut } from "@/lib/adsops/client-auth.functions";
-import { pullAnalyticsWarehouseFn } from "@/lib/adsops/connect.functions";
+import { pullAnalyticsWarehouseFn, pullDeepChunkFn } from "@/lib/adsops/connect.functions";
 import { MODULE_CAPABILITY, ROLE_LABEL_VI, formatSaigon } from "@/lib/adsops/permissions.types";
 import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/cn";
@@ -196,6 +196,7 @@ export function AdsOpsApp() {
   const [fresh, setFresh] = useState<Freshness>({ as_of: null, data_through: null });
   const [warehouseBusy, setWarehouseBusy] = useState(false);
   const [warehouseMsg, setWarehouseMsg] = useState("");
+  const [deepEpoch, setDeepEpoch] = useState(0);
   const [adsStatus, setAdsStatus] = useState<{ state: string; message_vi: string } | null>(null);
   const liveConnectRef = useRef<Record<string, unknown> | null>(null);
 
@@ -513,17 +514,53 @@ export function AdsOpsApp() {
           as_of: res.pulled_at || new Date().toISOString(),
           data_through: res.warehouse_end || prev.data_through,
         }));
-        setWarehouseMsg(
+        const coreMsg =
           res.note_vi ||
-            `Đã kéo kho ${res.day_count ?? ""} ngày (${res.warehouse_start || "?"} → ${res.warehouse_end || "?"})${
-              res.persisted_neon ? " · đã lưu Neon" : ""
-            }.`,
-        );
+          `Đã kéo kho ${res.day_count ?? ""} ngày (${res.warehouse_start || "?"} → ${res.warehouse_end || "?"}).`;
+        setWarehouseMsg(`${coreMsg} Tiếp theo: nhóm / từ khoá theo từng tháng…`);
+        // Continue with ad group / keyword / search term, month by month.
+        await runDeepLoop(res.warehouse_start || undefined, "Tài khoản + chiến dịch: xong. ");
       } else {
         setWarehouseMsg(res.error_vi || res.note_vi || "Không kéo được kho phân tích.");
       }
     } catch (err) {
       setWarehouseMsg(err instanceof Error && err.message ? err.message : "Không kéo được kho phân tích.");
+    } finally {
+      setWarehouseBusy(false);
+    }
+  }
+
+  /** Month-by-month ad group / keyword / search term pull; returns false on error. */
+  async function runDeepLoop(targetStart: string | undefined, prefix: string): Promise<boolean> {
+    for (let i = 0; i < 14; i++) {
+      const res = await pullDeepChunkFn({ data: { clientId, targetStart, refreshRecent: i === 0 } });
+      if (!res.ok) {
+        setWarehouseMsg(
+          `${prefix}${res.error_vi || "Không kéo được nhóm / từ khoá."} Bấm "Kéo nhóm / từ khoá" để kéo tiếp phần còn lại.`,
+        );
+        return false;
+      }
+      setDeepEpoch((n) => n + 1);
+      setWarehouseMsg(
+        `${prefix}${res.note_vi || "Đã kéo một tháng."}${res.done ? "" : " Đang kéo tiếp, đừng đóng trang…"}`,
+      );
+      if (res.done) return true;
+    }
+    setWarehouseMsg(`${prefix}Chưa xong — bấm "Kéo nhóm / từ khoá" để kéo tiếp phần còn lại.`);
+    return false;
+  }
+
+  async function pullDeepLayers() {
+    if (!clientId || !canPull) return;
+    setWarehouseBusy(true);
+    setWarehouseMsg("Đang kéo nhóm / từ khoá (tháng mới nhất trước)…");
+    try {
+      const targetStart = typeof analytics?.warehouse_start === "string" ? analytics.warehouse_start : undefined;
+      await runDeepLoop(targetStart, "");
+    } catch (err) {
+      setWarehouseMsg(
+        `${err instanceof Error && err.message ? err.message : "Không kéo được nhóm / từ khoá."} Bấm "Kéo nhóm / từ khoá" để kéo tiếp.`,
+      );
     } finally {
       setWarehouseBusy(false);
     }
@@ -611,7 +648,7 @@ export function AdsOpsApp() {
             onClick={() => void pullWarehouse(180)}
             className="h-10 rounded-full bg-inset px-4 text-sm font-medium text-ink hover:bg-line disabled:opacity-60"
           >
-            {warehouseBusy ? "Đang kéo kho…" : "Kéo kho phân tích (180 ngày)"}
+            {warehouseBusy ? "Đang kéo…" : "Kéo kho phân tích (180 ngày)"}
           </button>
           <button
             type="button"
@@ -620,6 +657,14 @@ export function AdsOpsApp() {
             className="h-10 rounded-full bg-inset px-4 text-sm font-medium text-ink hover:bg-line disabled:opacity-60"
           >
             Kéo 365 ngày
+          </button>
+          <button
+            type="button"
+            disabled={warehouseBusy || !clientId}
+            onClick={() => void pullDeepLayers()}
+            className="h-10 rounded-full bg-inset px-4 text-sm font-medium text-ink hover:bg-line disabled:opacity-60"
+          >
+            Kéo nhóm / từ khoá
           </button>
           {warehouseMsg ? <span className="text-sm text-muted">{warehouseMsg}</span> : null}
         </div>
@@ -641,7 +686,7 @@ export function AdsOpsApp() {
       return (
         <>
           {pullBar}
-          <AnalyticsView key={analytics.client_id} snap={analytics} allowCompare={Boolean(access.caps.compare)} />
+          <AnalyticsView key={analytics.client_id} snap={analytics} allowCompare={Boolean(access.caps.compare)} deepEpoch={deepEpoch} />
         </>
       );
     }
@@ -754,6 +799,7 @@ export function AdsOpsApp() {
     canInstall,
     warehouseBusy,
     warehouseMsg,
+    deepEpoch,
   ]);
 
   const adsCount = mcc?.accounts.filter((a) => !a.is_manager).length ?? mcc?.accounts.length ?? 0;
