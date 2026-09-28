@@ -1,3 +1,5 @@
+import type { Capabilities, PrincipalKind, Role, ViewAsInfo } from "./permissions.types.ts";
+
 export type Json =
   | string
   | number
@@ -6,7 +8,7 @@ export type Json =
   | Json[]
   | { [key: string]: Json };
 
-export type AccessRole = "ops" | "sale" | "client";
+export type AccessRole = Role;
 
 export type AccessClient = {
   client_id: string;
@@ -17,26 +19,21 @@ export type AccessClient = {
 };
 
 export type AccessSnap = {
-  role: AccessRole | "pending";
+  role: Role | "pending";
+  kind: PrincipalKind;
   email: string | null;
+  display_name: string | null;
+  /** True only for the super admin (sees every ad account in the MCC). */
   all_clients: boolean;
   client_ids: string[];
   clients: AccessClient[];
-};
-
-export type MemberRow = {
-  id: string;
-  email: string;
-  role: AccessRole;
-  client_id: string | null;
-  display_name: string | null;
-  user_id: string | null;
-};
-
-export type GrantInput = {
-  email: string;
-  role: AccessRole;
-  clientIds: string[];
+  caps: Capabilities;
+  /** Set while admin is using "Xem như người dùng này". */
+  view_as: ViewAsInfo | null;
+  read_only: boolean;
+  /** The person actually signed in (differs from email while viewing-as). */
+  real_email: string | null;
+  real_is_admin: boolean;
 };
 
 export type MccRosterSnap = {
@@ -73,6 +70,12 @@ export type WorkspacePack = {
   sop: Json | null;
   analytics: Json | null;
   pace: Json | null;
+  /** ISO time the Google Ads numbers were pulled, when known. */
+  as_of: string | null;
+  /** Last complete day in the data (YYYY-MM-DD), when known. */
+  data_through: string | null;
+  /** Where the analytics came from: Neon warehouse or committed snapshot. */
+  analytics_source: "neon" | "snapshot" | null;
 };
 
 export type WorkspaceScene = {
