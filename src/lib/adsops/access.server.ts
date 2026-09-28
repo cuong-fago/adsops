@@ -238,8 +238,35 @@ async function visibleClients(ctx: AccessContext): Promise<AccessClient[]> {
   return all.filter((c) => canSeeAccount(ctx, c.client_id));
 }
 
+/** adsops_kv key holding a principal's UI language. */
+export function langPrefKey(kind: string, id: string): string {
+  return `lang:${kind}:${id}`;
+}
+
+async function readLangPref(ctx: AccessContext): Promise<"vi" | "en" | null> {
+  try {
+    const sql = await getSql();
+    const rows = await sql<{ value: unknown }>`
+      select value from adsops_kv where key = ${langPrefKey(ctx.principal.kind, ctx.principal.id)} limit 1
+    `;
+    const v = rows[0]?.value;
+    return v === "vi" || v === "en" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveLangPref(ctx: AccessContext, lang: "vi" | "en"): Promise<void> {
+  const sql = await getSql();
+  await sql`
+    insert into adsops_kv (key, value, updated_at)
+    values (${langPrefKey(ctx.principal.kind, ctx.principal.id)}, ${JSON.stringify(lang)}::jsonb, now())
+    on conflict (key) do update set value = excluded.value, updated_at = now()
+  `;
+}
+
 export async function loadAccess(ctx: AccessContext): Promise<AccessSnap> {
-  const clients = await visibleClients(ctx);
+  const [clients, lang] = await Promise.all([visibleClients(ctx), readLangPref(ctx)]);
   const p = ctx.principal;
   return {
     role: p.role,
@@ -254,6 +281,7 @@ export async function loadAccess(ctx: AccessContext): Promise<AccessSnap> {
     read_only: ctx.readOnly,
     real_email: ctx.real.email,
     real_is_admin: ctx.real.isSuperAdmin,
+    lang,
   };
 }
 
