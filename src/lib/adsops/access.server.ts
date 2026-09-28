@@ -19,6 +19,7 @@ import {
   type AccessContext,
 } from "./permissions.server.ts";
 import { MODULE_CAPABILITY } from "./permissions.types.ts";
+import type { AnalyticsSnap } from "./analytics.ts";
 
 /**
  * AdsOps data loaders (server-only).
@@ -301,6 +302,7 @@ function emptyPack(): WorkspacePack {
     as_of: null,
     data_through: null,
     analytics_source: null,
+    ads_status: null,
   };
 }
 
@@ -458,6 +460,21 @@ export async function loadWorkspacePack(
   const needCompare = needReport && ctx.caps.compare;
   const needAnalytics = want("analytics");
 
+  // Pull-on-view: refresh the account's live Google Ads numbers (15-minute cache)
+  // before reading. Only for the account just checked by assertAccount above.
+  // Messages are staff-only; customers never see Google Ads errors.
+  let adsStatus: { state: string; message_vi: string } | null = null;
+  if (needAnalytics || needReport) {
+    try {
+      const { refreshWarehouseOnView } = await import("./warehouse.server.ts");
+      const r = await refreshWarehouseOnView(clientId, { timeoutMs: 9000 });
+      adsStatus = { state: r.state, message_vi: r.message_vi };
+    } catch (err) {
+      console.error(`[google-ads] on-view refresh crashed client=${clientId}: ${err instanceof Error ? err.message.slice(0, 200) : "unknown"}`);
+      adsStatus = { state: "error", message_vi: "Không cập nhật được số Google Ads — đang hiện số đã lưu." };
+    }
+  }
+
   const [reportRaw, compareRaw, alerts, guard, hub, proposals, classify, final, connect, sop, analyticsFile, pace, warehouse] =
     await Promise.all([
       needReport ? readFolder("report", clientId) : Promise.resolve(null),
@@ -472,12 +489,27 @@ export async function loadWorkspacePack(
       want("sop") ? readJsonRelative("sop.json") : Promise.resolve(null),
       needAnalytics ? readFolder("analytics", clientId) : Promise.resolve(null),
       want("pace") ? readFolder("budget-email", clientId) : Promise.resolve(null),
-      needAnalytics ? readWarehouse(clientId) : Promise.resolve(null),
+      needAnalytics || needReport ? readWarehouse(clientId) : Promise.resolve(null),
     ]);
 
   const pack = emptyPack();
   const dl = ctx.caps.download;
-  if (needReport) {
+  const liveSnap = warehouse ? asRec(warehouse.payload) : null;
+  const isLive = Boolean(liveSnap && liveSnap.adapter === "live" && typeof liveSnap.pulled_at === "string");
+  if (needReport && isLive && liveSnap) {
+    const { reportFromWarehouse } = await import("./report-from-warehouse.ts");
+    const built = reportFromWarehouse(liveSnap as unknown as AnalyticsSnap);
+    const report = built ? asRec(built.report) : null;
+    if (built && report) {
+      const merged: { [key: string]: Json } = { ...report };
+      if (ctx.caps.compare) merged.compare = built.compare;
+      const scoped = ctx.caps.compare ? merged : (stripCompare(merged) as { [key: string]: Json });
+      pack.report = fixFileLinks(scoped, clientId, dl);
+      pack.data_through = typeof report.data_through === "string" ? report.data_through : null;
+      pack.as_of = pickIso(report.pulled_at);
+    }
+  }
+  if (needReport && !pack.report) {
     const report = asRec(reportRaw);
     const compare = asRec(compareRaw);
     if (report) {
@@ -499,7 +531,7 @@ export async function loadWorkspacePack(
   pack.sop = sop;
   pack.pace = pace;
   if (needAnalytics) {
-    const fromNeon = warehouse ? asRec(warehouse.payload) : null;
+    const fromNeon = liveSnap;
     const snap = fromNeon || asRec(analyticsFile);
     if (snap) {
       const out: { [key: string]: Json } = { ...snap };
@@ -518,10 +550,12 @@ export async function loadWorkspacePack(
       pack.analytics_source = fromNeon ? "neon" : "snapshot";
       const through = typeof snap.data_through === "string" ? snap.data_through : null;
       if (through && (!pack.data_through || through > pack.data_through)) pack.data_through = through;
-      const iso = (fromNeon && warehouse?.pulled_at) || pickIso(snap.pulled_at, snap.generated_at, snap.as_of);
+      // Clock time only for a real Google Ads API pull; otherwise date-only freshness.
+      const iso = pickIso(snap.pulled_at, snap.generated_at, snap.as_of);
       if (iso && (!pack.as_of || iso > pack.as_of)) pack.as_of = iso;
     }
   }
+  pack.ads_status = ctx.caps.pull && adsStatus && adsStatus.state !== "fresh" && adsStatus.state !== "refreshed" ? adsStatus : null;
   return pack;
 }
 
