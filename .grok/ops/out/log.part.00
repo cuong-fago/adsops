@@ -1,0 +1,141 @@
++ npm ci --no-audit --no-fund
++ echo NPM_CI_FAILED
+NPM_CI_FAILED
++ rg --version
++ sudo apt-get install -y ripgrep
++ rg -n snapshots/ src --glob '!src/lib/adsops/snapshots/**'
++ head -50
++ rg -n 'compare|prev' src/lib/adsops/warehouse.server.ts
++ head -80
++ rg -n 'export (async )?function|export const|createServerFn' src/lib/adsops/access.functions.ts src/lib/adsops/admin.functions.ts src/lib/adsops/classify.functions.ts src/lib/adsops/client-auth.functions.ts src/lib/adsops/connect.functions.ts src/lib/adsops/login-origin.functions.ts src/lib/adsops/warehouse.server.ts src/lib/adsops/access.server.ts src/lib/adsops/analytics.ts
+src/lib/adsops/analytics.ts:140:export function derivedMetrics(raw: MetricMap): MetricMap {
+src/lib/adsops/analytics.ts:156:export function windowComplete(dates: string[], start: string, end: string) {
+src/lib/adsops/analytics.ts:160:export function windowCoverage(dates: string[], start: string, end: string) {
+src/lib/adsops/analytics.ts:177:export function warehouseDates(snap: AnalyticsSnap) {
+src/lib/adsops/analytics.ts:227:export function layerRows(
+src/lib/adsops/analytics.ts:419:export function previousWeeks(before: string, n: number) {
+src/lib/adsops/analytics.ts:440:export function previousMonths(of: string, n: number) {
+src/lib/adsops/analytics.ts:462:export function defaultRange(snap: AnalyticsSnap) {
+src/lib/adsops/analytics.ts:472:export function previousEqualRange(start: string, end: string) {
+src/lib/adsops/analytics.ts:482:export function monthsOverlapping(start: string, end: string) {
+src/lib/adsops/analytics.ts:522:export function mixParts(
+src/lib/adsops/login-origin.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
+src/lib/adsops/login-origin.functions.ts:4:export const getAuthPublicOrigin = createServerFn({ method: "GET" }).handler(async () => {
+src/lib/adsops/connect.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
+src/lib/adsops/connect.functions.ts:59:export const saveYamlAndProbe = createServerFn({ method: "POST" })
+src/lib/adsops/connect.functions.ts:83:export const pullClientKpis = createServerFn({ method: "POST" })
+src/lib/adsops/connect.functions.ts:115:export const pullAnalyticsWarehouseFn = createServerFn({ method: "POST" })
+src/lib/adsops/access.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
+src/lib/adsops/access.functions.ts:57:export const getMyAccess = createServerFn({ method: "GET" })
+src/lib/adsops/access.functions.ts:64:export const getWorkspaceDirectory = createServerFn({ method: "GET" })
+src/lib/adsops/access.functions.ts:71:export const getWorkspacePack = createServerFn({ method: "POST" })
+src/lib/adsops/access.functions.ts:79:export const getWorkspaceScene = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
+src/lib/adsops/admin.functions.ts:33:export const getAdminDirectory = createServerFn({ method: "GET" })
+src/lib/adsops/admin.functions.ts:37:export const adminUpsertStaff = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:48:export const adminRemoveStaff = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:56:export const adminCreateClientUser = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:77:export const adminUpdateClientUser = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:94:export const adminResetClientPassword = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:105:export const adminRevokeClientSessions = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:110:export const adminDeleteClientUser = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:118:export const adminSetGrants = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:126:export const adminUpsertCustomer = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:134:export const adminDeleteCustomer = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:142:export const adminUpdateAdAccount = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:153:export const adminDecideRequest = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:164:export const getAuditLog = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:175:export const adminStartViewAs = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:205:export const stopViewAs = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:220:export const getRequestDirectory = createServerFn({ method: "GET" })
+src/lib/adsops/admin.functions.ts:224:export const submitGrantRequestFn = createServerFn({ method: "POST" })
+src/lib/adsops/admin.functions.ts:232:export const cancelGrantRequestFn = createServerFn({ method: "POST" })
+src/lib/adsops/classify.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
+src/lib/adsops/classify.functions.ts:17:export const saveClassifyEdits = createServerFn({ method: "POST" })
+src/lib/adsops/warehouse.server.ts:11:export const ANALYTICS_LOOKBACK_DAYS_DEFAULT = 180;
+src/lib/adsops/warehouse.server.ts:12:export const ANALYTICS_LOOKBACK_DAYS_MAX = 365;
+src/lib/adsops/warehouse.server.ts:416:export async function readAnalyticsWarehouseFromNeon(clientId: string): Promise<Json | null> {
+src/lib/adsops/warehouse.server.ts:459:export async function pullAnalyticsWarehouse(
+src/lib/adsops/client-auth.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
+src/lib/adsops/client-auth.functions.ts:14:export const clientSignIn = createServerFn({ method: "POST" })
+src/lib/adsops/client-auth.functions.ts:43:export const clientSignOut = createServerFn({ method: "POST" }).handler(async () => {
+src/lib/adsops/client-auth.functions.ts:56:export const getViewer = createServerFn({ method: "GET" }).handler(async (): Promise<ViewerSummary> => {
+src/lib/adsops/access.server.ts:51:export function candidateDataDirs(): string[] {
+src/lib/adsops/access.server.ts:68:export function resolveDataDir(): string | null {
+src/lib/adsops/access.server.ts:187:export async function ensureRosterSeeded(): Promise<void> {
+src/lib/adsops/access.server.ts:201:export async function listRosterAccounts(): Promise<AccessClient[]> {
+src/lib/adsops/access.server.ts:241:export async function loadAccess(ctx: AccessContext): Promise<AccessSnap> {
+src/lib/adsops/access.server.ts:279:export async function loadWorkspaceDirectory(ctx: AccessContext): Promise<WorkspaceDirectory> {
+src/lib/adsops/access.server.ts:398:export async function loadWorkspacePack(
+src/lib/adsops/access.server.ts:470:export async function loadWorkspaceScene(
+src/lib/adsops/access.server.ts:493:export function resolveClientFile(clientId: string, relPath: string): string | null {
++ rg -n 'ST|nhãn|saveClassify|onSave|Lưu' src/components/adsops/classify-view.tsx
++ head -40
+3:import { saveClassifyEdits, type ClassifyCluster, type ClassifyLabel, type ClassifySnap } from "@/lib/adsops/classify.functions";
+48:  onSaved,
+51:  onSaved?: (next: ClassifySnap) => void;
+103:              reason: "Người tối ưu gắn nhãn trên màn Phân loại ST.",
+128:      const result = await saveClassifyEdits({ data: { clientId: snap.client_id, edits } });
+130:        setError(result.error_vi || "Không lưu được nhãn.");
+136:        onSaved?.(result.snapshot);
+141:          ? `Đã lưu ${edits.length} nhãn. Coverage ${Math.round((cov.coverage || 0) * 100)}% (${cov.classified}/${cov.total}). Không sinh FINAL.`
+142:          : `Đã lưu ${edits.length} nhãn. Không sinh FINAL.`,
+145:      setError(err instanceof Error ? err.message : "Không lưu được nhãn.");
+156:            <p className="text-xs font-medium uppercase tracking-widest text-subtle">Phân loại ST</p>
+293:            <p className="text-sm">{dirtyN} nhãn đã sửa — chưa ghi. Không apply Google Ads.</p>
+300:              {saving ? "Đang lưu…" : "Lưu nhãn"}
++ wc -c src/components/adsops/analytics-view.tsx src/components/adsops/app-shell.tsx src/components/adsops/budget-banner.tsx src/components/adsops/classify-view.tsx src/components/adsops/final-workbook.tsx src/components/adsops/mix-bar.tsx src/components/adsops/permissions-panel.tsx src/components/adsops/side-panels.tsx src/components/adsops/tab12-copy.tsx src/lib/adsops/access.functions.ts src/lib/adsops/access.server.ts src/lib/adsops/access.types.ts src/lib/adsops/admin.functions.ts src/lib/adsops/admin.server.ts src/lib/adsops/analytics.ts src/lib/adsops/auth-origin.server.ts src/lib/adsops/classify.functions.ts src/lib/adsops/classify.server.ts src/lib/adsops/classify.types.ts src/lib/adsops/client-auth.functions.ts src/lib/adsops/connect.functions.ts src/lib/adsops/connect.server.ts src/lib/adsops/connect.types.ts src/lib/adsops/format.ts src/lib/adsops/load-workspace-pack.snippet.ts src/lib/adsops/login-origin.functions.ts src/lib/adsops/permissions.server.ts src/lib/adsops/permissions.types.ts src/lib/adsops/principal-middleware.ts src/lib/adsops/warehouse.server.ts
+ 34363 src/components/adsops/analytics-view.tsx
+ 31858 src/components/adsops/app-shell.tsx
+  4431 src/components/adsops/budget-banner.tsx
+ 12751 src/components/adsops/classify-view.tsx
+ 17254 src/components/adsops/final-workbook.tsx
+  2448 src/components/adsops/mix-bar.tsx
+ 40155 src/components/adsops/permissions-panel.tsx
+ 50146 src/components/adsops/side-panels.tsx
+ 36854 src/components/adsops/tab12-copy.tsx
+  3224 src/lib/adsops/access.functions.ts
+ 18492 src/lib/adsops/access.server.ts
+  2129 src/lib/adsops/access.types.ts
+  9902 src/lib/adsops/admin.functions.ts
+ 26647 src/lib/adsops/admin.server.ts
+ 14771 src/lib/adsops/analytics.ts
+  2168 src/lib/adsops/auth-origin.server.ts
+  1444 src/lib/adsops/classify.functions.ts
+  3416 src/lib/adsops/classify.server.ts
+  1856 src/lib/adsops/classify.types.ts
+  2855 src/lib/adsops/client-auth.functions.ts
+  5259 src/lib/adsops/connect.functions.ts
+ 23308 src/lib/adsops/connect.server.ts
+  2271 src/lib/adsops/connect.types.ts
+  2443 src/lib/adsops/format.ts
+  3895 src/lib/adsops/load-workspace-pack.snippet.ts
+   331 src/lib/adsops/login-origin.functions.ts
+ 23558 src/lib/adsops/permissions.server.ts
+  6879 src/lib/adsops/permissions.types.ts
+  1177 src/lib/adsops/principal-middleware.ts
+ 33167 src/lib/adsops/warehouse.server.ts
+419452 total
++ npx tsc --noEmit
++ tail -20
+src/lib/adsops/load-workspace-pack.snippet.ts(94,15): error TS2304: Cannot find name 'readJsonRelative'.
+src/lib/adsops/load-workspace-pack.snippet.ts(95,21): error TS2304: Cannot find name 'readFolder'.
+src/lib/adsops/load-workspace-pack.snippet.ts(96,16): error TS2304: Cannot find name 'readFolder'.
+src/lib/adsops/load-workspace-pack.snippet.ts(99,16): error TS2304: Cannot find name 'emptyPack'.
+src/lib/adsops/load-workspace-pack.snippet.ts(101,20): error TS2304: Cannot find name 'asRec'.
+src/lib/adsops/load-workspace-pack.snippet.ts(102,21): error TS2304: Cannot find name 'asRec'.
+src/lib/auth/popup.server.ts(65,35): error TS2339: Property 'signInWithOAuth2' does not exist on type 'InferAPI<Prettify<{ readonly ok: StrictEndpoint<"/ok", { method: "GET"; metadata: { openapi: { description: string; responses: { "200": { description: string; content: { "application/json": { schema: { type: "object"; properties: { ok: { type: string; description: string; }; }; required: string[]; }; }; }; }; }; }; ...'.
+src/lib/auth/server.ts(161,3): error TS2322: Type 'Auth<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }>' is not assignable to type 'Auth<BetterAuthOptions>'.
+  Types of property '$context' are incompatible.
+    Type 'Promise<PluginContext<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }> & I...' is not assignable to type 'Promise<PluginContext<BetterAuthOptions> & InfoContext & { options: BetterAuthOptions; trustedOrigins: string[]; ... 25 more ...; runInBackgroundOrAwait: (promise: void | Promise<...>) => unknown; }>'.
+      Type 'PluginContext<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }> & InfoConte...' is not assignable to type 'PluginContext<BetterAuthOptions> & InfoContext & { options: BetterAuthOptions; trustedOrigins: string[]; ... 25 more ...; runInBackgroundOrAwait: (promise: void | Promise<...>) => unknown; }'.
+        Type 'PluginContext<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }> & InfoConte...' is not assignable to type '{ options: BetterAuthOptions; trustedOrigins: string[]; trustedProviders: string[]; isTrustedOrigin: (url: string, settings?: { allowRelativePaths: boolean; } | undefined) => boolean; ... 23 more ...; runInBackgroundOrAwait: (promise: void | Promise<...>) => unknown; }'.
+          Types of property 'adapter' are incompatible.
+            Type 'DBAdapter<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }>' is not assignable to type 'DBAdapter<BetterAuthOptions>'.
+              Type 'BetterAuthOptions' is not assignable to type '{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }'.
+                Types of property 'advanced' are incompatible.
+                  Type 'BetterAuthAdvancedOptions | undefined' is not assignable to type '{ useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { name: string; }; dont_remember: { ...; }; }; }'.
+                    Type 'undefined' is not assignable to type '{ useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { name: string; }; dont_remember: { ...; }; }; }'.
+src/routes/api/adsops-file.ts(49,38): error TS2345: Argument of type '"/api/adsops-file"' is not assignable to parameter of type 'keyof FileRoutesByPath | undefined'.
+src/routes/api/adsops-health.ts(23,38): error TS2345: Argument of type '"/api/adsops-health"' is not assignable to parameter of type 'keyof FileRoutesByPath | undefined'.
+EXIT=0
