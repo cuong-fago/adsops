@@ -1,0 +1,2 @@
+bash: .grok/ops/run.sh: No such file or directory
+EXIT=127
