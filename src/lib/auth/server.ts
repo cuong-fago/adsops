@@ -139,7 +139,7 @@ function buildAuth() {
       },
     },
     session: { cookieCache: { enabled: true, maxAge: 300 } },
-    ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+    ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true, disableSignUp: true } } : {}),
     advanced: {
       useSecureCookies: false,
       defaultCookieAttributes: { secure: true, sameSite: "lax", path: "/" },

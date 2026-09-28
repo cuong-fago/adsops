@@ -202,14 +202,8 @@ export default defineConfig(({ command, isPreview }) => ({
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
             serverDir: "./server",
-            // Bundle AdsOps snapshot JSON into the serverless function so
-            // access.server can read via assets:adsops (no per-request HTTP).
-            serverAssets: [
-              {
-                baseName: "adsops",
-                dir: "./public/adsops",
-              },
-            ],
+            // AdsOps data lives in server-data/adsops and is copied into the
+            // function by scripts/bundle-adsops-data.mjs (never public/).
           }),
         ]
       : []),
