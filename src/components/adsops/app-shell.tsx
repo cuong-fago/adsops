@@ -677,6 +677,7 @@ export function AdsOpsApp() {
         <ClassifyView
           key={String((pack.classify as ClassifySnap).client_id || clientId)}
           snap={pack.classify as ClassifySnap}
+          canEdit={canPull}
           onSaved={(next) =>
             setBasePack((prev) => ({
               ...prev,

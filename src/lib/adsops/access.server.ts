@@ -351,6 +351,27 @@ function fixFileLinks(value: Json, clientId: string, allowDownload: boolean, dep
   return out;
 }
 
+const COMPARE_KEYS = new Set(["compare", "compare_label", "compare_howto", "previous", "delta", "prev", "window_ranges"]);
+
+/**
+ * Remove every previous-period / comparison field (roles without `compare`,
+ * i.e. customers). Walks objects; big row arrays are daily series for the
+ * chosen account and carry no comparison fields, so they are kept as-is.
+ */
+export function stripCompare(value: Json, depth = 0): Json {
+  if (depth > 6 || value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    if (value.length > 200) return value;
+    return value.map((v) => stripCompare(v, depth + 1));
+  }
+  const out: { [key: string]: Json } = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (COMPARE_KEYS.has(k) || /^prev(ious)?_/i.test(k) || /_(delta|prev|previous)$/i.test(k)) continue;
+    out[k] = stripCompare(v, depth + 1);
+  }
+  return out;
+}
+
 /** Drop other accounts from roster-like arrays for anyone but admin. */
 function scopeRosterArrays(value: Json | null, ctx: AccessContext): Json | null {
   if (ctx.allowed === "all") return value;
@@ -433,9 +454,9 @@ export async function loadWorkspacePack(
     const compare = asRec(compareRaw);
     if (report) {
       const merged: { [key: string]: Json } = { ...report };
-      if (!ctx.caps.compare) delete merged.compare;
-      else if (compare) merged.compare = compare;
-      pack.report = fixFileLinks(merged, clientId, dl);
+      if (compare && ctx.caps.compare) merged.compare = compare;
+      const scoped = ctx.caps.compare ? merged : (stripCompare(merged) as { [key: string]: Json });
+      pack.report = fixFileLinks(scoped, clientId, dl);
       pack.data_through = typeof report.data_through === "string" ? report.data_through : null;
       pack.as_of = pickIso(report.pulled_at, report.generated_at, report.as_of, report.updated_at);
     }
@@ -456,6 +477,15 @@ export async function loadWorkspacePack(
       const out: { [key: string]: Json } = { ...snap };
       // Budget alerts are not for customers.
       if (!ctx.caps.optimize) delete out.budget_pace;
+      if (!ctx.caps.compare) {
+        // No previous-period data for customers: no week/month comparison
+        // choices and no comparison fields anywhere in the payload.
+        out.week_choices = [];
+        out.month_choices = [];
+        for (const k of Object.keys(out)) {
+          if (k !== "daily") out[k] = stripCompare(out[k]);
+        }
+      }
       pack.analytics = out;
       pack.analytics_source = fromNeon ? "neon" : "snapshot";
       const through = typeof snap.data_through === "string" ? snap.data_through : null;

@@ -46,9 +46,12 @@ function keyOf(row: ClassifyCluster) {
 export function ClassifyView({
   snap,
   onSaved,
+  canEdit = true,
 }: {
   snap: ClassifySnap;
   onSaved?: (next: ClassifySnap) => void;
+  /** Label buttons + "Lưu nhãn": only roles with the pull/edit capability (server enforces too). */
+  canEdit?: boolean;
 }) {
   const [rows, setRows] = useState<ClassifyCluster[]>(snap.clusters || []);
   const [filter, setFilter] = useState("all");
@@ -91,6 +94,7 @@ export function ClassifyView({
   }, [rows, filter, q]);
 
   function setLabel(row: ClassifyCluster, label: ClassifyLabel) {
+    if (!canEdit) return;
     const key = keyOf(row);
     setRows((prev) =>
       prev.map((item) =>
@@ -243,6 +247,7 @@ export function ClassifyView({
                     </span>
                   </div>
                 </div>
+                {canEdit ? (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {LABELS.map((item) => (
                     <button
@@ -255,6 +260,7 @@ export function ClassifyView({
                     </button>
                   ))}
                 </div>
+                ) : null}
                 {expanded ? (
                   <div className="mt-3 rounded-md bg-inset px-3 py-3 text-sm">
                     <p className="text-ink">{row.reason}</p>
@@ -287,7 +293,12 @@ export function ClassifyView({
         ) : null}
       </div>
 
-      {dirtyN > 0 ? (
+      {!canEdit ? (
+        <p className="rounded-md bg-inset px-4 py-3 text-sm text-muted">
+          Chế độ xem: vai trò này không sửa được nhãn ST (chỉ Admin / Trưởng phòng Ads / Người tối ưu).
+        </p>
+      ) : null}
+      {canEdit && dirtyN > 0 ? (
         <div className="sticky bottom-3 z-10 rounded-xl bg-ink px-4 py-3 text-paper shadow-sheet">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm">{dirtyN} nhãn đã sửa — chưa ghi. Không apply Google Ads.</p>
