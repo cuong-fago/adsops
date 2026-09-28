@@ -1,149 +1,18 @@
----SP
-6:import { pullClientKpis, saveYamlAndProbe, type InstallAndProbeResult, type PullKpisResult } from "@/lib/adsops/connect.functions";
-126:function FileLink({ href, label }: { href?: string; label: string }) {
-223:export function ReportPanel({
-227:  onPulled,
-228:  viewer,
-233:  viewer?: boolean;
-234:  onPulled?: (pack: {
-260:      const result = (await pullClientKpis({ data: { clientId } })) as PullKpisResult;
-263:        onPulled?.({
-289:            {!viewer && live && clientId ? (
-299:            {!viewer ? (
-301:                <FileLink href={txt(daily.xlsx_href) || undefined} label="Tải Daily" />
-302:                <FileLink href={txt(weekly.xlsx_href) || undefined} label="Tải Weekly" />
-752:          <FileLink href={txt(data.xlsx_href) || undefined} label="Tải file FINAL" />
-896:export function ConnectPanel({
-901:  onKpiPulled,
-907:  onKpiPulled?: (pack: {
-940:  const showIntake = Boolean(live && clientId);
-992:      const result = (await pullClientKpis({ data: { clientId } })) as PullKpisResult;
-996:        onKpiPulled?.({
-1124:      {connected && live && clientId ? (
----FW
-316:          {txt(data.xlsx_href) ? (
-318:              href={txt(data.xlsx_href)}
----AV
-10:  previousEqualRange,
-11:  previousMonths,
-12:  previousWeeks,
-65:export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
-79:  const [prevEqual, setPrevEqual] = useState(true);
-121:  const prevRange = prevEqual ? previousEqualRange(start, end) : null;
-122:  const prevAccount = useMemo(
-123:    () => (prevRange ? layerRows(snap, { layer: "account", start: prevRange.start, end: prevRange.end }) : null),
-124:    [snap, prevRange?.start, prevRange?.end],
-127:  const weeks = weekN ? previousWeeks(end, weekN) : [];
-128:  const prevMonths = monthN ? previousMonths(end, monthN) : [];
-143:        ? prevMonths.map((m, i) => ({
-176:  const prevMetrics = prevAccount?.rows[0]?.metrics;
-203:    Boolean(prevAccount && !prevAccount.complete);
-301:              checked={prevEqual}
-305:            So kỳ trước cùng độ dài
-319:          {prevRange ? ` So ${prevRange.start} → ${prevRange.end}.` : ""} Không apply. CPA Google ≠
-367:            {prevEqual && prevRange ? (
-369:                Vs kỳ trước ({formatRangeVi(prevRange.start, prevRange.end)}
-370:                {prevAccount && !prevAccount.complete ? " · thiếu dữ liệu" : ""}):{" "}
-371:                {prevAccount && prevAccount.complete && prevMetrics
-372:                  ? `chi tiêu ${deltaWord(metrics.cost, prevMetrics.cost)} · click ${deltaWord(metrics.clicks, prevMetrics.clicks)} · conv ${deltaWord(metrics.conversions, prevMetrics.conversions)} · click lệch ${deltaWord(metrics.invalid_clicks, prevMetrics.invalid_clicks)}`
-471:function deltaWord(now: number | undefined, prev: number | undefined) {
-472:  if (prev == null || now == null) return "—";
-473:  if (prev === 0 && now === 0) return "—";
-474:  if (prev === 0) return "tăng";
-475:  const d = (now - prev) / Math.abs(prev);
-525:      const prev = map.get(row.id);
-531:        cost: (prev?.cost || 0) + (row.metrics.cost || 0),
----WH
-20:const SECRET_FILE = join(SECRET_DIR, "adsops-google-ads.json");
-96:function loadSecrets(): Secrets {
-99:    if (existsSync(SECRET_FILE)) {
-100:      const raw = JSON.parse(readFileSync(SECRET_FILE, "utf8")) as Secrets;
-108:      process.env.GOOGLE_ADS_CLIENT_ID?.trim() ||
-109:      process.env.GOOGLE_ADS_OAUTH_CLIENT_ID?.trim() ||
-112:      process.env.GOOGLE_ADS_CLIENT_SECRET?.trim() ||
-113:      process.env.GOOGLE_ADS_OAUTH_CLIENT_SECRET?.trim() ||
-115:    refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim() || undefined,
-117:      process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.trim() ||
-118:      process.env.GOOGLE_ADS_MCC_ID?.trim() ||
-120:    developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() || undefined,
-1281 .grok/file-push/pieces/new_load.txt
-function loadSecrets(): Secrets {
-  let fromFile: Secrets = {};
-  try {
-    if (existsSync(SECRET_FILE)) {
-      const raw = JSON.parse(readFileSync(SECRET_FILE, "utf8")) as Secrets;
-      if (raw && typeof raw === "object") fromFile = raw;
-    }
-  } catch {
-    /* ignore */
-  }
-  const fromEnv: Secrets = {
-    client_id:
-      process.env.GOOGLE_ADS_CLIENT_ID?.trim() ||
-      process.env.GOOGLE_ADS_OAUTH_CLIENT_ID?.trim() ||
-      undefined,
-    client_secret:
-      process.env.GOOGLE_ADS_CLIENT_SECRET?.trim() ||
-      process.env.GOOGLE_ADS_OAUTH_CLIENT_SECRET?.trim() ||
-      undefined,
-    refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim() || undefined,
-    login_customer_id:
-      process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.trim() ||
-      process.env.GOOGLE_ADS_MCC_ID?.trim() ||
-      undefined,
-    developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() || undefined,
-  };
-  return {
-    client_id: fromFile.client_id || fromEnv.client_id,
-    client_secret: fromFile.client_secret || fromEnv.client_secret,
-    refresh_token: fromFile.refresh_token || fromEnv.refresh_token,
-    login_customer_id: fromFile.login_customer_id || fromEnv.login_customer_id || MCC_ID,
-    developer_token: fromFile.developer_token || fromEnv.developer_token,
-  };
-}
-
----WHLS
-function loadSecrets(): Secrets {
-  let fromFile: Secrets = {};
-  try {
-    if (existsSync(SECRET_FILE)) {
-      const raw = JSON.parse(readFileSync(SECRET_FILE, "utf8")) as Secrets;
-      if (raw && typeof raw === "object") fromFile = raw;
-    }
-  } catch {
-    /* ignore */
-  }
-  const fromEnv: Secrets = {
-    client_id:
-      process.env.GOOGLE_ADS_CLIENT_ID?.trim() ||
-      process.env.GOOGLE_ADS_OAUTH_CLIENT_ID?.trim() ||
-      undefined,
-    client_secret:
-      process.env.GOOGLE_ADS_CLIENT_SECRET?.trim() ||
-      process.env.GOOGLE_ADS_OAUTH_CLIENT_SECRET?.trim() ||
-      undefined,
-    refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim() || undefined,
-    login_customer_id:
-      process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.trim() ||
-      process.env.GOOGLE_ADS_MCC_ID?.trim() ||
-      undefined,
-    developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() || undefined,
-  };
-  // File wins over env when present (local installAndProbe saves here).
-  return {
-    client_id: fromFile.client_id || fromEnv.client_id,
-    client_secret: fromFile.client_secret || fromEnv.client_secret,
-    refresh_token: fromFile.refresh_token || fromEnv.refresh_token,
-    login_customer_id: fromFile.login_customer_id || fromEnv.login_customer_id || MCC_ID,
-    developer_token: fromFile.developer_token || fromEnv.developer_token,
-  };
-}
----ACCESS-asof
-273:    as_of: null,
-274:    data_through: null,
-439:      pack.data_through = typeof report.data_through === "string" ? report.data_through : null;
-440:      pack.as_of = pickIso(report.pulled_at, report.generated_at, report.as_of, report.updated_at);
-461:      const through = typeof snap.data_through === "string" ? snap.data_through : null;
-462:      if (through && (!pack.data_through || through > pack.data_through)) pack.data_through = through;
-463:      const iso = (fromNeon && warehouse?.pulled_at) || pickIso(snap.pulled_at, snap.generated_at, snap.as_of);
-464:      if (iso && (!pack.as_of || iso > pack.as_of)) pack.as_of = iso;
+patched ok
+229:  canPull,
+236:  canPull?: boolean;
+292:            {!viewer && canPull !== false && live && clientId ? (
+905:  canPull,
+906:  canInstall,
+913:  canPull?: boolean;
+915:  canInstall?: boolean;
+949:  const showIntake = Boolean(live && clientId && canInstall !== false);
+1133:      {connected && canPull !== false && live && clientId ? (
+65:export function AnalyticsView({ snap, allowCompare = true }: { snap: AnalyticsSnap; allowCompare?: boolean }) {
+79:  const [prevEqual, setPrevEqual] = useState(allowCompare);
+121:  const prevRange = allowCompare && prevEqual ? previousEqualRange(start, end) : null;
+127:  const weeks = allowCompare && weekN ? previousWeeks(end, weekN) : [];
+128:  const prevMonths = allowCompare && monthN ? previousMonths(end, monthN) : [];
+238:          {(allowCompare ? snap.week_choices : []).map((n) => (
+254:          {allowCompare ? (
+300:          {allowCompare ? (
