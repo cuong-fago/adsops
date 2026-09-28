@@ -1,2 +1,5 @@
 ok
-src/routes/api/adsops-file.ts(49,38): error TS2345: Argument of type '"/api/adsops-file"' is not assignable to parameter of type 'keyof FileRoutesByPath | undefined'.
+68:export function resolveDataDir(): string | null {
+69-  if (resolvedDataDir) return resolvedDataDir;
+70-  for (const dir of candidateDataDirs()) {
+71-    if (existsSync(join(dir, "mcc.json"))) {
