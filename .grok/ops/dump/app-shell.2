@@ -1,0 +1,49 @@
+}
+                </button>
+              </>
+            ) : null}
+          </nav>
+        ) : null}
+      </header>
+
+      <main className="mx-auto max-w-screen-2xl px-4 py-4 md:px-6">
+        {client && shownTab !== "members" && (
+          <p className="mb-3 text-xs text-subtle">
+            {client.display_name}
+            {client.customer_id_dashed && client.display_name !== client.customer_id_dashed
+              ? ` · ${client.customer_id_dashed}`
+              : ""}
+            {access?.all_clients && mcc?.mcc_id_dashed ? ` · MCC ${mcc.mcc_id_dashed}` : ""}
+            {analytics?.timezone || client.timezone
+              ? ` · ${analytics?.timezone || client.timezone}`
+              : ""}
+            {freshText ? <span className="font-medium text-muted">{` · ${freshText}`}</span> : null}
+            {shownTab === "analytics"
+              ? " · lọc ngày → tầng → loại conv → ST/KW · không apply"
+              : viewer
+                ? " · CPA Google không phải Qualified Lead."
+                : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}
+          </p>
+        )}
+        {showScenes && (
+          <div className="mb-4 flex flex-wrap gap-1.5">
+            {scenes.map((item) => (
+              <button
+                key={item.id || "live"}
+                type="button"
+                onClick={() => setScenario(item.id)}
+                className={cn(
+                  "h-10 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
+                  scenario === item.id ? "bg-accent text-accent-fg" : "bg-inset text-ink hover:bg-line",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {body}
+      </main>
+    </div>
+  );
+}

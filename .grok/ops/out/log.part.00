@@ -1,141 +1,295 @@
-+ npm ci --no-audit --no-fund
-+ echo NPM_CI_FAILED
-NPM_CI_FAILED
-+ rg --version
-+ sudo apt-get install -y ripgrep
-+ rg -n snapshots/ src --glob '!src/lib/adsops/snapshots/**'
-+ head -50
-+ rg -n 'compare|prev' src/lib/adsops/warehouse.server.ts
-+ head -80
-+ rg -n 'export (async )?function|export const|createServerFn' src/lib/adsops/access.functions.ts src/lib/adsops/admin.functions.ts src/lib/adsops/classify.functions.ts src/lib/adsops/client-auth.functions.ts src/lib/adsops/connect.functions.ts src/lib/adsops/login-origin.functions.ts src/lib/adsops/warehouse.server.ts src/lib/adsops/access.server.ts src/lib/adsops/analytics.ts
-src/lib/adsops/analytics.ts:140:export function derivedMetrics(raw: MetricMap): MetricMap {
-src/lib/adsops/analytics.ts:156:export function windowComplete(dates: string[], start: string, end: string) {
-src/lib/adsops/analytics.ts:160:export function windowCoverage(dates: string[], start: string, end: string) {
-src/lib/adsops/analytics.ts:177:export function warehouseDates(snap: AnalyticsSnap) {
-src/lib/adsops/analytics.ts:227:export function layerRows(
-src/lib/adsops/analytics.ts:419:export function previousWeeks(before: string, n: number) {
-src/lib/adsops/analytics.ts:440:export function previousMonths(of: string, n: number) {
-src/lib/adsops/analytics.ts:462:export function defaultRange(snap: AnalyticsSnap) {
-src/lib/adsops/analytics.ts:472:export function previousEqualRange(start: string, end: string) {
-src/lib/adsops/analytics.ts:482:export function monthsOverlapping(start: string, end: string) {
-src/lib/adsops/analytics.ts:522:export function mixParts(
-src/lib/adsops/login-origin.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
-src/lib/adsops/login-origin.functions.ts:4:export const getAuthPublicOrigin = createServerFn({ method: "GET" }).handler(async () => {
-src/lib/adsops/connect.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
-src/lib/adsops/connect.functions.ts:59:export const saveYamlAndProbe = createServerFn({ method: "POST" })
-src/lib/adsops/connect.functions.ts:83:export const pullClientKpis = createServerFn({ method: "POST" })
-src/lib/adsops/connect.functions.ts:115:export const pullAnalyticsWarehouseFn = createServerFn({ method: "POST" })
-src/lib/adsops/access.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
-src/lib/adsops/access.functions.ts:57:export const getMyAccess = createServerFn({ method: "GET" })
-src/lib/adsops/access.functions.ts:64:export const getWorkspaceDirectory = createServerFn({ method: "GET" })
-src/lib/adsops/access.functions.ts:71:export const getWorkspacePack = createServerFn({ method: "POST" })
-src/lib/adsops/access.functions.ts:79:export const getWorkspaceScene = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
-src/lib/adsops/admin.functions.ts:33:export const getAdminDirectory = createServerFn({ method: "GET" })
-src/lib/adsops/admin.functions.ts:37:export const adminUpsertStaff = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:48:export const adminRemoveStaff = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:56:export const adminCreateClientUser = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:77:export const adminUpdateClientUser = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:94:export const adminResetClientPassword = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:105:export const adminRevokeClientSessions = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:110:export const adminDeleteClientUser = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:118:export const adminSetGrants = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:126:export const adminUpsertCustomer = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:134:export const adminDeleteCustomer = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:142:export const adminUpdateAdAccount = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:153:export const adminDecideRequest = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:164:export const getAuditLog = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:175:export const adminStartViewAs = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:205:export const stopViewAs = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:220:export const getRequestDirectory = createServerFn({ method: "GET" })
-src/lib/adsops/admin.functions.ts:224:export const submitGrantRequestFn = createServerFn({ method: "POST" })
-src/lib/adsops/admin.functions.ts:232:export const cancelGrantRequestFn = createServerFn({ method: "POST" })
-src/lib/adsops/classify.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
-src/lib/adsops/classify.functions.ts:17:export const saveClassifyEdits = createServerFn({ method: "POST" })
-src/lib/adsops/warehouse.server.ts:11:export const ANALYTICS_LOOKBACK_DAYS_DEFAULT = 180;
-src/lib/adsops/warehouse.server.ts:12:export const ANALYTICS_LOOKBACK_DAYS_MAX = 365;
-src/lib/adsops/warehouse.server.ts:416:export async function readAnalyticsWarehouseFromNeon(clientId: string): Promise<Json | null> {
-src/lib/adsops/warehouse.server.ts:459:export async function pullAnalyticsWarehouse(
-src/lib/adsops/client-auth.functions.ts:1:import { createServerFn } from "@tanstack/react-start";
-src/lib/adsops/client-auth.functions.ts:14:export const clientSignIn = createServerFn({ method: "POST" })
-src/lib/adsops/client-auth.functions.ts:43:export const clientSignOut = createServerFn({ method: "POST" }).handler(async () => {
-src/lib/adsops/client-auth.functions.ts:56:export const getViewer = createServerFn({ method: "GET" }).handler(async (): Promise<ViewerSummary> => {
-src/lib/adsops/access.server.ts:51:export function candidateDataDirs(): string[] {
-src/lib/adsops/access.server.ts:68:export function resolveDataDir(): string | null {
-src/lib/adsops/access.server.ts:187:export async function ensureRosterSeeded(): Promise<void> {
-src/lib/adsops/access.server.ts:201:export async function listRosterAccounts(): Promise<AccessClient[]> {
-src/lib/adsops/access.server.ts:241:export async function loadAccess(ctx: AccessContext): Promise<AccessSnap> {
-src/lib/adsops/access.server.ts:279:export async function loadWorkspaceDirectory(ctx: AccessContext): Promise<WorkspaceDirectory> {
-src/lib/adsops/access.server.ts:398:export async function loadWorkspacePack(
-src/lib/adsops/access.server.ts:470:export async function loadWorkspaceScene(
-src/lib/adsops/access.server.ts:493:export function resolveClientFile(clientId: string, relPath: string): string | null {
-+ rg -n 'ST|nhãn|saveClassify|onSave|Lưu' src/components/adsops/classify-view.tsx
-+ head -40
-3:import { saveClassifyEdits, type ClassifyCluster, type ClassifyLabel, type ClassifySnap } from "@/lib/adsops/classify.functions";
-48:  onSaved,
-51:  onSaved?: (next: ClassifySnap) => void;
-103:              reason: "Người tối ưu gắn nhãn trên màn Phân loại ST.",
-128:      const result = await saveClassifyEdits({ data: { clientId: snap.client_id, edits } });
-130:        setError(result.error_vi || "Không lưu được nhãn.");
-136:        onSaved?.(result.snapshot);
-141:          ? `Đã lưu ${edits.length} nhãn. Coverage ${Math.round((cov.coverage || 0) * 100)}% (${cov.classified}/${cov.total}). Không sinh FINAL.`
-142:          : `Đã lưu ${edits.length} nhãn. Không sinh FINAL.`,
-145:      setError(err instanceof Error ? err.message : "Không lưu được nhãn.");
-156:            <p className="text-xs font-medium uppercase tracking-widest text-subtle">Phân loại ST</p>
-293:            <p className="text-sm">{dirtyN} nhãn đã sửa — chưa ghi. Không apply Google Ads.</p>
-300:              {saving ? "Đang lưu…" : "Lưu nhãn"}
-+ wc -c src/components/adsops/analytics-view.tsx src/components/adsops/app-shell.tsx src/components/adsops/budget-banner.tsx src/components/adsops/classify-view.tsx src/components/adsops/final-workbook.tsx src/components/adsops/mix-bar.tsx src/components/adsops/permissions-panel.tsx src/components/adsops/side-panels.tsx src/components/adsops/tab12-copy.tsx src/lib/adsops/access.functions.ts src/lib/adsops/access.server.ts src/lib/adsops/access.types.ts src/lib/adsops/admin.functions.ts src/lib/adsops/admin.server.ts src/lib/adsops/analytics.ts src/lib/adsops/auth-origin.server.ts src/lib/adsops/classify.functions.ts src/lib/adsops/classify.server.ts src/lib/adsops/classify.types.ts src/lib/adsops/client-auth.functions.ts src/lib/adsops/connect.functions.ts src/lib/adsops/connect.server.ts src/lib/adsops/connect.types.ts src/lib/adsops/format.ts src/lib/adsops/load-workspace-pack.snippet.ts src/lib/adsops/login-origin.functions.ts src/lib/adsops/permissions.server.ts src/lib/adsops/permissions.types.ts src/lib/adsops/principal-middleware.ts src/lib/adsops/warehouse.server.ts
- 34363 src/components/adsops/analytics-view.tsx
- 31858 src/components/adsops/app-shell.tsx
-  4431 src/components/adsops/budget-banner.tsx
- 12751 src/components/adsops/classify-view.tsx
- 17254 src/components/adsops/final-workbook.tsx
-  2448 src/components/adsops/mix-bar.tsx
- 40155 src/components/adsops/permissions-panel.tsx
- 50146 src/components/adsops/side-panels.tsx
- 36854 src/components/adsops/tab12-copy.tsx
-  3224 src/lib/adsops/access.functions.ts
- 18492 src/lib/adsops/access.server.ts
-  2129 src/lib/adsops/access.types.ts
-  9902 src/lib/adsops/admin.functions.ts
- 26647 src/lib/adsops/admin.server.ts
- 14771 src/lib/adsops/analytics.ts
-  2168 src/lib/adsops/auth-origin.server.ts
-  1444 src/lib/adsops/classify.functions.ts
-  3416 src/lib/adsops/classify.server.ts
-  1856 src/lib/adsops/classify.types.ts
-  2855 src/lib/adsops/client-auth.functions.ts
-  5259 src/lib/adsops/connect.functions.ts
- 23308 src/lib/adsops/connect.server.ts
-  2271 src/lib/adsops/connect.types.ts
-  2443 src/lib/adsops/format.ts
-  3895 src/lib/adsops/load-workspace-pack.snippet.ts
-   331 src/lib/adsops/login-origin.functions.ts
- 23558 src/lib/adsops/permissions.server.ts
-  6879 src/lib/adsops/permissions.types.ts
-  1177 src/lib/adsops/principal-middleware.ts
- 33167 src/lib/adsops/warehouse.server.ts
-419452 total
-+ npx tsc --noEmit
-+ tail -20
-src/lib/adsops/load-workspace-pack.snippet.ts(94,15): error TS2304: Cannot find name 'readJsonRelative'.
-src/lib/adsops/load-workspace-pack.snippet.ts(95,21): error TS2304: Cannot find name 'readFolder'.
-src/lib/adsops/load-workspace-pack.snippet.ts(96,16): error TS2304: Cannot find name 'readFolder'.
-src/lib/adsops/load-workspace-pack.snippet.ts(99,16): error TS2304: Cannot find name 'emptyPack'.
-src/lib/adsops/load-workspace-pack.snippet.ts(101,20): error TS2304: Cannot find name 'asRec'.
-src/lib/adsops/load-workspace-pack.snippet.ts(102,21): error TS2304: Cannot find name 'asRec'.
-src/lib/auth/popup.server.ts(65,35): error TS2339: Property 'signInWithOAuth2' does not exist on type 'InferAPI<Prettify<{ readonly ok: StrictEndpoint<"/ok", { method: "GET"; metadata: { openapi: { description: string; responses: { "200": { description: string; content: { "application/json": { schema: { type: "object"; properties: { ok: { type: string; description: string; }; }; required: string[]; }; }; }; }; }; }; ...'.
-src/lib/auth/server.ts(161,3): error TS2322: Type 'Auth<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }>' is not assignable to type 'Auth<BetterAuthOptions>'.
-  Types of property '$context' are incompatible.
-    Type 'Promise<PluginContext<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }> & I...' is not assignable to type 'Promise<PluginContext<BetterAuthOptions> & InfoContext & { options: BetterAuthOptions; trustedOrigins: string[]; ... 25 more ...; runInBackgroundOrAwait: (promise: void | Promise<...>) => unknown; }>'.
-      Type 'PluginContext<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }> & InfoConte...' is not assignable to type 'PluginContext<BetterAuthOptions> & InfoContext & { options: BetterAuthOptions; trustedOrigins: string[]; ... 25 more ...; runInBackgroundOrAwait: (promise: void | Promise<...>) => unknown; }'.
-        Type 'PluginContext<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }> & InfoConte...' is not assignable to type '{ options: BetterAuthOptions; trustedOrigins: string[]; trustedProviders: string[]; isTrustedOrigin: (url: string, settings?: { allowRelativePaths: boolean; } | undefined) => boolean; ... 23 more ...; runInBackgroundOrAwait: (promise: void | Promise<...>) => unknown; }'.
-          Types of property 'adapter' are incompatible.
-            Type 'DBAdapter<{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }>' is not assignable to type 'DBAdapter<BetterAuthOptions>'.
-              Type 'BetterAuthOptions' is not assignable to type '{ advanced: { useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { ...; }; dont_remember: { ...; }; }; }; ... 8 more ...; trustedOrigins: string[]; }'.
-                Types of property 'advanced' are incompatible.
-                  Type 'BetterAuthAdvancedOptions | undefined' is not assignable to type '{ useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { name: string; }; dont_remember: { ...; }; }; }'.
-                    Type 'undefined' is not assignable to type '{ useSecureCookies: false; defaultCookieAttributes: { secure: true; sameSite: "lax"; path: string; }; cookies: { session_token: { name: string; }; session_data: { name: string; }; account_data: { name: string; }; dont_remember: { ...; }; }; }'.
-src/routes/api/adsops-file.ts(49,38): error TS2345: Argument of type '"/api/adsops-file"' is not assignable to parameter of type 'keyof FileRoutesByPath | undefined'.
-src/routes/api/adsops-health.ts(23,38): error TS2345: Argument of type '"/api/adsops-health"' is not assignable to parameter of type 'keyof FileRoutesByPath | undefined'.
+== server-data/adsops/analytics/tkqc_9634070340.json topkeys: module,client_id,display_name,customer_id,timezone,currency,adapter,data_through,warehouse_start,warehouse_end,day_count,lookback_days,analytics_lookback_days,consecutive,campaigns,ad_groups,daily,pmax_note,metrics,conversion_groups,week_choices,month_choices,rules,budget_pace
+== server-data/adsops/report/tkqc_6810292395.json topkeys: module,audience,cover_only,session,client_id,display_name,customer_id,timezone,currency,adapter,data_through,propose_only,pulled_kpis,kpis,banner,conversion_note,modeled_note,conversions_may_include_modeled,google_conversion_is_not_qualified_lead,cpa_note,cadences,sheet_names,compare
+  .cadences.daily.compare_label :: "so với ngày trước"
+  .cadences.daily.primary.previous :: object
+  .cadences.daily.primary.delta :: object
+  .cadences.daily.context.7.previous :: object
+  .cadences.daily.context.7.delta :: object
+  .cadences.weekly.compare_label :: "so với 7 ngày trước"
+  .cadences.weekly.primary.previous :: object
+  .cadences.weekly.primary.delta :: object
+  .cadences.weekly.context.14.previous :: object
+  .cadences.weekly.context.14.delta :: object
+  .cadences.weekly.context.30.previous :: object
+  .cadences.weekly.context.30.delta :: object
+  .compare :: object
+  .compare.compare_howto :: array
+  .compare.windows.1.previous :: object
+  .compare.windows.1.delta :: object
+  .compare.windows.7.previous :: object
+  .compare.windows.7.delta :: object
+  .compare.windows.14.previous :: object
+  .compare.windows.14.delta :: object
+  .compare.windows.30.previous :: object
+  .compare.windows.30.delta :: object
+  .compare.windows.90.previous :: object
+  .compare.windows.90.delta :: object
+== server-data/adsops/compare/tkqc_6810292395.json topkeys: module,session,client_id,display_name,customer_id,customer_id_dashed,timezone,currency,adapter,data_through,lookback_days,day_count,pulled_kpis,pulled_search_terms,never_apply_google_ads,propose_only,kpis,metric_map_vi,compare_howto,windows,window_ranges,campaigns_7d
+  .compare_howto :: array
+  .windows.1.previous :: object
+  .windows.1.delta :: object
+  .windows.7.previous :: object
+  .windows.7.delta :: object
+  .windows.14.previous :: object
+  .windows.14.delta :: object
+  .windows.30.previous :: object
+  .windows.30.delta :: object
+  .windows.90.previous :: object
+  .windows.90.delta :: object
+== server-data/adsops/connect/tkqc_6810292395.json topkeys: client_id,display_name,customer_id,customer_id_dashed,mcc_id,mcc_id_dashed,mcc_display_name,adapter,status,title_vi,detail_vi,next_step_vi,checklist,account_name,currency,account_timezone,is_manager,account_status,accessible_count,target_in_accessible,yaml_file_present,api_version,probed_at,propose_only,pulled_search_terms,pulled_kpis,never_apply_google_ads,error_hint,session,module,rule,isolation,pulled_opt_sources,mcc_accounts,roster_complete
+== server-data/adsops/hub/tkqc_6810292395.json topkeys: client_id,display_name,customer_id,timezone,currency,status,adapter,data_through,lookback_days,day_count,date_start,source_flag,propose_only,kpis,windows,campaigns,daily,opt_sources
+  .windows.7.previous :: object
+  .windows.7.delta :: object
+  .windows.14.previous :: object
+  .windows.14.delta :: object
+  .windows.30.previous :: object
+  .windows.30.delta :: object
+  .windows.90.previous :: object
+  .windows.90.delta :: object
+  .opt_sources.search_term_preview :: array
+{
+ "rules": {
+  "primary_conversions_only": true,
+  "missing_label": "Thiếu dữ liệu",
+  "never_fill_missing_with_zero": true,
+  "sort": "cost_desc",
+  "week": "monday_sunday",
+  "source_note": "90 ngày hoàn chỉnh từ Google Ads API (đến hôm qua). Chưa kéo ST/KW. Không apply.",
+  "st_truncated": true,
+  "budget_pace_separate_from_guard": true
+ },
+ "week": [
+  3,
+  5,
+  7
+ ],
+ "month": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9
+ ],
+ "metrics": [
+  {
+   "id": "cost",
+   "label": "Chi tiêu"
+  },
+  {
+   "id": "impressions",
+   "label": "Hiển thị"
+  },
+  {
+   "id": "clicks",
+   "label": "Click"
+  },
+  {
+   "id": "invalid_clicks",
+   "label": "Click không hợp lệ"
+  },
+  {
+   "id": "invalid_click_rate",
+   "label": "Tỷ lệ click không hợp lệ"
+  },
+  {
+   "id": "cpc",
+   "label": "CPC"
+  },
+  {
+   "id": "conversions",
+   "label": "Chuyển đổi"
+  },
+  {
+   "id": "conv_other",
+   "label": "Chuyển đổi Google"
+  },
+  {
+   "id": "cost_per_conversion",
+   "label": "Chi phí/chuyển đổi"
+  },
+  {
+   "id": "ctr",
+   "label": "CTR"
+  },
+  {
+   "id": "cr",
+   "label": "CR"
+  }
+ ],
+ "cg": {
+  "attribution": "DATA_DRIVEN",
+  "rule": "Nhóm Gọi / Zalo / Facebook chat / Form / Khác theo tên hành động Google Ads — không hard-code khách. All conversions không lên màn. CPA Google ≠ Qualified Lead.",
+  "groups": [
+   {
+    "id": "call",
+    "label": "Gọi",
+    "metric": "conv_call",
+    "actions": [
+     "Gads - Click gọi điện"
+    ]
+   },
+   {
+    "id": "zalo",
+    "label": "Zalo",
+    "metric": "conv_zalo",
+    "actions": [
+     "Gads - Click chat zalo"
+    ]
+   },
+   {
+    "id": "facebook_chat",
+    "label": "Facebook chat",
+    "metric": "conv_facebook_chat",
+    "actions": []
+   },
+   {
+    "id": "form",
+    "label": "Form",
+    "metric": "conv_form",
+    "actions": []
+   },
+   {
+    "id": "other",
+    "label": "Khác",
+    "metric": "conv_other",
+    "actions": [
+     "Gads - Click chat facebook",
+     "Gads - Đặt hàng thành công"
+    ]
+   }
+  ],
+  "skipped": [
+   {
+    "action": "All conversions",
+    "reason": "không lên màn Phân tích"
+   },
+   {
+    "action": "search_term",
+    "reason": "chưa kéo ST phiên này"
+   }
+  ]
+ },
+ "camps": [
+  {
+   "id": "21428665404",
+   "name": "3. Fago - Sim du lịch Hàn Quốc - Search",
+   "type": "SEARCH",
+   "status": "ENABLED",
+   "pmax": false
+  },
+  {
+   "id": "21435285089",
+   "name": "5. Fago - Sim du lịch Châu Âu - Search",
+   "type": "SEARCH",
+   "status": "ENABLED",
+   "pmax": false
+  },
+  {
+   "id": "21435425957",
+   "name": "6. Fago - Sim du lịch Mỹ - Search",
+   "type": "SEARCH",
+   "status": "ENABLED",
+   "pmax": false
+  }
+ ],
+ "acc": [
+  {
+   "date": "2026-09-20",
+   "impressions": 1382,
+   "clicks": 81,
+   "invalid_clicks": 17,
+   "cost": 1060098.19,
+   "conversions": 4,
+   "conv_call": 2,
+   "conv_zalo": 0,
+   "conv_facebook_chat": 0,
+   "conv_form": 0,
+   "conv_other": 2
+  },
+  {
+   "date": "2026-09-21",
+   "impressions": 1572,
+   "clicks": 106,
+   "invalid_clicks": 20,
+   "cost": 1253978.42,
+   "conversions": 8,
+   "conv_call": 4,
+   "conv_zalo": 4,
+   "conv_facebook_chat": 0,
+   "conv_form": 0,
+   "conv_other": 0
+  }
+ ],
+ "camp": [
+  {
+   "campaign_id": "23939401873",
+   "campaign_name": "1.1 Fago - Sim du lịch - HN",
+   "campaign_type": "SEARCH",
+   "status": "ENABLED",
+   "date": "2026-09-20",
+   "impressions": 27,
+   "clicks": 6,
+   "invalid_clicks": 0,
+   "cost": 153914.5,
+   "conversions": 0,
+   "conv_call": 0,
+   "conv_zalo": 0,
+   "conv_facebook_chat": 0,
+   "conv_form": 0,
+   "conv_other": 0
+  },
+  {
+   "campaign_id": "23939401873",
+   "campaign_name": "1.1 Fago - Sim du lịch - HN",
+   "campaign_type": "SEARCH",
+   "status": "ENABLED",
+   "date": "2026-09-21",
+   "impressions": 48,
+   "clicks": 11,
+   "invalid_clicks": 0,
+   "cost": 165089,
+   "conversions": 1,
+   "conv_call": 0,
+   "conv_zalo": 0,
+   "conv_facebook_chat": 0,
+   "conv_form": 0,
+   "conv_other": 0
+  }
+ ],
+ "through": "2026-09-21",
+ "ws": "2026-06-24",
+ "we": "2026-09-21",
+ "n": 90
+}
+server-data/adsops/analytics/fago_group.json 4 2026-09-18 2026-09-21 919281 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 006 undefined
+server-data/adsops/analytics/tkqc_1002848762.json 90 2026-06-24 2026-09-21 30625934 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 003 undefined
+server-data/adsops/analytics/tkqc_1537771845.json 0 null null 0 Fago Agency - vinhome-smartcity.vn undefined
+server-data/adsops/analytics/tkqc_1566256433.json 0 null null 0 Tài khoản Google Ads của zzz undefined
+server-data/adsops/analytics/tkqc_2950312680.json 38 2026-06-24 2026-09-19 11901 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 001 undefined
+server-data/adsops/analytics/tkqc_2956229201.json 64 2026-06-24 2026-09-21 8493228 Công Ty TNHH Kiểm Toán Và Tư Vấn Bản Việt undefined
+server-data/adsops/analytics/tkqc_4447912752.json 84 2026-06-24 2026-09-21 16237679 Rock Kitchen & Bar undefined
+server-data/adsops/analytics/tkqc_4925480286.json 0 null null 0 CÔNG TY CỔ PHẦN MAXDREAM undefined
+server-data/adsops/analytics/tkqc_5305148570.json 13 2026-08-05 2026-08-27 7499381 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 005 undefined
+server-data/adsops/analytics/tkqc_5449401095.json 54 2026-06-24 2026-08-17 15204903 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 002 undefined
+server-data/adsops/analytics/tkqc_5683242539.json 76 2026-06-24 2026-09-21 14403124 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 004 undefined
+server-data/adsops/analytics/tkqc_5709560356.json 6 2026-08-28 2026-09-08 3314985 Fago - Điện lạnh Tiên Tiến undefined
+server-data/adsops/analytics/tkqc_5800099027.json 90 2026-06-24 2026-09-21 565572733 Strip Việt Nam undefined
+server-data/adsops/analytics/tkqc_6419118605.json 89 2026-06-24 2026-09-21 27388001 641-911-8605 undefined
+server-data/adsops/analytics/tkqc_6608871437.json 61 2026-07-21 2026-09-21 34488160 Fago - Hạnh Long - 0312539301 undefined
+server-data/adsops/analytics/tkqc_6810292395.json 44 2026-07-31 2026-09-21 33091804 Công Ty TNHH MTV Thương Mại Và Du Lịch Quỳnh Thanh undefined
+server-data/adsops/analytics/tkqc_7117149480.json 0 null null 0 Fago Agency - Tổng đài cứu hộ 119 undefined
+server-data/adsops/analytics/tkqc_7167241572.json 75 2026-06-24 2026-09-21 10882331 Fago - TCC - 0318902627 undefined
+server-data/adsops/analytics/tkqc_7904581470.json 77 2026-06-24 2026-09-21 57328997 Công Ty TNHH Đầu Tư Phát Triển Thương Mại Dịch Vụ Minh Quân undefined
+server-data/adsops/analytics/tkqc_9634070340.json 90 2026-06-24 2026-09-21 89213468 Gloka undefined
+.grok/ops/run.sh: line 12: rg: command not found
+.grok/ops/run.sh: line 13: rg: command not found
+.grok/ops/run.sh: line 14: rg: command not found
+src/styles.css
+src/styles.css
+__grok
+favicon.svg
 EXIT=0
