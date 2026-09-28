@@ -234,7 +234,7 @@ export function ClientPortal({
               {fresh ? <span className="font-medium"> · {fresh}</span> : null}
             </p>
             {(snap.daily?.account || []).length ? (
-              <AnalyticsView key={snap.client_id} snap={snap} allowCompare={false} />
+              <AnalyticsView key={snap.client_id} snap={snap} allowCompare={false} userKey={access.real_email || access.email} />
             ) : (
               <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
                 {t(lang, "empty_none")}

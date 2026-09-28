@@ -686,7 +686,7 @@ export function AdsOpsApp() {
       return (
         <>
           {pullBar}
-          <AnalyticsView key={analytics.client_id} snap={analytics} allowCompare={Boolean(access.caps.compare)} deepEpoch={deepEpoch} />
+          <AnalyticsView key={analytics.client_id} snap={analytics} allowCompare={Boolean(access.caps.compare)} deepEpoch={deepEpoch} userKey={access.real_email || access.email} />
         </>
       );
     }
