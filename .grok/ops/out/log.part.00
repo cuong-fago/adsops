@@ -1,2 +1,13 @@
-archive-only
+ .grok/ops/b.patch                       | 128 --------------------------------
+ .grok/ops/out/log.part.00               |   2 -
+ src/components/adsops/app-shell.tsx     |   1 +
+ src/components/adsops/classify-view.tsx |  13 +++-
+ src/lib/adsops/access.server.ts         |  36 ++++++++-
+ 5 files changed, 46 insertions(+), 134 deletions(-)
+     22 src/lib/adsops/load-workspace-pack.snippet.ts
+      1 src/lib/auth/popup.server.ts
+      1 src/lib/auth/server.ts
+      1 src/routes/api/adsops-file.ts
+      1 src/routes/api/adsops-health.ts
+B-APPLIED
 EXIT=0
