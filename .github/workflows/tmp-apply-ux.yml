@@ -1,0 +1,29 @@
+name: tmp-apply-ux
+on:
+  push:
+    branches: [fix/analytics-ux-v2]
+    paths: ['.ux-tmp/**']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: apply
+        run: |
+          if [ ! -f .ux-tmp/p3 ]; then echo "waiting for all parts"; exit 0; fi
+          cat .ux-tmp/p0 .ux-tmp/p1 .ux-tmp/p2 .ux-tmp/p3 > src/components/adsops/analytics-view.tsx
+          sed -i 's|deepEpoch={deepEpoch} />|deepEpoch={deepEpoch} userKey={access.real_email \|\| access.email} />|' src/components/adsops/app-shell.tsx
+          sed -i 's|<AnalyticsView key={snap.client_id} snap={snap} allowCompare={false} />|<AnalyticsView key={snap.client_id} snap={snap} allowCompare={false} userKey={access.real_email \|\| access.email} />|' src/components/adsops/client-portal.tsx
+          sha256sum src/components/adsops/analytics-view.tsx src/components/adsops/app-shell.tsx src/components/adsops/client-portal.tsx
+          echo "41e8bf140c744d76adb2a6942a08cc81021dcd50f42324f5d80fee9dc28a0e53  src/components/adsops/analytics-view.tsx" > /tmp/want
+          echo "8591762ea7ea5e2340981618bf5c706a3a0e1b6879e1b8196ed203625f2ab96d  src/components/adsops/app-shell.tsx" >> /tmp/want
+          echo "00db6a25269a71dd8a6bd4ff6f3f76b34802df195535f09d025f955da65cbb90  src/components/adsops/client-portal.tsx" >> /tmp/want
+          sha256sum -c /tmp/want || { for i in 0 1 2 3; do sha256sum .ux-tmp/p$i; done; exit 1; }
+          rm -rf .ux-tmp
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(analytics): sticky tables, sub-tabs, KPI sparklines, heatmap, info popovers"
+          git push

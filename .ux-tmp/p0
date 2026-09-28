@@ -1,0 +1,342 @@
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ChevronRight, Info, Search, SlidersHorizontal, X } from "lucide-react";
+import {
+  type AnalyticsSnap,
+  type DeepLayerBlock,
+  type DeepLayerId,
+  type LayerBlock,
+  type LayerRow,
+  defaultRange,
+  isDeepLayer,
+  layerRows,
+  monthsOverlapping,
+  previousEqualRange,
+  previousMonths,
+  previousWeeks,
+  warehouseDates,
+  windowCoverage,
+} from "@/lib/adsops/analytics";
+import { readDeepLayerFn } from "@/lib/adsops/connect.functions";
+import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
+import { cn } from "@/lib/cn";
+import { BudgetBanner } from "@/components/adsops/budget-banner";
+
+const SUBTABS = [
+  { id: "overview", label: "Tổng quan" },
+  { id: "monthly", label: "Theo tháng" },
+  { id: "campaign", label: "Chiến dịch" },
+  { id: "ad_group", label: "Nhóm" },
+  { id: "keyword", label: "Từ khoá" },
+  { id: "search_term", label: "Search terms" },
+] as const;
+
+type SubTab = (typeof SUBTABS)[number]["id"];
+type TableLayer = "campaign" | DeepLayerId;
+const TAB_KEY = "adsops:analytics:subtab:";
+
+function isSubTab(v: unknown): v is SubTab {
+  return SUBTABS.some((t) => t.id === v);
+}
+
+function convNum(value: number) {
+  return num(value, Math.abs(value - Math.round(value)) < 1e-6 ? 0 : 2);
+}
+function dong(value: number) {
+  return `${moneyPlain(value)}đ`;
+}
+function dongShort(value: number) {
+  const v = Math.abs(value);
+  if (v >= 1e9) return `${(value / 1e9).toLocaleString("vi-VN", { maximumFractionDigits: 2 })} tỷ`;
+  if (v >= 1e6) return `${(value / 1e6).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} tr`;
+  return dong(value);
+}
+function invalidLabel(metrics: Record<string, number>) {
+  const n = metrics.invalid_clicks || 0;
+  const rate = metrics.invalid_click_rate || 0;
+  return `${num(n, 0)} · ${(rate * 100).toLocaleString("vi-VN", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
+}
+function formatRangeShort(start: string, end: string) {
+  const a = start.split("-");
+  const b = end.split("-");
+  if (a.length !== 3 || b.length !== 3) return `${start} → ${end}`;
+  return `${a[2]}/${a[1]}–${b[2]}/${b[1]}`;
+}
+function dmy(iso: string) {
+  return iso.split("-").reverse().join("/");
+}
+function fold(s: string) {
+  return s.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
+}
+/** Subtle per-column heat tint. Text stays ink (contrast ≥ 7:1 on every step). */
+function heat(value: number, max: number, tone: "cool" | "warm" = "cool", min = 0): CSSProperties | undefined {
+  if (!(value > 0) || !(max > 0)) return undefined;
+  const lo = min > 0 && min < max ? min : 0;
+  const t = Math.max(0, Math.min(1, (value - lo) / (max - lo || 1)));
+  const a = 0.03 + 0.22 * t;
+  return { backgroundColor: tone === "cool" ? `rgb(33 84 92 / ${a.toFixed(3)})` : `rgb(154 103 0 / ${a.toFixed(3)})` };
+}
+
+function InfoPopover({ label, children, align = "right" }: { label: string; children: ReactNode; align?: "left" | "right" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative inline-flex">
+      <button type="button" aria-label={label} aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex size-9 items-center justify-center rounded-full text-muted hover:bg-inset hover:text-ink">
+        <Info className="size-4" />
+      </button>
+      {open ? (
+        <div role="dialog" aria-label={label} className={cn("absolute top-10 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-line bg-paper p-4 text-left text-sm leading-relaxed text-ink shadow-sheet", align === "right" ? "right-0" : "left-0")}>
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status?: string }) {
+  const code = String(status || "").toUpperCase();
+  const live = code === "ENABLED" || code === "ACTIVE";
+  const paused = code === "PAUSED";
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", live ? "bg-ok-bg text-ok" : paused ? "bg-warn-bg text-warn" : "bg-inset text-muted")}>
+      <span className={cn("size-1.5 rounded-full", live ? "bg-ok" : paused ? "bg-warn" : "bg-subtle")} />
+      {statusVi(status)}
+    </span>
+  );
+}
+
+function Skeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="animate-pulse space-y-2 p-1" aria-label="Đang tải">
+      <div className="h-9 rounded-md bg-inset" />
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex gap-2">
+          <div className="h-8 w-1/3 rounded bg-inset/80" />
+          <div className="h-8 flex-1 rounded bg-inset/60" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Sparkline({ values, tone = "cool" }: { values: (number | null)[]; tone?: "cool" | "warm" }) {
+  const W = 120;
+  const H = 32;
+  const present = values.filter((v): v is number => v != null);
+  if (present.length < 2) return <div className="h-8" />;
+  const max = Math.max(...present);
+  const min = Math.min(0, ...present);
+  const span = max - min || 1;
+  const step = values.length > 1 ? W / (values.length - 1) : W;
+  const segments: string[] = [];
+  let cur: string[] = [];
+  values.forEach((v, i) => {
+    if (v == null) {
+      if (cur.length) segments.push(cur.join(" "));
+      cur = [];
+      return;
+    }
+    cur.push(`${(i * step).toFixed(1)},${(H - 2 - ((v - min) / span) * (H - 4)).toFixed(1)}`);
+  });
+  if (cur.length) segments.push(cur.join(" "));
+  const color = tone === "cool" ? "var(--color-accent)" : "var(--color-warn)";
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-8 w-full" aria-hidden>
+      {segments.map((pts, i) =>
+        pts.includes(" ") ? (
+          <polyline key={i} points={pts} fill="none" stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        ) : (
+          <circle key={i} cx={pts.split(",")[0]} cy={pts.split(",")[1]} r={1.4} fill={color} />
+        ),
+      )}
+    </svg>
+  );
+}
+
+function Segmented<T extends string>({ items, value, onChange, size = "md" }: { items: readonly { id: T; label: string }[]; value: T; onChange: (v: T) => void; size?: "sm" | "md" }) {
+  return (
+    <div className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full bg-inset p-1 [scrollbar-width:none]" role="tablist">
+      {items.map((item) => (
+        <button key={item.id} type="button" role="tab" aria-selected={value === item.id} onClick={() => onChange(item.id)} className={cn("shrink-0 whitespace-nowrap rounded-full font-medium transition-colors duration-150", size === "sm" ? "h-8 px-3 text-xs" : "h-9 px-3.5 text-sm", value === item.id ? "bg-paper text-ink shadow-sm" : "text-muted hover:text-ink")}>
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const card = "rounded-xl bg-paper shadow-sheet";
+
+export function AnalyticsView({
+  snap,
+  allowCompare = true,
+  deepEpoch = 0,
+  userKey,
+}: {
+  snap: AnalyticsSnap;
+  allowCompare?: boolean;
+  deepEpoch?: number;
+  userKey?: string | null;
+}) {
+  const range0 = defaultRange(snap);
+  const warehouseEnd = snap.warehouse_end || snap.data_through;
+  const warehouseStart = snap.warehouse_start || range0.start;
+  const [draftStart, setDraftStart] = useState(range0.start);
+  const [draftEnd, setDraftEnd] = useState(range0.end);
+  const [start, setStart] = useState(range0.start);
+  const [end, setEnd] = useState(range0.end);
+  const [tab, setTabState] = useState<SubTab>("overview");
+  const [periodLayer, setPeriodLayer] = useState<"account" | "campaign">("campaign");
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [adGroupId, setAdGroupId] = useState<string | null>(null);
+  const [adGroupLabel, setAdGroupLabel] = useState("");
+  const [onlyConv, setOnlyConv] = useState(false);
+  const [weekN, setWeekN] = useState(0);
+  const [monthN, setMonthN] = useState(0);
+  const [prevEqual, setPrevEqual] = useState(allowCompare);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const storageKey = `${TAB_KEY}${userKey || "anon"}`;
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (isSubTab(saved)) setTabState(saved);
+    } catch { /* storage blocked */ }
+  }, [storageKey]);
+  function setTab(next: SubTab) {
+    setTabState(next);
+    try { window.localStorage.setItem(storageKey, next); } catch { /* ignore */ }
+  }
+
+  const groups = snap.conversion_groups.groups;
+  function applyRange(nextStart: string, nextEnd: string) {
+    setDraftStart(nextStart); setDraftEnd(nextEnd); setStart(nextStart); setEnd(nextEnd); setWeekN(0); setMonthN(0);
+  }
+  const daySpan = Math.round((new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime()) / 86400000) + 1;
+  const presets = [
+    { id: "7", label: "7 ngày", days: 7 },
+    { id: "14", label: "14 ngày", days: 14 },
+    { id: "30", label: "30 ngày", days: 30 },
+    { id: "90", label: "90 ngày", days: 90 },
+  ];
+  const activePreset =
+    weekN || monthN ? "" :
+    end === warehouseEnd && start === warehouseStart ? "all" :
+    end === warehouseEnd ? presets.find((p) => p.days === daySpan)?.id || "" : "";
+
+  const dates = useMemo(() => warehouseDates(snap), [snap]);
+  // Older snapshots carry no per-campaign Gọi/Zalo/Form split (all 0 while account has some):
+  // show "—" there instead of a misleading 0.
+  const splitKnown = useMemo(() => {
+    const keys = ["conv_call", "conv_zalo", "conv_facebook_chat", "conv_form", "conv_other"] as const;
+    const sum = (rows: Record<string, unknown>[]) =>
+      rows.reduce((s, r) => s + keys.reduce((t, k) => t + Number(r[k] || 0), 0), 0);
+    const acct = sum(snap.daily.account as unknown as Record<string, unknown>[]);
+    return acct === 0 || sum(snap.daily.campaign as unknown as Record<string, unknown>[]) > 0;
+  }, [snap]);
+  const cov = windowCoverage(dates, start, end);
+  const account = useMemo(() => layerRows(snap, { layer: "account", start, end }), [snap, start, end]);
+  const tableLayer: TableLayer | null = tab === "campaign" || isDeepLayer(tab) ? (tab as TableLayer) : null;
+  const campaignBlock = useMemo(
+    () => (tab === "campaign" || tab === "overview" ? layerRows(snap, { layer: "campaign", start, end, onlyWithConv: tab === "campaign" && onlyConv }) : null),
+    [snap, tab, start, end, onlyConv],
+  );
+
+  const [deepBlock, setDeepBlock] = useState<DeepLayerBlock | null>(null);
+  const [deepLoading, setDeepLoading] = useState(false);
+  const [deepError, setDeepError] = useState("");
+  const pmaxSelected = Boolean(snap.campaigns.find((c) => c.id === campaignId)?.pmax);
+
+  useEffect(() => {
+    if (!tableLayer || !isDeepLayer(tableLayer) || pmaxSelected) {
+      setDeepBlock(null); setDeepError(""); setDeepLoading(false); return;
+    }
+    let cancelled = false;
+    setDeepLoading(true); setDeepError("");
+    readDeepLayerFn({ data: { clientId: snap.client_id, layer: tableLayer, start, end, campaignId, adGroupId, onlyWithConv: onlyConv } })
+      .then((block) => { if (!cancelled) { setDeepBlock(block); setDeepLoading(false); } })
+      .catch((err) => { if (!cancelled) { setDeepBlock(null); setDeepError(err instanceof Error ? err.message : "Không đọc được lớp nhóm / từ khoá."); setDeepLoading(false); } });
+    return () => { cancelled = true; };
+  }, [snap.client_id, tableLayer, pmaxSelected, start, end, campaignId, adGroupId, onlyConv, deepEpoch]);
+
+  const current: LayerBlock | DeepLayerBlock | null =
+    tableLayer === "campaign" ? campaignBlock :
+    pmaxSelected ? { complete: true, rows: [], pmax_note: snap.pmax_note || "PMax không có search term / keyword chuẩn" } :
+    deepBlock;
+
+  const prevRange = allowCompare && prevEqual ? previousEqualRange(start, end) : null;
+  const prevStart = prevRange?.start || "";
+  const prevEnd = prevRange?.end || "";
+  const prevAccount = useMemo(
+    () => (prevStart && prevEnd ? layerRows(snap, { layer: "account", start: prevStart, end: prevEnd }) : null),
+    [snap, prevStart, prevEnd],
+  );
+  const weeks = allowCompare && weekN ? previousWeeks(end, weekN) : [];
+  const prevMonths = allowCompare && monthN ? previousMonths(end, monthN) : [];
+  const inMonths = monthsOverlapping(start, end);
+  const periodCols =
+    weeks.length > 0
+      ? weeks.map((w, i) => ({ id: `w${i}`, label: formatRangeShort(w.start, w.end), sub: "T2–CN", start: w.start, end: w.end, complete: windowCoverage(dates, w.start, w.end).complete }))
+      : monthN > 0
+        ? prevMonths.map((m, i) => ({ id: `pm${i}`, label: m.label, sub: formatRangeShort(m.start, m.end), start: m.start, end: m.end, complete: windowCoverage(dates, m.start, m.end).complete }))
+        : inMonths.map((m, i) => ({ id: `im${i}`, label: m.label, sub: formatRangeShort(m.start, m.end), start: m.start, end: m.end, complete: windowCoverage(dates, m.calendar_start, m.calendar_end).complete }));
+
+  const periodColsKey = periodCols.map((c) => `${c.id}:${c.start}:${c.end}:${c.complete}`).join("|");
+  const periodBlocks = useMemo(
+    () => (tab === "monthly" ? periodCols.map((col) => ({ ...layerRows(snap, { layer: periodLayer, start: col.start, end: col.end }), complete: col.complete })) : []),
+    // periodCols rebuilt each render; key captures identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tab, snap, periodLayer, periodColsKey],
+  );
+  const periodAccountBlocks = useMemo(
+    () =>
+      tab !== "monthly" ? [] :
+      periodLayer === "account" ? periodBlocks :
+      periodCols.map((col) => ({ ...layerRows(snap, { layer: "account", start: col.start, end: col.end }), complete: col.complete })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tab, snap, periodLayer, periodBlocks, periodColsKey],
+  );
+
+  const metrics = account.rows[0]?.metrics || {};
+  const prevMetrics = prevAccount?.complete ? prevAccount.rows[0]?.metrics : undefined;
+  const campaignName = snap.campaigns.find((c) => c.id === campaignId)?.name;
+  const adGroupName = snap.ad_groups?.find((g) => g.id === adGroupId)?.name || (adGroupId ? adGroupLabel : "");
+
+  function drill(row: LayerRow) {
+    if (tableLayer === "campaign") { setCampaignId(row.id); setAdGroupId(null); setTab(row.pmax ? "search_term" : "ad_group"); }
+    else if (tableLayer === "ad_group") { setAdGroupId(row.id); setAdGroupLabel(row.name); setTab("keyword"); }
+  }
+  function clearScope() { setCampaignId(null); setAdGroupId(null); }
+  const rangeLabel = formatRangeVi(start, end);
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      {snap.budget_pace && <BudgetBanner pace={snap.budget_pace} currency={snap.currency} />}
+
+      <div className="sticky top-0 z-30 -mx-4 bg-bg/90 px-4 pb-1 pt-2 backdrop-blur md:-mx-1 md:px-1">
+        <div className={cn(card, "flex flex-col gap-3 p-3 md:p-4")}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium uppercase tracking-wider text-subtle">Phân tích · {snap.display_name}</p>
+              <p className="truncate font-display text-lg font-medium tracking-tight tabular-nums md:text-xl">
+                {rangeLabel}
+                <span className="ml-2 align-middle font-sans text-xs font-normal text-muted">{daySpan} ngày</span>
+              </p>
+            </div>
+            <div className="hidden items-center gap-1 lg:flex">
+              {presets.map((p) => (
+                <button key={p.id} type="button" onClick={() => applyRange(addDays(warehouseEnd, -(p.days - 1)), warehouseEnd)} className={cn("h-9 rounded-full px-3 text-sm font-medium transition-colors", activePreset === p.id ? "bg-accent text-accent-fg" : "text-ink hover:bg-inset")}>{p.label}</button>
+              ))}
