@@ -578,5 +578,5 @@ export async function auditLog(ctx: AccessContext, limit = 200, beforeId?: numbe
       : `select id, ${iso("at")} as at, actor, action, target_kind, target_id, detail from permission_audit_log order by id desc limit ${lim}`,
     beforeId ? [beforeId] : [],
   );
-  return rows.map((r) => ({ ...r, id: Number(r.id), detail: (r.detail as Record<string, unknown>) || {} }));
+  return rows.map((r) => ({ ...r, id: Number(r.id), detail: typeof r.detail === "string" ? r.detail : JSON.stringify(r.detail ?? {}) }));
 }

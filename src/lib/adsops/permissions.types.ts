@@ -186,7 +186,8 @@ export type AuditRow = {
   action: string;
   target_kind: string | null;
   target_id: string | null;
-  detail: Record<string, unknown>;
+  /** JSON text of the change detail. */
+  detail: string;
 };
 
 export type UnassignedLogin = { user_id: string; email: string; name: string | null };

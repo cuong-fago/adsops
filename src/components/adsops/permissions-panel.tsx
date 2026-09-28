@@ -873,7 +873,7 @@ function AuditTab() {
                 <td className="py-2 pr-2 text-muted">
                   {r.target_kind}:{r.target_id}
                 </td>
-                <td className="max-w-md break-words py-2 font-mono text-xs text-muted">{JSON.stringify(r.detail)}</td>
+                <td className="max-w-md break-words py-2 font-mono text-xs text-muted">{r.detail}</td>
               </tr>
             ))}
           </tbody>

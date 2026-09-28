@@ -1,18 +1,2 @@
-patched ok
-229:  canPull,
-236:  canPull?: boolean;
-292:            {!viewer && canPull !== false && live && clientId ? (
-905:  canPull,
-906:  canInstall,
-913:  canPull?: boolean;
-915:  canInstall?: boolean;
-949:  const showIntake = Boolean(live && clientId && canInstall !== false);
-1133:      {connected && canPull !== false && live && clientId ? (
-65:export function AnalyticsView({ snap, allowCompare = true }: { snap: AnalyticsSnap; allowCompare?: boolean }) {
-79:  const [prevEqual, setPrevEqual] = useState(allowCompare);
-121:  const prevRange = allowCompare && prevEqual ? previousEqualRange(start, end) : null;
-127:  const weeks = allowCompare && weekN ? previousWeeks(end, weekN) : [];
-128:  const prevMonths = allowCompare && monthN ? previousMonths(end, monthN) : [];
-238:          {(allowCompare ? snap.week_choices : []).map((n) => (
-254:          {allowCompare ? (
-300:          {allowCompare ? (
+ok
+src/routes/api/adsops-file.ts(49,38): error TS2345: Argument of type '"/api/adsops-file"' is not assignable to parameter of type 'keyof FileRoutesByPath | undefined'.
