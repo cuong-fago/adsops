@@ -34,6 +34,8 @@ export type AccessSnap = {
   /** The person actually signed in (differs from email while viewing-as). */
   real_email: string | null;
   real_is_admin: boolean;
+  /** Saved UI language for this principal (customer portal); null = default (vi). */
+  lang: "vi" | "en" | null;
 };
 
 export type MccRosterSnap = {

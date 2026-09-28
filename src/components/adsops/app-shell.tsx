@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { ClassifyView } from "@/components/adsops/classify-view";
+import { ClientPortal } from "@/components/adsops/client-portal";
 import type { PacePreview } from "@/components/adsops/budget-banner";
 import { PermissionsPanel } from "@/components/adsops/permissions-panel";
 import {
@@ -302,6 +303,8 @@ export function AdsOpsApp() {
   useEffect(() => {
     let cancelled = false;
     if (!access || access.role === "pending") return;
+    // Customers use ClientPortal, which loads its own (analytics-only) data.
+    if (access.kind === "client") return;
     if (!clientId || !clients.some((c) => c.client_id === clientId)) return;
     setLoading(true);
     setAnalytics(undefined);
@@ -364,6 +367,7 @@ export function AdsOpsApp() {
 
   useEffect(() => {
     if (!access || access.role === "pending" || loading) return;
+    if (access.kind === "client") return;
     if (!clientId || !clients.some((c) => c.client_id === clientId)) return;
     const needed = allowedModules(access, TAB_MODULES[shownTab]);
     if (!needed.length) return;
@@ -726,6 +730,18 @@ export function AdsOpsApp() {
   const adsCount = mcc?.accounts.filter((a) => !a.is_manager).length ?? mcc?.accounts.length ?? 0;
   const accessible = mcc?.last_probe_accessible_count || adsCount;
   const isClientKind = access?.kind === "client" && !access.view_as;
+
+  // Customer roles (and admin "view as" a customer) get the customer portal.
+  if (access && access.kind === "client" && access.role !== "pending") {
+    return (
+      <ClientPortal
+        access={access}
+        clients={clients}
+        onSignOut={() => void signOutClient()}
+        onExitViewAs={() => void exitViewAs()}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg text-ink">

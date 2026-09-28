@@ -76,6 +76,21 @@ export const getWorkspacePack = createServerFn({ method: "POST" })
     return loadWorkspacePack(context.access, data.clientId, data.modules) as Promise<WorkspacePack>;
   });
 
+export const setMyLanguage = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const lang = data && typeof data === "object" ? (data as { lang?: unknown }).lang : null;
+    if (lang !== "vi" && lang !== "en") throw new Error("Ngôn ngữ không hợp lệ");
+    return { lang: lang as "vi" | "en" };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    // Viewing-as is read-only: never write the impersonated user's prefs.
+    if (context.access.readOnly || context.access.principal.role === "pending") return { ok: false as const };
+    const { saveLangPref } = await import("./access.server.ts");
+    await saveLangPref(context.access, data.lang);
+    return { ok: true as const };
+  });
+
 export const getWorkspaceScene = createServerFn({ method: "POST" })
   .validator((data: unknown) => {
     if (!data || typeof data !== "object") throw new Error("Thiếu dữ liệu");
