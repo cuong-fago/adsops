@@ -1,0 +1,144 @@
+diff --git a/src/lib/adsops/analytics.ts b/src/lib/adsops/analytics.ts
+index b2d189db..30740b84 100644
+--- a/src/lib/adsops/analytics.ts
++++ b/src/lib/adsops/analytics.ts
+@@ -212,2 +212,3 @@ export type LayerRow = {
+   ad_group_id?: string;
++  ad_group_name?: string;
+   metrics: MetricMap;
+@@ -484,2 +485,3 @@ export function aggregateDeepRows(
+         campaign_id: String(chunk[0]?.campaign_id || ""),
++        campaign_name: String(chunk.find((r) => r.campaign_name)?.campaign_name || ""),
+         pmax: false,
+@@ -516,3 +518,5 @@ export function aggregateDeepRows(
+         ad_group_id: String(chunk[0]?.ad_group_id || ""),
++        ad_group_name: String(chunk.find((r) => r.ad_group_name)?.ad_group_name || ""),
+         campaign_id: String(chunk[0]?.campaign_id || ""),
++        campaign_name: String(chunk.find((r) => r.campaign_name)?.campaign_name || ""),
+         pmax: false,
+@@ -550,4 +554,5 @@ export function aggregateDeepRows(
+         campaign_id: String(rec?.campaign_id || ""),
+-        campaign_name: String(rec?.campaign_name || ""),
++        campaign_name: String(chunk.find((r) => r.campaign_name)?.campaign_name || ""),
+         ad_group_id: String(rec?.ad_group_id || ""),
++        ad_group_name: String(chunk.find((r) => r.ad_group_name)?.ad_group_name || ""),
+         pmax: false,
+@@ -566,2 +571,10 @@ export type CoveredRange = { start: string; end: string };
+ 
++/** Filter choices for a deep layer: every campaign / ad group with rows in the range (before scope filters). */
++export type DeepFacets = {
++  campaigns: { id: string; name: string; rows: number }[];
++  ad_groups: { id: string; name: string; campaign_id: string; rows: number }[];
++  /** Row count for the whole layer in range (text search / scope not applied). */
++  total_rows: number;
++};
++
+ /** Result of the server-side deep layer read (ad group / keyword / search term). */
+@@ -582,2 +595,4 @@ export type DeepLayerBlock = LayerBlock & {
+   note_vi: string | null;
++  /** Campaign / ad group filter choices (absent on older servers). */
++  facets?: DeepFacets | null;
+ };
+diff --git a/src/lib/adsops/deep-store.server.ts b/src/lib/adsops/deep-store.server.ts
+index 00b58fdd..4c7a327a 100644
+--- a/src/lib/adsops/deep-store.server.ts
++++ b/src/lib/adsops/deep-store.server.ts
+@@ -21,2 +21,3 @@ import {
+   type DailyRow,
++  type DeepFacets,
+   type DeepLayerBlock,
+@@ -258,3 +259,3 @@ async function pullKeywords(cfg: AdsConfig, cid: string, start: string, end: str
+       cid,
+-      `SELECT segments.date, campaign.id, ad_group.id, ad_group.name, ad_group_criterion.criterion_id,
++      `SELECT segments.date, campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group_criterion.criterion_id,
+               ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.status,
+@@ -285,2 +286,3 @@ async function pullKeywords(cfg: AdsConfig, cid: string, start: string, end: str
+           campaign_id: String(asRec(row.campaign).id || ""),
++          campaign_name: String(asRec(row.campaign).name || ""),
+           ad_group_id: agId,
+@@ -306,3 +308,3 @@ async function pullSearchTerms(cfg: AdsConfig, cid: string, start: string, end:
+       cid,
+-      `SELECT segments.date, campaign.id, campaign.name, ad_group.id,
++      `SELECT segments.date, campaign.id, campaign.name, ad_group.id, ad_group.name,
+               search_term_view.search_term, segments.search_term_match_type,
+@@ -335,2 +337,3 @@ async function pullSearchTerms(cfg: AdsConfig, cid: string, start: string, end:
+           ad_group_id: agId,
++          ad_group_name: String(asRec(row.adGroup).name || ""),
+           query: q,
+@@ -524,2 +527,4 @@ export async function readDeepLayer(
+   }
++  await backfillNames(clientId, layer, all, opts.start, opts.end);
++  const facets = buildFacets(layer, all, opts);
+   let filtered = all;
+@@ -546,3 +551,71 @@ export async function readDeepLayer(
+     conv_split: convSplit,
++    facets,
+   };
+ }
++
++/**
++ * Rows stored before names were pulled lack campaign / ad group names:
++ * fill them from the ad group layer (same client, same days). Ids only — never numbers.
++ */
++async function backfillNames(clientId: string, layer: DeepLayerId, rows: DailyRow[], start: string, end: string): Promise<void> {
++  const needs = rows.some((r) => (r.ad_group_id && !r.ad_group_name) || (r.campaign_id && !r.campaign_name));
++  if (!needs) return;
++  const agNames = new Map<string, string>();
++  const campNames = new Map<string, string>();
++  for (const r of rows) {
++    if (r.ad_group_id && r.ad_group_name) agNames.set(String(r.ad_group_id), r.ad_group_name);
++    if (r.campaign_id && r.campaign_name) campNames.set(String(r.campaign_id), r.campaign_name);
++  }
++  if (layer !== "ad_group") {
++    try {
++      const sql = await getSql();
++      const src = await sql.query<{ rows: unknown }>(
++        `select rows from adsops_analytics_deep
++         where client_id = $1 and layer = 'ad_group' and covered_end >= ($2::date - 120) and covered_start <= $3::date`,
++        [clientId, start, end],
++      );
++      for (const r of src) {
++        const payload = (typeof r.rows === "string" ? JSON.parse(r.rows) : r.rows) as MonthPayload | null;
++        for (const row of payload?.rows || []) {
++          if (row.ad_group_id && row.ad_group_name && !agNames.has(String(row.ad_group_id))) agNames.set(String(row.ad_group_id), row.ad_group_name);
++          if (row.campaign_id && row.campaign_name && !campNames.has(String(row.campaign_id))) campNames.set(String(row.campaign_id), row.campaign_name);
++        }
++      }
++    } catch {
++      /* names stay as ids */
++    }
++  }
++  for (const r of rows) {
++    if (r.ad_group_id && !r.ad_group_name) r.ad_group_name = agNames.get(String(r.ad_group_id)) || "";
++    if (r.campaign_id && !r.campaign_name) r.campaign_name = campNames.get(String(r.campaign_id)) || "";
++  }
++}
++
++/** Campaign / ad group choices with row counts, computed before the scope filter. */
++function buildFacets(
++  layer: DeepLayerId,
++  rows: DailyRow[],
++  opts: { start: string; end: string; onlyWithConv?: boolean },
++): DeepFacets {
++  const block = aggregateDeepRows(layer, rows, { start: opts.start, end: opts.end, onlyWithConv: opts.onlyWithConv });
++  const camps = new Map<string, { id: string; name: string; rows: number }>();
++  const groups = new Map<string, { id: string; name: string; campaign_id: string; rows: number }>();
++  for (const row of block.rows) {
++    const cid = String(row.campaign_id || "");
++    if (cid) {
++      const c = camps.get(cid) || { id: cid, name: row.campaign_name || "", rows: 0 };
++      c.rows += 1;
++      if (!c.name && row.campaign_name) c.name = row.campaign_name;
++      camps.set(cid, c);
++    }
++    const gid = layer === "ad_group" ? "" : String(row.ad_group_id || "");
++    if (gid) {
++      const g = groups.get(gid) || { id: gid, name: row.ad_group_name || "", campaign_id: cid, rows: 0 };
++      g.rows += 1;
++      if (!g.name && row.ad_group_name) g.name = row.ad_group_name;
++      groups.set(gid, g);
++    }
++  }
++  const byName = (a: { name: string; id: string }, b: { name: string; id: string }) => (a.name || a.id).localeCompare(b.name || b.id, "vi");
++  return { campaigns: [...camps.values()].sort(byName), ad_groups: [...groups.values()].sort(byName), total_rows: block.rows.length };
++}

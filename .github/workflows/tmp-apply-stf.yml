@@ -1,0 +1,27 @@
+name: tmp-apply-stf
+on:
+  push:
+    branches: [feat/searchterm-filters]
+    paths: ['.stf-tmp/**']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: apply
+        run: |
+          if [ ! -f .stf-tmp/B.patch ]; then echo "waiting for all parts"; exit 0; fi
+          sha256sum .stf-tmp/A.patch .stf-tmp/B.patch
+          git apply --verbose .stf-tmp/A.patch .stf-tmp/B.patch
+          echo "30ef8ae7e0004efa00a1ccc3a5c13d1b34baf8a0f035dc2e798c9c8bda7177af  src/lib/adsops/analytics.ts" > /tmp/want
+          echo "270e08e058482d4d7c5f835e8fe4932a88d4d7c892b44ee840e35e6bcd7c38dc  src/lib/adsops/deep-store.server.ts" >> /tmp/want
+          echo "57235fe9f050225ad86ccb3a0d3b6cf152546eb3541d6a99283d3391bbd8a300  src/components/adsops/analytics-view.tsx" >> /tmp/want
+          sha256sum -c /tmp/want
+          rm -rf .stf-tmp
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(analytics): campaign / ad group filters on Search terms, Keywords, Ad groups"
+          git push
