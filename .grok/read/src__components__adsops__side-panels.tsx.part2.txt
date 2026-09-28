@@ -1,0 +1,379 @@
+          <p className="mt-1 text-sm text-muted">CONDITIONAL — trưởng phòng Ads duyệt. Không vào Tab 12.</p>
+          <ul className="mt-4 space-y-3">
+            {conditional.map((p, i) => (
+              <li key={`cond-${i}`} className="rounded-md bg-inset px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{txt(p.kind_label || p.kind)}</p>
+                  <StatusChip value={txt(p.status)} />
+                </div>
+                <SixFields item={p} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {items.length === 0 && (
+        <section className="rounded-xl bg-paper p-5 shadow-sheet">
+          <p className="rounded-md bg-warn-bg px-4 py-3 text-sm text-warn">
+            Không có việc READY. Guard đang chặn hoặc nguồn không đủ.
+          </p>
+        </section>
+      )}
+    </div>
+  );
+}
+
+export function FinalPanel({
+  data,
+  connect,
+  guard,
+}: {
+  data: AnyRec | null;
+  connect?: AnyRec | null;
+  guard?: AnyRec | null;
+}) {
+  if (!data) return <LiveEmpty connect={connect || null} noun="Gói FINAL" guard={guard} />;
+  if (data.workbook) {
+    return <FinalWorkbook data={data} />;
+  }
+  const tab0 = asObj(data.tab0);
+  const tab12 = asObj(data.tab12);
+  const top5 = asArr(tab0.top5);
+  const rows = asArr(tab12.rows);
+  const windows = asObj(tab0.windows);
+  const currency = String(data.currency || "VND");
+
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl font-medium tracking-tight">Gói FINAL · Tab 0</h2>
+            <p className="mt-1 text-sm text-muted">{txt(tab0.banner || data.banner)}</p>
+          </div>
+          <FileLink href={txt(data.xlsx_href) || undefined} label="Tải file FINAL" />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-sm">
+          <StatusChip value={`Guard ${txt(tab0.guard || "")}`} />
+          <span className="rounded-full bg-inset px-2.5 py-0.5 text-xs">
+            Coverage ST {pct(Number(tab0.search_term_coverage || 0))}
+          </span>
+          <span className="rounded-full bg-inset px-2.5 py-0.5 text-xs">{txt(tab0.source_flag)}</span>
+        </div>
+        {txt(tab0.hold_note) ? (
+          <p className="mt-3 rounded-md bg-warn-bg px-4 py-3 text-sm text-warn">{txt(tab0.hold_note)}</p>
+        ) : null}
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          {["7", "14", "30"].map((key) => {
+            const w = asObj(windows[key]);
+            if (!w.days) return null;
+            return (
+              <div key={key} className="rounded-md bg-inset px-3 py-3 text-sm">
+                <p className="text-xs text-muted">{key} ngày</p>
+                <p className="mt-1 font-medium tabular-nums">{money(Number(w.cost || 0), currency)}</p>
+                <p className="text-muted">
+                  {num(Number(w.clicks || 0))} click · {num(Number(w.conversions || 0), 2)} conv
+                </p>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-sm text-muted">
+          CPA Google {money(Number(tab0.cpa_google_7d), currency)} ≠ Qualified Lead
+          {tab0.cpa_sale_7d != null
+            ? ` · CPA Sale ${money(Number(tab0.cpa_sale_7d), currency)}`
+            : ""}
+          .
+        </p>
+      </section>
+
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <h3 className="font-display text-lg font-medium tracking-tight">5 việc — đủ 6 trường</h3>
+        <ol className="mt-3 space-y-3">
+          {top5.map((job) => (
+            <li key={txt(job.index)} className="rounded-md bg-inset px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">
+                  {txt(job.index)}. {txt(job.kind_label || job.kind)}
+                </span>
+                <StatusChip value={txt(job.status)} />
+              </div>
+              <SixFields item={job} />
+            </li>
+          ))}
+        </ol>
+        {top5.length === 0 && (
+          <p className="mt-3 text-sm text-muted">Không có việc trên Tab 0 — Guard đang chặn.</p>
+        )}
+      </section>
+
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <h3 className="font-display text-lg font-medium tracking-tight">Tab 12 — copy theo nhóm quảng cáo</h3>
+        <p className="mt-1 text-sm text-muted">{txt(tab12.banner)}</p>
+        {rows.length === 0 ? (
+          <p className="mt-4 rounded-md bg-warn-bg px-4 py-3 text-sm text-warn">
+            Tab 12 trống. Không copy HOLD / HARD_STOP vào Google Ads.
+          </p>
+        ) : (
+          <div className="mt-4">
+            <Tab12CopyDesk
+              clientId={txt(data.client_id)}
+              headers={[
+                "LOẠI HÀNH ĐỘNG",
+                "Campaign",
+                "Ad Group nguồn / nơi áp dụng",
+                "Từ khóa / Negative / Asset",
+                "Match",
+                "CÚ PHÁP COPY",
+                "DÁN VÀO",
+              ]}
+              rows={rows.map((row) => {
+                const term = txt(row.criterion_or_keyword);
+                const match = txt(row.match);
+                const ml = match.toLowerCase();
+                const syntax =
+                  ml.includes("chính xác") || ml === "exact"
+                    ? `[${term}]`
+                    : ml.includes("cụm") || ml === "phrase"
+                      ? `"${term}"`
+                      : term;
+                return [
+                  txt(row.action),
+                  txt(row.campaign),
+                  txt(row.ad_group),
+                  term,
+                  match,
+                  syntax,
+                  txt(row.note),
+                ];
+              })}
+            />
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function SixFields({ item }: { item: AnyRec }) {
+  return (
+    <dl className="mt-2 grid gap-2 text-sm md:grid-cols-2">
+      {fieldsOf(item).map((f) => (
+        <div key={f.key}>
+          <dt className="text-xs text-muted">{f.label}</dt>
+          <dd className="mt-0.5 text-pretty">{txt(f.value) || "—"}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function SopPanel({ data }: { data: AnyRec | null }) {
+  if (!data) return <Empty>Chưa có SOP.</Empty>;
+  const sections = asArr(data.sections);
+  const forbid = asArr(data.forbid).map(String);
+  return (
+    <section className="rounded-xl bg-paper p-5 shadow-sheet">
+      <h2 className="font-display text-xl font-medium tracking-tight">{txt(data.title)}</h2>
+      <p className="mt-1 text-sm text-muted">{txt(data.lead)}</p>
+      {forbid.length > 0 && (
+        <ul className="mt-4 list-disc space-y-1 pl-5 text-sm">
+          {forbid.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-5 space-y-5">
+        {sections.map((s) => (
+          <article key={txt(s.id)}>
+            <h3 className="font-medium">{txt(s.title)}</h3>
+            <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-muted">{txt(s.body)}</pre>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ConnectPanel({
+  data,
+  clientId,
+  live,
+  onConnectResult,
+  onKpiPulled,
+}: {
+  data: AnyRec | null;
+  clientId?: string;
+  live?: boolean;
+  onConnectResult?: (snap: AnyRec) => void;
+  onKpiPulled?: (pack: {
+    report?: AnyRec | null;
+    compare?: AnyRec | null;
+    connect?: AnyRec | null;
+    hub?: AnyRec | null;
+  }) => void;
+}) {
+  const [fileName, setFileName] = useState("");
+  const [yamlText, setYamlText] = useState("");
+  const [oauthClientId, setOauthClientId] = useState("");
+  const [oauthClientSecret, setOauthClientSecret] = useState("");
+  const [refreshToken, setRefreshToken] = useState("");
+  const [busy, setBusy] = useState<"save" | "probe" | "kpi" | null>(null);
+  const [formError, setFormError] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+
+  if (!data) return <Empty>Chưa có thông tin kết nối.</Empty>;
+  const checks = asArr(data.checklist);
+  const status = String(data.status || "");
+  const statusVi =
+    {
+      CONNECTED: "ĐÃ NỐI",
+      MISSING_CREDENTIALS: "CHƯA CÓ QUYỀN",
+      FIXTURE: "KHÁCH GIẢ",
+      PERMISSION_DENIED: "BỊ TỪ CHỐI QUYỀN",
+      TOKEN_EXPIRED: "TOKEN HẾT HẠN",
+      CLOUD_PROJECT_TEST: "PROJECT CLOUD CHƯA ĐỦ CẤP",
+      DEVELOPER_TOKEN_BLOCKED: "TOKEN NHÀ PHÁT TRIỂN BỊ CHẶN",
+      API_VERSION_SUNSET: "BẢN API ĐÃ TẮT",
+      ACCOUNT_NOT_FOUND: "KHÔNG TÌM THẤY TÀI KHOẢN",
+    }[status] || status;
+  const yamlPresent = Boolean(data.yaml_file_present);
+  const probed = formatProbed(data.probed_at);
+  const showIntake = Boolean(live && clientId);
+  const connected = status === "CONNECTED";
+  const pulledKpis = Boolean(data.pulled_kpis);
+  const hasIntake = Boolean(
+    yamlText.trim() || oauthClientId.trim() || oauthClientSecret.trim() || refreshToken.trim(),
+  );
+  const mccRows = asArr(data.mcc_accounts);
+  const mccAds = mccRows.filter((a) => !a.is_manager);
+
+  function clearSecrets() {
+    setYamlText("");
+    setFileName("");
+    setOauthClientId("");
+    setOauthClientSecret("");
+    setRefreshToken("");
+  }
+
+  async function run(save: boolean) {
+    if (!clientId) return;
+    if (save && !hasIntake) {
+      setFormError("Kéo file yaml hoặc điền 3 ô OAuth trước khi lưu. Không dán token vào chat.");
+      return;
+    }
+    setBusy(save ? "save" : "probe");
+    setFormError("");
+    try {
+      const result = (await saveYamlAndProbe({
+        data: {
+          clientId,
+          yamlText: save ? yamlText : "",
+          developerToken: "",
+          oauthClientId: save ? oauthClientId : "",
+          oauthClientSecret: save ? oauthClientSecret : "",
+          refreshToken: save ? refreshToken : "",
+          save,
+        },
+      })) as InstallAndProbeResult;
+      if (result.error_vi) setFormError(friendlyConnectError(result.error_vi));
+      if (result.connect) onConnectResult?.(result.connect);
+      if (save && result.install?.ok) clearSecrets();
+    } catch {
+      setFormError("Không thử được. Token không hiện ra đây — thử lại trên màn này, đừng dán chat.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runKpis() {
+    if (!clientId) return;
+    setBusy("kpi");
+    setFormError("");
+    try {
+      const result = (await pullClientKpis({ data: { clientId } })) as PullKpisResult;
+      if (result.error_vi) setFormError(result.error_vi);
+      if (result.connect) onConnectResult?.(result.connect as AnyRec);
+      if (result.ok) {
+        onKpiPulled?.({
+          report: (result.report as AnyRec) || null,
+          compare: (result.compare as AnyRec) || null,
+          connect: (result.connect as AnyRec) || null,
+          hub: (result.hub as AnyRec) || null,
+        });
+      }
+    } catch {
+      setFormError("Không kéo được 5 KPI. Không dán token vào chat.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function acceptYaml(file: File | undefined) {
+    if (!file) return;
+    const name = file.name || "google-ads.yaml";
+    if (!/\.(ya?ml)$/i.test(name) && file.type && !/yaml|text\/plain/i.test(file.type)) {
+      setFormError("Chỉ nhận file .yaml / .yml. Không dán token vào chat.");
+      return;
+    }
+    setFormError("");
+    setFileName(name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setYamlText(typeof reader.result === "string" ? reader.result : "");
+    };
+    reader.readAsText(file);
+  }
+
+  function onDragOverZone(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+    setDragOver(true);
+  }
+
+  function onDragLeaveZone(e: DragEvent) {
+    e.preventDefault();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
+  }
+
+  function onDropZone(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    acceptYaml(e.dataTransfer.files?.[0]);
+  }
+
+  return (
+    <section className="rounded-xl bg-paper p-5 shadow-sheet">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-display text-xl font-medium tracking-tight">Kết nối Ads</h2>
+        <StatusChip value={status} label={statusVi} />
+      </div>
+      <p className="mt-2 text-sm">{txt(data.title_vi || data.status)}</p>
+      <p className="mt-1 text-sm text-muted">{txt(data.detail_vi)}</p>
+      {data.customer_id_dashed ? (
+        <p className="mt-3 text-sm tabular-nums">
+          Customer ID {txt(data.customer_id_dashed)}
+          {data.mcc_id_dashed ? ` · MCC ${txt(data.mcc_id_dashed)}` : ""}
+          {data.mcc_display_name ? ` · ${txt(data.mcc_display_name)}` : ""}
+        </p>
+      ) : null}
+      {mccRows.length ? (
+        <div className="mt-4 overflow-x-auto">
+          <p className="mb-2 text-sm">
+            MCC {txt(data.mcc_display_name) || "Fago Agency"} {txt(data.mcc_id_dashed)}: {mccAds.length} tài
+            khoản quảng cáo
+            {data.roster_complete ? " — đã kéo từ MCC." : " — danh sách chưa đủ, không đoán tên."}
+          </p>
+          <table className="w-full min-w-[28rem] text-left text-sm">
+            <thead>
+              <tr className="border-b border-line text-xs text-subtle">
+                <th className="py-2 pr-3 font-medium">Tài khoản</th>
+                <th className="py-2 pr-3 font-medium">Customer ID</th>
+                <th className="py-2 pr-3 font-medium">Loại</th>
+                <th className="py-2 font-medium">Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>

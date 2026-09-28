@@ -1,0 +1,401 @@
+    const rows = await sql.query<{ payload: Json }>(
+      `select payload from adsops_analytics_warehouse where client_id = $1 limit 1`,
+      [clientId],
+    );
+    return rows[0]?.payload ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function stubBudgetPace(clientId: string, timezone: string, currency: string): BudgetPace {
+  return {
+    module: "budget_pace",
+    client_id: clientId,
+    separate_from_guard: true,
+    blocks_propose: true,
+    status: "missing",
+    missing_label: "Chưa kéo ngân sách 1 ngày",
+    firing: false,
+    today: saigonYmd(),
+    timezone,
+    currency,
+    hours_elapsed: 0,
+    tickets: [],
+    ok: [],
+    email: {
+      channel: "email",
+      to: [],
+      subject: "",
+      body: "",
+      status: "skipped",
+      not_merged_with_guard: true,
+      sent: false,
+      note: "Budget pace tách Guard — chưa kéo trong phiên kho phân tích.",
+    },
+    formula: "remaining / hours_remaining",
+  };
+}
+
+export async function pullAnalyticsWarehouse(
+  clientId: string,
+  lookbackDays = ANALYTICS_LOOKBACK_DAYS_DEFAULT,
+): Promise<PullAnalyticsWarehouseResult> {
+  const id = clientId.trim();
+  if (!CLIENT_ID_RE.test(id)) {
+    return { ok: false, error_vi: "Khách không hợp lệ." };
+  }
+  const lookback = Math.min(
+    ANALYTICS_LOOKBACK_DAYS_MAX,
+    Math.max(1, Math.floor(Number(lookbackDays) || ANALYTICS_LOOKBACK_DAYS_DEFAULT)),
+  );
+
+  try {
+    const secrets = loadSecrets();
+    const miss = missingKeys(secrets);
+    if (miss.length) {
+      return {
+        ok: false,
+        client_id: id,
+        error_vi:
+          "Chưa có OAuth trên máy/Vercel. Vào tab Kết nối → điền 3 ô → Lưu trên máy rồi thử gọi. Trên Production cần env GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET / GOOGLE_ADS_REFRESH_TOKEN.",
+      };
+    }
+
+    const tokenHit = await accessToken(secrets);
+    if (!tokenHit.token) {
+      return { ok: false, client_id: id, error_vi: tokenHit.error || "Không lấy được quyền Google." };
+    }
+
+    const loginId = digits(secrets.login_customer_id) || MCC_ID;
+    const picked = await pickVersion(tokenHit.token, loginId, secrets.developer_token);
+    if ("error" in picked) {
+      return { ok: false, client_id: id, error_vi: picked.error };
+    }
+    const version = picked.version;
+    const customerId = customerIdFor(id);
+    if (customerId.length !== 10) {
+      return { ok: false, client_id: id, error_vi: "Không suy ra Customer ID từ khách." };
+    }
+
+    const end = addDaysYmd(saigonYmd(), -1);
+    const start = addDaysYmd(end, -(lookback - 1));
+    const stStart = addDaysYmd(end, -(Math.min(lookback, SEARCH_TERM_LOOKBACK_CAP) - 1));
+
+    // Customer meta
+    const metaRows = await searchRows(
+      version,
+      customerId,
+      tokenHit.token,
+      loginId,
+      `SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer LIMIT 1`,
+      secrets.developer_token,
+      1,
+    );
+    const cust = asRec(metaRows[0]?.customer);
+    const displayName =
+      String(cust.descriptiveName || "") ||
+      KNOWN[customerId]?.display_name ||
+      id;
+    const currency = String(cust.currencyCode || "VND");
+    const timezone = String(cust.timeZone || "Asia/Saigon");
+
+    // Conversion actions catalog
+    const actionRows = await searchRows(
+      version,
+      customerId,
+      tokenHit.token,
+      loginId,
+      `SELECT conversion_action.id, conversion_action.name, conversion_action.status, conversion_action.type
+       FROM conversion_action
+       WHERE conversion_action.status != 'REMOVED'`,
+      secrets.developer_token,
+      5,
+    );
+    const actionNameByResource = new Map<string, string>();
+    const actionsByBucket: Record<ConvBucket, string[]> = {
+      conv_call: [],
+      conv_zalo: [],
+      conv_facebook_chat: [],
+      conv_form: [],
+      conv_other: [],
+    };
+    for (const row of actionRows) {
+      const ca = asRec(row.conversionAction);
+      const name = String(ca.name || "");
+      const caId = String(ca.id || "");
+      if (caId) actionNameByResource.set(`customers/${customerId}/conversionActions/${caId}`, name);
+      const bucket = classifyAction(name);
+      if (bucket && name && !actionsByBucket[bucket].includes(name)) {
+        actionsByBucket[bucket].push(name);
+      }
+    }
+
+    // Campaigns catalog
+    const campRows = await searchRows(
+      version,
+      customerId,
+      tokenHit.token,
+      loginId,
+      `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type
+       FROM campaign
+       WHERE campaign.status != 'REMOVED'`,
+      secrets.developer_token,
+      10,
+    );
+    const campaigns = campRows.map((row) => {
+      const c = asRec(row.campaign);
+      const type = channelType(String(c.advertisingChannelType || ""));
+      return {
+        id: String(c.id || ""),
+        name: String(c.name || ""),
+        type,
+        status: statusCode(String(c.status || "")),
+        pmax: type === "PERFORMANCE_MAX",
+      };
+    }).filter((c) => c.id);
+
+    // Account daily
+    const accountDailyRows = await searchRows(
+      version,
+      customerId,
+      tokenHit.token,
+      loginId,
+      `SELECT segments.date, metrics.impressions, metrics.clicks, metrics.invalid_clicks,
+              metrics.cost_micros, metrics.conversions
+       FROM customer
+       WHERE segments.date BETWEEN '${start}' AND '${end}'
+       ORDER BY segments.date`,
+      secrets.developer_token,
+    );
+
+    // Account conversion split by action
+    const accountConvRows = await searchRows(
+      version,
+      customerId,
+      tokenHit.token,
+      loginId,
+      `SELECT segments.date, segments.conversion_action, metrics.conversions
+       FROM customer
+       WHERE segments.date BETWEEN '${start}' AND '${end}'
+         AND metrics.conversions > 0`,
+      secrets.developer_token,
+    );
+    const accountConvByDate = new Map<string, Record<ConvBucket, number>>();
+    for (const row of accountConvRows) {
+      const seg = asRec(row.segments);
+      const date = String(seg.date || "");
+      const resource = String(seg.conversionAction || "");
+      const name = actionNameByResource.get(resource) || resource.split("/").pop() || "";
+      const bucket = classifyAction(name);
+      if (!date || !bucket) continue;
+      const slot = accountConvByDate.get(date) || emptyConv();
+      slot[bucket] += numField(asRec(row.metrics).conversions);
+      accountConvByDate.set(date, slot);
+    }
+
+    const dailyAccount: DailyRow[] = accountDailyRows.map((row) => {
+      const seg = asRec(row.segments);
+      const m = asRec(row.metrics);
+      const date = String(seg.date || "");
+      const conv = accountConvByDate.get(date) || emptyConv();
+      return {
+        date,
+        impressions: numField(m.impressions),
+        clicks: numField(m.clicks),
+        invalid_clicks: numField(m.invalidClicks),
+        cost: microsToCurrency(m.costMicros),
+        conversions: numField(m.conversions),
+        ...conv,
+      };
+    });
+
+    // Campaign daily
+    const campaignDailyRows = await searchRows(
+      version,
+      customerId,
+      tokenHit.token,
+      loginId,
+      `SELECT segments.date, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type,
+              metrics.impressions, metrics.clicks, metrics.invalid_clicks, metrics.cost_micros, metrics.conversions
+       FROM campaign
+       WHERE segments.date BETWEEN '${start}' AND '${end}'
+         AND campaign.status != 'REMOVED'
+       ORDER BY segments.date`,
+      secrets.developer_token,
+    );
+
+    let campaignConvRows: Record<string, unknown>[] = [];
+    try {
+      campaignConvRows = await searchRows(
+        version,
+        customerId,
+        tokenHit.token,
+        loginId,
+        `SELECT segments.date, campaign.id, segments.conversion_action, metrics.conversions
+         FROM campaign
+         WHERE segments.date BETWEEN '${start}' AND '${end}'
+           AND metrics.conversions > 0
+           AND campaign.status != 'REMOVED'`,
+        secrets.developer_token,
+      );
+    } catch {
+      campaignConvRows = [];
+    }
+    const campConvKey = new Map<string, Record<ConvBucket, number>>();
+    for (const row of campaignConvRows) {
+      const seg = asRec(row.segments);
+      const camp = asRec(row.campaign);
+      const date = String(seg.date || "");
+      const cid = String(camp.id || "");
+      const resource = String(seg.conversionAction || "");
+      const name = actionNameByResource.get(resource) || "";
+      const bucket = classifyAction(name);
+      if (!date || !cid || !bucket) continue;
+      const key = `${date}|${cid}`;
+      const slot = campConvKey.get(key) || emptyConv();
+      slot[bucket] += numField(asRec(row.metrics).conversions);
+      campConvKey.set(key, slot);
+    }
+
+    const dailyCampaign: DailyRow[] = campaignDailyRows.map((row) => {
+      const seg = asRec(row.segments);
+      const c = asRec(row.campaign);
+      const m = asRec(row.metrics);
+      const date = String(seg.date || "");
+      const cid = String(c.id || "");
+      const conv = campConvKey.get(`${date}|${cid}`) || emptyConv();
+      const type = channelType(String(c.advertisingChannelType || ""));
+      return {
+        date,
+        campaign_id: cid,
+        campaign_name: String(c.name || ""),
+        campaign_type: type,
+        status: statusCode(String(c.status || "")),
+        impressions: numField(m.impressions),
+        clicks: numField(m.clicks),
+        invalid_clicks: numField(m.invalidClicks),
+        cost: microsToCurrency(m.costMicros),
+        conversions: numField(m.conversions),
+        ...conv,
+      };
+    });
+
+    // Ad groups — full window best-effort
+    let dailyAdGroup: DailyRow[] = [];
+    let adGroups: AnalyticsSnap["ad_groups"] = [];
+    try {
+      const agMeta = await searchRows(
+        version,
+        customerId,
+        tokenHit.token,
+        loginId,
+        `SELECT ad_group.id, ad_group.name, ad_group.status, campaign.id
+         FROM ad_group
+         WHERE ad_group.status != 'REMOVED'`,
+        secrets.developer_token,
+        10,
+      );
+      adGroups = agMeta.map((row) => {
+        const ag = asRec(row.adGroup);
+        const c = asRec(row.campaign);
+        return {
+          id: String(ag.id || ""),
+          name: String(ag.name || ""),
+          campaign_id: String(c.id || ""),
+          status: statusCode(String(ag.status || "")),
+        };
+      }).filter((g) => g.id);
+
+      const agDaily = await searchRows(
+        version,
+        customerId,
+        tokenHit.token,
+        loginId,
+        `SELECT segments.date, campaign.id, ad_group.id, ad_group.name, ad_group.status,
+                metrics.impressions, metrics.clicks, metrics.invalid_clicks, metrics.cost_micros, metrics.conversions
+         FROM ad_group
+         WHERE segments.date BETWEEN '${start}' AND '${end}'
+           AND ad_group.status != 'REMOVED'`,
+        secrets.developer_token,
+      );
+      dailyAdGroup = agDaily.map((row) => {
+        const seg = asRec(row.segments);
+        const c = asRec(row.campaign);
+        const ag = asRec(row.adGroup);
+        const m = asRec(row.metrics);
+        return {
+          date: String(seg.date || ""),
+          campaign_id: String(c.id || ""),
+          ad_group_id: String(ag.id || ""),
+          ad_group_name: String(ag.name || ""),
+          status: statusCode(String(ag.status || "")),
+          impressions: numField(m.impressions),
+          clicks: numField(m.clicks),
+          invalid_clicks: numField(m.invalidClicks),
+          cost: microsToCurrency(m.costMicros),
+          conversions: numField(m.conversions),
+          ...emptyConv(),
+        };
+      });
+    } catch {
+      dailyAdGroup = [];
+      adGroups = [];
+    }
+
+    // Keyword — full window best-effort
+    let dailyKeyword: DailyRow[] = [];
+    try {
+      const kwDaily = await searchRows(
+        version,
+        customerId,
+        tokenHit.token,
+        loginId,
+        `SELECT segments.date, campaign.id, ad_group.id, ad_group_criterion.criterion_id,
+                ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
+                ad_group_criterion.status,
+                metrics.impressions, metrics.clicks, metrics.invalid_clicks, metrics.cost_micros, metrics.conversions
+         FROM keyword_view
+         WHERE segments.date BETWEEN '${start}' AND '${end}'
+           AND ad_group_criterion.status != 'REMOVED'`,
+        secrets.developer_token,
+        40,
+      );
+      dailyKeyword = kwDaily.map((row) => {
+        const seg = asRec(row.segments);
+        const c = asRec(row.campaign);
+        const ag = asRec(row.adGroup);
+        const crit = asRec(row.adGroupCriterion);
+        const kw = asRec(crit.keyword);
+        const m = asRec(row.metrics);
+        return {
+          date: String(seg.date || ""),
+          campaign_id: String(c.id || ""),
+          ad_group_id: String(ag.id || ""),
+          keyword_id: String(crit.criterionId || ""),
+          keyword_text: String(kw.text || ""),
+          match_type: String(kw.matchType || "").replace(/^KEYWORD_MATCH_TYPE_/, ""),
+          status: statusCode(String(crit.status || "")),
+          impressions: numField(m.impressions),
+          clicks: numField(m.clicks),
+          invalid_clicks: numField(m.invalidClicks),
+          cost: microsToCurrency(m.costMicros),
+          conversions: numField(m.conversions),
+          ...emptyConv(),
+        };
+      });
+    } catch {
+      dailyKeyword = [];
+    }
+
+    // Search terms — capped window best-effort
+    let dailySearchTerm: DailyRow[] = [];
+    let stNote = "";
+    try {
+      const stDaily = await searchRows(
+        version,
+        customerId,
+        tokenHit.token,
+        loginId,
+        `SELECT segments.date, campaign.id, campaign.name, ad_group.id,
+                search_term_view.search_term, segments.search_term_match_type,

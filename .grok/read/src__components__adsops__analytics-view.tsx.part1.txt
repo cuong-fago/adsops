@@ -1,0 +1,351 @@
+                  className="inline-flex h-10 items-center rounded-full bg-inset px-3 text-sm"
+                >
+                  {g.label}: {convNum(Number(metrics[g.metric] || 0))}
+                </span>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-subtle">
+              Chuyển đổi Google ≠ Qualified Lead. All conversions không gộp vào đây. CPC / CTR / CR /
+              chi phí/chuyển đổi trên mọi click. Conv = 0 → chi/conv = 0.
+            </p>
+          </>
+        )}
+      </section>
+
+      <section className="rounded-xl bg-paper p-4 shadow-sheet md:p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <h3 className="font-display text-lg font-medium tracking-tight">
+            {layer === "campaign"
+              ? "Chiến dịch"
+              : layer === "ad_group"
+                ? "Nhóm quảng cáo"
+                : layer === "keyword"
+                  ? "Từ khoá"
+                  : "Search terms"}
+          </h3>
+          <div className="flex flex-wrap gap-1.5">
+            {LAYERS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => goLayer(item.id)}
+                className={cn(
+                  "h-11 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
+                  layer === item.id ? "bg-accent text-accent-fg" : "bg-inset text-ink hover:bg-line",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+            <label className="flex h-11 items-center gap-2 rounded-full bg-inset px-3 text-sm">
+              <input
+                type="checkbox"
+                checked={onlyConv}
+                onChange={(e) => setOnlyConv(e.target.checked)}
+                className="size-4 accent-accent"
+              />
+              Chỉ có conv
+            </label>
+          </div>
+        </div>
+        <nav className="mt-3 flex flex-wrap items-center gap-1.5 text-sm text-muted">
+          <button type="button" className="hover:text-ink hover:underline" onClick={() => goLayer("campaign")}>
+            {snap.display_name}
+          </button>
+          {campaignName ? (
+            <>
+              <ChevronRight className="size-3.5" />
+              <button
+                type="button"
+                className="hover:text-ink hover:underline"
+                onClick={() => {
+                  setLayer("ad_group");
+                  setAdGroupId(null);
+                }}
+              >
+                {campaignName}
+              </button>
+            </>
+          ) : null}
+          {adGroupName ? (
+            <>
+              <ChevronRight className="size-3.5" />
+              <span className="text-ink">{adGroupName}</span>
+            </>
+          ) : null}
+        </nav>
+        <div className="mt-4">
+          <WorkTable
+            snap={snap}
+            layer={layer}
+            block={current}
+            groups={groups}
+            canDrill={canDrill}
+            onDrill={drill}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function deltaWord(now: number | undefined, prev: number | undefined) {
+  if (prev == null || now == null) return "—";
+  if (prev === 0 && now === 0) return "—";
+  if (prev === 0) return "tăng";
+  const d = (now - prev) / Math.abs(prev);
+  if (Math.abs(d) < 0.005) return "—";
+  return d > 0 ? "tăng" : "giảm";
+}
+
+function Kpi({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-inset px-3 py-3">
+      <p className="text-xs font-medium tracking-wide text-subtle">{label}</p>
+      <p className="mt-1 font-display text-lg font-medium tracking-tight tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+const PERIOD_KPIS = [
+  { id: "cost", label: "Chi tiêu", fmt: (m: Record<string, number>) => dong(m.cost || 0) },
+  { id: "clicks", label: "Click", fmt: (m: Record<string, number>) => num(m.clicks || 0) },
+  { id: "conversions", label: "Conv", fmt: (m: Record<string, number>) => convNum(m.conversions || 0) },
+  {
+    id: "cost_per_conversion",
+    label: "CPL",
+    fmt: (m: Record<string, number>) => dong(m.cost_per_conversion || 0),
+  },
+] as const;
+
+type PeriodKpi = (typeof PERIOD_KPIS)[number]["id"];
+
+function metricDefs(groups: { id: string; label: string; metric: string }[]) {
+  return [
+    { label: "Chi tiêu", cell: (m: Record<string, number>) => dong(m.cost || 0), strong: true },
+    { label: "Click", cell: (m: Record<string, number>) => num(m.clicks || 0) },
+    { label: "Click lệch", cell: (m: Record<string, number>) => invalidLabel(m) },
+    { label: "Conv", cell: (m: Record<string, number>) => convNum(m.conversions || 0) },
+    { label: "CPC", cell: (m: Record<string, number>) => dong(m.cpc || 0) },
+    { label: "CPL", cell: (m: Record<string, number>) => dong(m.cost_per_conversion || 0) },
+    ...groups.map((g) => ({
+      label: g.label,
+      cell: (m: Record<string, number>) => convNum(Number(m[g.metric] || 0)),
+      strong: false,
+    })),
+  ];
+}
+
+function entityUnion(blocks: LayerBlock[]) {
+  const map = new Map<
+    string,
+    { id: string; name: string; cost: number; status?: string; pmax?: boolean }
+  >();
+  for (const block of blocks) {
+    for (const row of block.rows) {
+      const prev = map.get(row.id);
+      map.set(row.id, {
+        id: row.id,
+        name: row.name,
+        status: row.status,
+        pmax: row.pmax,
+        cost: (prev?.cost || 0) + (row.metrics.cost || 0),
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) => b.cost - a.cost);
+}
+
+function PeriodTable({
+  title,
+  cols,
+  blocks,
+  accountBlocks,
+  groups,
+  layer,
+  onLayerChange,
+  onPickCampaign,
+}: {
+  title: string;
+  cols: { id: string; label: string; sub: string }[];
+  blocks: LayerBlock[];
+  accountBlocks: LayerBlock[];
+  groups: { id: string; label: string; metric: string }[];
+  layer: "account" | "campaign";
+  onLayerChange: (next: "account" | "campaign") => void;
+  onPickCampaign: (id: string) => void;
+}) {
+  const [kpi, setKpi] = useState<PeriodKpi>("cost");
+  const rows = metricDefs(groups);
+  const campaigns = layer === "campaign" ? entityUnion(blocks) : [];
+  const colCount = cols.length + 1;
+  const kpiMeta = PERIOD_KPIS.find((item) => item.id === kpi) || PERIOD_KPIS[0];
+
+  return (
+    <section id="analytics-period" className="rounded-xl bg-paper p-4 shadow-sheet md:p-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="font-display text-lg font-medium tracking-tight">{title}</h3>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            {layer === "campaign"
+              ? "Tầng chiến dịch — mỗi khối một chiến dịch, cột là tháng. Dòng cuối = tổng tài khoản. Bấm tên chiến dịch để xuống nhóm."
+              : "Tầng tài khoản — tổng mọi chiến dịch. Đổi sang Chiến dịch để so từng chiến dịch cạnh nhau."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            [
+              { id: "account", label: "Tài khoản" },
+              { id: "campaign", label: "Chiến dịch" },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onLayerChange(item.id)}
+              className={cn(
+                "h-11 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
+                layer === item.id ? "bg-accent text-accent-fg" : "bg-inset text-ink hover:bg-line",
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {layer === "campaign" ? (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="pr-1 text-xs font-medium text-muted">Chỉ số</span>
+          {PERIOD_KPIS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setKpi(item.id)}
+              className={cn(
+                "h-11 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
+                kpi === item.id ? "bg-accent text-accent-fg" : "bg-inset text-ink hover:bg-line",
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-3 -mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+        {layer === "campaign" && campaigns.length > 0 ? (
+          <table id="analytics-campaign-matrix" className="mb-5 min-w-full border-separate border-spacing-0 text-left text-sm">
+            <thead>
+              <tr>
+                <th className="sticky left-0 bg-paper pb-2 pr-4 text-xs font-medium text-muted">
+                  {kpiMeta.label} theo chiến dịch
+                </th>
+                {cols.map((col, i) => (
+                  <th key={`sum-${col.id}`} className="pb-2 pr-4 text-right text-xs font-medium">
+                    <span className="text-ink">{col.label}</span>
+                    {!blocks[i]?.complete ? (
+                      <span className="mt-0.5 block font-medium text-warn">Thiếu dữ liệu</span>
+                    ) : null}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {campaigns.map((camp) => (
+                <tr key={`sum-${camp.id}`} className="border-t border-line">
+                  <td className="sticky left-0 bg-paper py-1 pr-4">
+                    <button
+                      type="button"
+                      onClick={() => onPickCampaign(camp.id)}
+                      className="flex min-h-11 w-full items-center text-left font-medium"
+                    >
+                      {camp.name}
+                    </button>
+                  </td>
+                  {cols.map((col, i) => {
+                    const m = blocks[i]?.rows.find((r) => r.id === camp.id)?.metrics;
+                    return (
+                      <td key={col.id} className="py-2.5 pr-4 text-right tabular-nums">
+                        {m ? kpiMeta.fmt(m) : "—"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              <tr className="border-t border-line-strong">
+                <td className="sticky left-0 bg-paper py-2.5 pr-4 font-medium">Tài khoản</td>
+                {cols.map((col, i) => {
+                  const m = accountBlocks[i]?.rows[0]?.metrics;
+                  return (
+                    <td key={col.id} className="py-2.5 pr-4 text-right font-medium tabular-nums">
+                      {m ? kpiMeta.fmt(m) : "—"}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tbody>
+          </table>
+        ) : null}
+        {layer === "campaign" && campaigns.length > 0 ? (
+          <p className="mb-2 text-xs font-medium tracking-wide text-subtle">Đủ chỉ số từng chiến dịch</p>
+        ) : null}
+        <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
+          <thead>
+            <tr>
+              <th className="sticky left-0 bg-paper pb-2 pr-4 text-xs font-medium text-muted">
+                {layer === "campaign" ? "Chiến dịch / chỉ số" : "Chỉ số"}
+              </th>
+              {cols.map((col, i) => (
+                <th key={col.id} className="pb-2 pr-4 text-right text-xs font-medium">
+                  <span className="text-ink">{col.label}</span>
+                  <span className="mt-0.5 block font-normal text-subtle">{col.sub}</span>
+                  {!blocks[i]?.complete ? (
+                    <span className="mt-0.5 block font-medium text-warn">Thiếu dữ liệu</span>
+                  ) : null}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          {layer === "account" ? (
+            <tbody>
+              {rows.map((row) => (
+                <MetricRow key={row.label} row={row} cols={cols} pick={(i) => blocks[i]?.rows[0]?.metrics} />
+              ))}
+            </tbody>
+          ) : (
+            <>
+              {campaigns.length === 0 ? (
+                <tbody>
+                  <tr>
+                    <td colSpan={colCount} className="py-6 text-sm text-muted">
+                      Không có chiến dịch có số trong các kỳ này. Không đoán số.
+                    </td>
+                  </tr>
+                </tbody>
+              ) : (
+                campaigns.map((camp) => (
+                  <tbody key={camp.id} className="border-t border-line">
+                    <tr className="border-t border-line">
+                      <td className="sticky left-0 bg-inset py-1 pr-4">
+                        <button
+                          type="button"
+                          onClick={() => onPickCampaign(camp.id)}
+                          className="flex min-h-11 w-full items-center gap-2 text-left font-medium text-ink"
+                        >
+                          <span>{camp.name}</span>
+                          {camp.pmax ? (
+                            <span className="rounded-full bg-paper px-2 py-0.5 text-xs font-medium text-muted">
+                              PMax
+                            </span>
+                          ) : null}
+                        </button>
+                      </td>
+                      {cols.map((col) => (
+                        <td key={col.id} className="bg-inset py-1 pr-4" />
+                      ))}
+                    </tr>
+                    {rows.map((row) => (
+                      <MetricRow
+                        key={`${camp.id}-${row.label}`}
+                        row={row}
+                        cols={cols}
+                        indent

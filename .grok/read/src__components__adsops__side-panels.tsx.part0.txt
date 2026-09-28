@@ -1,0 +1,411 @@
+import { Download, Upload } from "lucide-react";
+import { useState, type DragEvent } from "react";
+import { FinalWorkbook } from "@/components/adsops/final-workbook";
+import { Tab12CopyDesk } from "@/components/adsops/tab12-copy";
+import { money, num, pct } from "@/lib/adsops/format";
+import { pullClientKpis, saveYamlAndProbe, type InstallAndProbeResult, type PullKpisResult } from "@/lib/adsops/connect.functions";
+import { cn } from "@/lib/cn";
+
+type AnyRec = Record<string, unknown>;
+
+function asObj(v: unknown): AnyRec {
+  return v && typeof v === "object" ? (v as AnyRec) : {};
+}
+
+function asArr(v: unknown): AnyRec[] {
+  return Array.isArray(v) ? (v as AnyRec[]) : [];
+}
+
+function txt(v: unknown) {
+  if (v == null || v === "") return "";
+  if (typeof v === "boolean") return v ? "Có" : "Không";
+  return String(v);
+}
+
+function formatProbed(iso: unknown) {
+  const raw = String(iso || "");
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!match) return raw;
+  return `${match[3]}/${match[2]}/${match[1]} ${match[4]}:${match[5]}`;
+}
+
+function friendlyConnectError(raw: string) {
+  if (/ENOENT|spawn python/i.test(raw)) {
+    return "Không gọi được bộ Python cũ. Đã chuyển sang gọi Google Ads trực tiếp — bấm lại Lưu trên máy rồi thử gọi.";
+  }
+  return raw;
+}
+
+const ACCOUNT_STATUS_VI: Record<string, string> = {
+  ENABLED: "Đang chạy",
+  PAUSED: "Tạm dừng",
+  CANCELED: "Đã hủy",
+  CANCELLED: "Đã hủy",
+  REMOVED: "Đã xóa",
+  UNKNOWN: "Chưa rõ",
+  UNSPECIFIED: "Chưa rõ",
+};
+
+const FIELD_ORDER = [
+  "target",
+  "reason",
+  "evidence",
+  "source_tab",
+  "do_now",
+  "risk_if_skipped",
+] as const;
+
+const FIELD_LABELS: Record<string, string> = {
+  target: "Đối tượng",
+  reason: "Lý do",
+  evidence: "Bằng chứng",
+  source_tab: "Tab nguồn",
+  do_now: "Làm ngay?",
+  risk_if_skipped: "Rủi ro nếu bỏ qua",
+};
+
+const COMPARE_WINDOW_LABELS: Record<string, string> = {
+  "1": "Hôm qua — 1 ngày hoàn chỉnh",
+  "7": "7 ngày hoàn chỉnh",
+  "14": "14 ngày hoàn chỉnh",
+  "30": "30 ngày hoàn chỉnh",
+  "90": "90 ngày hoàn chỉnh",
+};
+
+function fieldsOf(item: AnyRec) {
+  const nested = asObj(item.fields);
+  const labels = { ...FIELD_LABELS, ...asObj(item.field_labels) };
+  return FIELD_ORDER.map((key) => ({
+    key,
+    label: String(labels[key] || FIELD_LABELS[key]),
+    value: nested[key] ?? item[key],
+  }));
+}
+
+function tone(status: string) {
+  const s = status.toUpperCase();
+  if (
+    s.includes("HARD") ||
+    s === "STALE" ||
+    s === "FAIL" ||
+    s.includes("CONFLICT")
+  )
+    return "bg-danger-bg text-danger";
+  if (
+    s === "CONNECTED" ||
+    s === "PASS" ||
+    s === "READY" ||
+    s === "CLEAR" ||
+    s === "OK" ||
+    s.includes("VERIFIED")
+  )
+    return "bg-ok-bg text-ok";
+  if (
+    s.includes("HOLD") ||
+    s === "CONDITIONAL" ||
+    s === "MISSING_CREDENTIALS" ||
+    s === "CLOUD_PROJECT_TEST" ||
+    s === "API_VERSION_SUNSET" ||
+    s === "ACCOUNT_NOT_FOUND" ||
+    s.includes("TOKEN") ||
+    s.includes("PERMISSION")
+  )
+    return "bg-warn-bg text-warn";
+  return "bg-inset text-muted";
+}
+
+function StatusChip({ value, label }: { value: string; label?: string }) {
+  if (!value) return null;
+  return (
+    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", tone(value))}>
+      {label || value}
+    </span>
+  );
+}
+
+function FileLink({ href, label }: { href?: string; label: string }) {
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg"
+    >
+      <Download className="size-4" />
+      {label}
+    </a>
+  );
+}
+
+function LiveEmpty({
+  connect,
+  noun,
+  guard,
+}: {
+  connect: AnyRec | null;
+  noun: string;
+  guard?: AnyRec | null;
+}) {
+  if (guard && (guard.final_blocked || String(guard.overall) === "HARD_STOP") && !guard.final_generated) {
+    return (
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-display text-xl font-medium tracking-tight">{noun}</h2>
+          <StatusChip value={String(guard.overall || "HARD_STOP")} />
+        </div>
+        <p className="mt-3 rounded-md bg-danger-bg px-4 py-3 text-sm text-danger">
+          Không sinh FINAL. {txt(guard.coverage_note) || txt(guard.final_block_reason) || txt(guard.verdict)}
+        </p>
+        <p className="mt-3 text-sm text-muted">Chỉ đề xuất — không tự apply Google Ads. Mở tab Guard để xem từng cổng.</p>
+      </section>
+    );
+  }
+  if (connect && String(connect.adapter) === "live") {
+    const pulled = Boolean(connect.pulled_kpis);
+    return (
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <h2 className="font-display text-xl font-medium tracking-tight">{noun}</h2>
+        <p className="mt-2 text-sm text-ink">{txt(connect.title_vi || connect.status)}</p>
+        <p className="mt-1 text-sm text-muted">{txt(connect.detail_vi)}</p>
+        <p className="mt-3 text-sm text-muted">
+          {pulled
+            ? "Đã có 5 KPI trên tab Báo cáo. Chưa kéo search term, chưa sinh FINAL."
+            : "Chưa kéo ST / FINAL. 5 KPI chỉ kéo khi phiếu ĐÃ NỐI."}
+        </p>
+      </section>
+    );
+  }
+  return <Empty>{`Chưa có ${noun.toLowerCase()} cho khách này.`}</Empty>;
+}
+
+function CompareBox({
+  compare,
+  kpis,
+  currency,
+}: {
+  compare: AnyRec;
+  kpis: { id: string; label: string }[];
+  currency: string;
+}) {
+  const howto = asArr(compare.compare_howto).map((line) => String(line));
+  const windows = asObj(compare.windows);
+  const ranges = asObj(compare.window_ranges);
+  const keys = ["1", "7", "14", "30"].filter((key) => asObj(windows[key]).days);
+  return (
+    <section className="rounded-xl bg-paper p-5 shadow-sheet">
+      <h2 className="font-display text-xl font-medium tracking-tight">Đối chiếu Google Ads</h2>
+      <p className="mt-1 text-sm text-muted">
+        Cùng tài khoản, cùng cửa sổ ngày, cùng 5 số bìa. Hôm nay không nằm trong số.
+      </p>
+      {howto.length ? (
+        <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-ink">
+          {howto.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ol>
+      ) : null}
+      {keys.map((key) => {
+        const w = asObj(windows[key]);
+        const rng = asObj(ranges[key]);
+        return (
+          <div key={key} className="mt-4">
+            <p className="text-xs font-medium text-muted">
+              {COMPARE_WINDOW_LABELS[key] || `${key} ngày`}
+              {rng.start ? ` · ${txt(rng.start)} → ${txt(rng.end)}` : ""}
+            </p>
+            <KpiGrid kpis={kpis.length ? kpis : fallbackKpis} values={w} currency={currency} />
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+export function ReportPanel({
+  data,
+  live,
+  clientId,
+  onPulled,
+  viewer,
+}: {
+  data: AnyRec | null;
+  live?: boolean;
+  clientId?: string;
+  viewer?: boolean;
+  onPulled?: (pack: {
+    report?: AnyRec | null;
+    compare?: AnyRec | null;
+    connect?: AnyRec | null;
+    hub?: AnyRec | null;
+  }) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState("");
+  if (!data) return <Empty>Chưa có bìa báo cáo cho khách này.</Empty>;
+  const kpis = asArr(data.kpis) as { id: string; label: string }[];
+  const cadences = asObj(data.cadences);
+  const daily = asObj(cadences.daily);
+  const weekly = asObj(cadences.weekly);
+  const primary = asObj(daily.primary);
+  const weekPrimary = asObj(weekly.primary);
+  const cpa = asObj(data.cpa_note);
+  const currency = String(data.currency || "VND");
+  const compare = asObj(data.compare);
+  const hasCompare = Boolean(compare.windows);
+
+  async function refreshKpis() {
+    if (!clientId) return;
+    setBusy(true);
+    setFormError("");
+    try {
+      const result = (await pullClientKpis({ data: { clientId } })) as PullKpisResult;
+      if (result.error_vi) setFormError(result.error_vi);
+      if (result.ok) {
+        onPulled?.({
+          report: (result.report as AnyRec) || null,
+          compare: (result.compare as AnyRec) || null,
+          connect: (result.connect as AnyRec) || null,
+          hub: (result.hub as AnyRec) || null,
+        });
+      }
+    } catch {
+      setFormError("Không kéo được 5 KPI. Không dán token vào chat.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {hasCompare ? (
+        <CompareBox compare={compare} kpis={kpis.length ? kpis : fallbackKpis} currency={currency} />
+      ) : null}
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl font-medium tracking-tight">Bìa 5 KPI</h2>
+            <p className="mt-1 text-sm text-muted">{txt(data.banner)}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!viewer && live && clientId ? (
+              <button
+                type="button"
+                onClick={() => void refreshKpis()}
+                disabled={busy}
+                className="inline-flex h-11 items-center rounded-full bg-accent px-4 text-sm font-medium text-accent-fg disabled:opacity-60"
+              >
+                {busy ? "Đang kéo 5 KPI…" : "Kéo lại 5 KPI"}
+              </button>
+            ) : null}
+            {!viewer ? (
+              <>
+                <FileLink href={txt(daily.xlsx_href) || undefined} label="Tải Daily" />
+                <FileLink href={txt(weekly.xlsx_href) || undefined} label="Tải Weekly" />
+              </>
+            ) : null}
+          </div>
+        </div>
+        <p className="mt-2 text-sm text-muted">{txt(data.conversion_note)}</p>
+        {formError ? <p className="mt-2 text-sm text-danger">{formError}</p> : null}
+        <p className="mt-3 text-xs font-medium text-muted">{txt(daily.period_label) || "Hàng ngày"}</p>
+        <KpiGrid kpis={kpis} values={primary} currency={currency} />
+        <ul className="mt-5 space-y-2 text-sm text-ink">
+          {asArr(daily.narrative)
+            .map((line) => String(line))
+            .slice(0, 5)
+            .map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+        </ul>
+        {cpa.google_7d != null && (
+          <p className="mt-4 rounded-md bg-inset px-3 py-2 text-sm text-muted">
+            Chi/conv Google {money(Number(cpa.google_7d), currency)} — không phải Qualified Lead.
+            {cpa.sale_7d != null
+              ? ` Chi/lead sale xác nhận ${money(Number(cpa.sale_7d), currency)}. Không trộn.`
+              : ""}
+          </p>
+        )}
+      </section>
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <h3 className="font-display text-lg font-medium tracking-tight">Tuần — cùng 5 KPI</h3>
+        <p className="mt-1 text-sm text-muted">{txt(weekly.period_label)}</p>
+        <KpiGrid kpis={kpis} values={weekPrimary} currency={currency} />
+      </section>
+    </div>
+  );
+}
+
+function KpiGrid({
+  kpis,
+  values,
+  currency,
+}: {
+  kpis: { id: string; label: string }[];
+  values: AnyRec;
+  currency: string;
+}) {
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+      {kpis.map((k) => {
+        const raw = values[k.id];
+        const empty = raw == null || raw === "";
+        let shown = "—";
+        if (!empty) {
+          if (k.id === "cost" || k.id === "cpc") shown = money(Number(raw), currency);
+          else if (k.id === "conversions") shown = num(Number(raw), 2);
+          else shown = num(Number(raw), 0);
+        }
+        return (
+          <div key={k.id} className="rounded-md bg-inset px-3 py-3">
+            <div className="text-xs text-muted">{k.label}</div>
+            <div className="mt-1 text-lg font-medium tabular-nums">{shown}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function AlertsPanel({ data }: { data: AnyRec | null }) {
+  if (!data) return <Empty>Chưa có cảnh báo Guard.</Empty>;
+  const alerts = asArr(data.alerts);
+  const journal = asArr(data.journal);
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <h2 className="font-display text-xl font-medium tracking-tight">Cảnh báo Guard</h2>
+        <p className="mt-1 text-sm text-muted">
+          {txt(data.overall_label)}. Stale / conv = 0 / coverage — không gồm ngân sách 1 ngày.
+        </p>
+        {alerts.length === 0 ? (
+          <p className="mt-4 rounded-md bg-ok-bg px-4 py-3 text-sm text-ok">
+            Không có phiếu Guard trên khách này.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {alerts.map((a, i) => (
+              <li key={txt(a.code) || i} className="rounded-md bg-danger-bg px-4 py-3">
+                <p className="font-medium">{txt(a.title)}</p>
+                <p className="mt-1 text-sm">{txt(a.message)}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <h3 className="font-display text-lg font-medium tracking-tight">Nhật ký xuất</h3>
+        <p className="mt-1 text-sm text-muted">Chỉ file của khách đang chọn. Chọn A không thấy số B.</p>
+        <ul className="mt-3 divide-y divide-line text-sm">
+          {journal.map((row, i) => (
+            <li key={i} className="flex flex-wrap justify-between gap-2 py-2">
+              <span>
+                {txt(row.artifact)} · {txt(row.filename)}
+              </span>
+              <span className="text-muted">{txt(row.exported_at)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  );
+}
+

@@ -1,0 +1,327 @@
+    (shownTab === "final" || shownTab === "proposals" || shownTab === "guard" || shownTab === "alerts");
+  const opsTabs = viewer ? OPS_TABS.filter((t) => t.id === "report") : OPS_TABS;
+  const roleVi =
+    access?.role === "ops"
+      ? "Vận hành"
+      : access?.role === "sale"
+        ? "Sale"
+        : access?.role === "client"
+          ? "Khách hàng"
+          : "";
+
+  const body = useMemo(() => {
+    if (accessError) {
+      return (
+        <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-danger shadow-sheet">
+          {accessError}
+        </section>
+      );
+    }
+    if (!access) {
+      return <p className="px-1 py-16 text-center text-sm text-muted">Đang đọc quyền…</p>;
+    }
+    if (access.role === "pending") {
+      return (
+        <section className="rounded-xl bg-paper px-5 py-10 text-center shadow-sheet">
+          <h2 className="font-display text-xl font-medium">Chưa được cấp quyền</h2>
+          <p className="mt-2 text-sm text-muted">
+            {access.email || "Email này"} chưa được gắn tài khoản. Nhờ vận hành AdsOps cấp quyền
+            khách hàng hoặc sale — chỉ vào chỉ số báo cáo. Không dán token.
+          </p>
+        </section>
+      );
+    }
+    if (loading) {
+      return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở khách…</p>;
+    }
+    const tabKeys = TAB_MODULES[shownTab];
+    const tabMissing = tabKeys.some((key) => {
+      if (key === "analytics") return analytics === undefined;
+      if (key === "pace") return pace === undefined;
+      return !(key in basePack);
+    });
+    if (tabMissing) {
+      return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở…</p>;
+    }
+    if (shownTab === "analytics") {
+      if (analyticsLoading && analytics === undefined) {
+        return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở Phân tích…</p>;
+      }
+      if (!analytics || !(analytics.daily?.account || []).length) {
+        return (
+          <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
+            {client?.display_name || "Khách này"} chưa có ngày chi tiêu trong 90 ngày Google Ads (tài
+            khoản mới, tạm ngưng, hoặc Google không trả ngày). Không đoán số. Không apply.
+          </section>
+        );
+      }
+      return <AnalyticsView key={analytics.client_id} snap={analytics} />;
+    }
+    if (shownTab === "report") {
+      if (!pack.report) {
+        return viewer ? (
+          <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
+            Chưa có chỉ số báo cáo cho tài khoản này. Vận hành kéo 5 KPI rồi khách/sale mới xem được.
+            Không đoán số.
+          </section>
+        ) : (
+          <ConnectPanel
+            data={pack.connect as never}
+            clientId={clientId}
+            live={client?.adapter === "live"}
+            onConnectResult={applyConnectResult}
+            onKpiPulled={(next) => applyKpiPack(next)}
+          />
+        );
+      }
+      return (
+        <ReportPanel
+          data={pack.report as never}
+          live={client?.adapter === "live"}
+          clientId={clientId}
+          viewer={viewer}
+          onPulled={(next) => applyKpiPack(next)}
+        />
+      );
+    }
+    if (shownTab === "alerts") {
+      if (!pack.alerts) {
+        return (
+          <ConnectPanel
+            data={pack.connect as never}
+            clientId={clientId}
+            live={client?.adapter === "live"}
+            onConnectResult={applyConnectResult}
+          />
+        );
+      }
+      return <AlertsPanel data={pack.alerts as never} />;
+    }
+    if (shownTab === "guard") {
+      if (!pack.guard) {
+        return (
+          <ConnectPanel
+            data={pack.connect as never}
+            clientId={clientId}
+            live={client?.adapter === "live"}
+            onConnectResult={applyConnectResult}
+          />
+        );
+      }
+      return <GuardPanel data={pack.guard as never} />;
+    }
+    if (shownTab === "hub") {
+      if (!pack.hub) {
+        return (
+          <ConnectPanel
+            data={pack.connect as never}
+            clientId={clientId}
+            live={client?.adapter === "live"}
+            onConnectResult={applyConnectResult}
+            onKpiPulled={(next) => applyKpiPack(next)}
+          />
+        );
+      }
+      return <HubPanel data={pack.hub as never} />;
+    }
+    if (shownTab === "classify") {
+      if (!pack.classify) {
+        return (
+          <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
+            Chưa có bảng phân loại ST cho khách này. Cần nguồn cụm từ (Drive) rồi gắn keep / add_exact /
+            negative / routing / hold.
+          </section>
+        );
+      }
+      return (
+        <ClassifyView
+          key={String((pack.classify as ClassifySnap).client_id || clientId)}
+          snap={pack.classify as ClassifySnap}
+          onSaved={(next) =>
+            setBasePack((prev) => ({
+              ...prev,
+              classify: next,
+            }))
+          }
+        />
+      );
+    }
+    if (shownTab === "proposals") {
+      if (!pack.proposals) {
+        return (
+          <ConnectPanel
+            data={pack.connect as never}
+            clientId={clientId}
+            live={client?.adapter === "live"}
+            onConnectResult={applyConnectResult}
+          />
+        );
+      }
+      return <ProposalsPanel data={pack.proposals as never} />;
+    }
+    if (shownTab === "final") {
+      return (
+        <FinalPanel
+          data={pack.final as never}
+          connect={pack.connect as never}
+          guard={pack.guard as never}
+        />
+      );
+    }
+    if (shownTab === "sop") return <SopPanel data={pack.sop as never} />;
+    if (shownTab === "members") return <MembersPanel clients={clients} />;
+    return (
+      <ConnectPanel
+        data={pack.connect as never}
+        clientId={clientId}
+        live={client?.adapter === "live"}
+        onConnectResult={applyConnectResult}
+        onKpiPulled={(next) => applyKpiPack(next)}
+      />
+    );
+  }, [
+    shownTab,
+    analytics,
+    analyticsLoading,
+    pace,
+    pack,
+    basePack,
+    loading,
+    clientId,
+    client,
+    access,
+    accessError,
+    viewer,
+    clients,
+  ]);
+
+  const adsCount = mcc?.accounts.filter((a) => !a.is_manager).length ?? mcc?.accounts.length ?? 0;
+  const accessible = mcc?.last_probe_accessible_count || adsCount;
+
+  return (
+    <div className="min-h-screen bg-bg text-ink">
+      <header className="border-b border-line bg-paper">
+        <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 md:flex-row md:items-end md:justify-between md:px-6">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-widest text-subtle">AdsOps</p>
+            <h1 className="font-display text-2xl font-medium tracking-tight text-balance">
+              {viewer ? "Báo cáo Google Ads" : "Vận hành Google Ads"}
+            </h1>
+            <p className="mt-0.5 max-w-xl text-pretty text-sm text-muted">
+              {viewer
+                ? "Chỉ chỉ số báo cáo. CPA Google không phải Qualified Lead. Không vào FINAL / kết nối / đề xuất."
+                : "Chỉ đề xuất. CPA Google không phải Qualified Lead. MCC Fago Agency — chọn A không thấy số B."}
+            </p>
+          </div>
+          <div className="flex min-w-64 flex-col gap-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-xs font-medium text-muted">{roleVi}</span>
+              <UserButton />
+            </div>
+            {access?.role !== "pending" ? (
+              <label className="flex flex-col gap-1 text-xs font-medium text-muted">
+                {viewer ? "Tài khoản được cấp" : `Tài khoản MCC ${mcc?.mcc_id_dashed || "532-145-0531"}`}
+                <select
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  className="h-11 rounded-md border border-line bg-bg px-3 text-sm text-ink"
+                >
+                  {clients.map((c) => (
+                    <option key={c.client_id} value={c.client_id}>
+                      {c.display_name}
+                      {c.customer_id_dashed && c.display_name !== c.customer_id_dashed
+                        ? ` · ${c.customer_id_dashed}`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+                {mcc && !viewer ? (
+                  <span className="text-xs font-normal text-subtle">
+                    {mcc.mcc_display_name} · {adsCount}/{accessible} tài khoản
+                    {mcc.roster_complete ? " đã kéo từ MCC" : " — chưa kéo đủ danh sách MCC"}
+                  </span>
+                ) : null}
+              </label>
+            ) : null}
+          </div>
+        </div>
+        {access?.role !== "pending" ? (
+          <nav className="mx-auto max-w-screen-2xl px-4 pb-3 md:px-6">
+            <p className="mb-1 text-xs font-medium text-subtle">{viewer ? "Báo cáo" : "Vận hành"}</p>
+            <div className="flex flex-wrap gap-1">
+              {opsTabs.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => goTab(item.id)}
+                  className={cn(
+                    "h-10 shrink-0 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
+                    shownTab === item.id ? "bg-accent text-accent-fg" : "text-muted hover:bg-inset",
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            {!viewer ? (
+              <>
+                <p className="mb-1 mt-3 text-xs font-medium text-subtle">Phân tích</p>
+                <button
+                  type="button"
+                  onClick={() => goTab("analytics")}
+                  className={cn(
+                    "relative h-10 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
+                    shownTab === "analytics" ? "bg-accent text-accent-fg" : "text-muted hover:bg-inset",
+                  )}
+                >
+                  Phân tích
+                  {firing ? (
+                    <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger outline outline-2 outline-paper" />
+                  ) : null}
+                </button>
+              </>
+            ) : null}
+          </nav>
+        ) : null}
+      </header>
+
+      <main className="mx-auto max-w-screen-2xl px-4 py-4 md:px-6">
+        {client && (
+          <p className="mb-3 text-xs text-subtle">
+            {client.display_name}
+            {client.customer_id_dashed && client.display_name !== client.customer_id_dashed
+              ? ` · ${client.customer_id_dashed}`
+              : ""}
+            {!viewer && mcc?.mcc_id_dashed ? ` · MCC ${mcc.mcc_id_dashed}` : ""}
+            {analytics?.timezone || client.timezone
+              ? ` · ${analytics?.timezone || client.timezone}`
+              : ""}
+            {shownTab === "analytics"
+              ? " · lọc ngày → tầng → loại conv → ST/KW · không apply"
+              : viewer
+                ? " · Chỉ 5 KPI báo cáo. CPA Google không phải Qualified Lead."
+                : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}
+          </p>
+        )}
+        {showScenes && (
+          <div className="mb-4 flex flex-wrap gap-1.5">
+            {scenes.map((item) => (
+              <button
+                key={item.id || "live"}
+                type="button"
+                onClick={() => setScenario(item.id)}
+                className={cn(
+                  "h-10 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
+                  scenario === item.id ? "bg-accent text-accent-fg" : "bg-inset text-ink hover:bg-line",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {body}
+      </main>
+    </div>
+  );
+}

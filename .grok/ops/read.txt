@@ -1,6 +1,0 @@
-src/lib/adsops/access.server.ts
-src/lib/adsops/connect.server.ts
-src/components/adsops/app-shell.tsx
-src/lib/adsops/warehouse.server.ts
-src/components/adsops/side-panels.tsx
-src/components/adsops/analytics-view.tsx
