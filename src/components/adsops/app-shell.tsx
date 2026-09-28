@@ -500,12 +500,12 @@ export function AdsOpsApp() {
     setTab("report");
   }
 
-  async function pullWarehouse() {
+  async function pullWarehouse(lookbackDays: 180 | 365) {
     if (!clientId || !canPull) return;
     setWarehouseBusy(true);
-    setWarehouseMsg("");
+    setWarehouseMsg(`Đang kéo ${lookbackDays} ngày từ Google Ads — có thể mất 1–3 phút, đừng đóng trang…`);
     try {
-      const res = await pullAnalyticsWarehouseFn({ data: { clientId, lookbackDays: 180 } });
+      const res = await pullAnalyticsWarehouseFn({ data: { clientId, lookbackDays } });
       if (res.ok && res.analytics) {
         setAnalytics(res.analytics as unknown as AnalyticsSnap);
         setAdsStatus(null);
@@ -514,9 +514,10 @@ export function AdsOpsApp() {
           data_through: res.warehouse_end || prev.data_through,
         }));
         setWarehouseMsg(
-          `Đã kéo kho ${res.day_count ?? ""} ngày (${res.warehouse_start || "?"} → ${res.warehouse_end || "?"})${
-            res.persisted_neon ? " · đã lưu Neon" : ""
-          }.`,
+          res.note_vi ||
+            `Đã kéo kho ${res.day_count ?? ""} ngày (${res.warehouse_start || "?"} → ${res.warehouse_end || "?"})${
+              res.persisted_neon ? " · đã lưu Neon" : ""
+            }.`,
         );
       } else {
         setWarehouseMsg(res.error_vi || res.note_vi || "Không kéo được kho phân tích.");
@@ -607,10 +608,18 @@ export function AdsOpsApp() {
           <button
             type="button"
             disabled={warehouseBusy || !clientId}
-            onClick={() => void pullWarehouse()}
+            onClick={() => void pullWarehouse(180)}
             className="h-10 rounded-full bg-inset px-4 text-sm font-medium text-ink hover:bg-line disabled:opacity-60"
           >
             {warehouseBusy ? "Đang kéo kho…" : "Kéo kho phân tích (180 ngày)"}
+          </button>
+          <button
+            type="button"
+            disabled={warehouseBusy || !clientId}
+            onClick={() => void pullWarehouse(365)}
+            className="h-10 rounded-full bg-inset px-4 text-sm font-medium text-ink hover:bg-line disabled:opacity-60"
+          >
+            Kéo 365 ngày
           </button>
           {warehouseMsg ? <span className="text-sm text-muted">{warehouseMsg}</span> : null}
         </div>

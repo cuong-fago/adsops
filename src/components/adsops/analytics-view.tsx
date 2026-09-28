@@ -317,9 +317,16 @@ export function AnalyticsView({ snap, allowCompare = true }: { snap: AnalyticsSn
           </button>
         </div>
         <p className="mt-3 text-xs text-muted">
-          Số {start} → {end} · timezone {snap.timezone} · kho tối đa{" "}
-          {snap.analytics_lookback_days || 270} ngày
-          {snap.warehouse_start ? ` (${snap.warehouse_start} → ${warehouseEnd})` : ""}.
+          Số {start} → {end} · timezone {snap.timezone}
+          {snap.warehouse_start
+            ? ` · kho ${snap.warehouse_start} → ${warehouseEnd}${
+                typeof snap.day_count === "number" ? ` (${snap.day_count} ngày có số)` : ""
+              }`
+            : ""}
+          {typeof snap.analytics_lookback_days === "number"
+            ? ` · lần kéo đầy đủ gần nhất: ${snap.analytics_lookback_days} ngày`
+            : " · chưa kéo đầy đủ (đang từ bản seed / làm mới ngắn)"}
+          .
           {prevRange ? ` So ${prevRange.start} → ${prevRange.end}.` : ""} Không apply. CPA Google ≠
           Qualified Lead.
         </p>
