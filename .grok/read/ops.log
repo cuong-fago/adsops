@@ -1,147 +1,445 @@
-=== fs/data refs in server files
-src/lib/adsops/connect.server.ts:1:import { mkdirSync, readFileSync, writeFileSync, chmodSync, existsSync } from "node:fs";
-src/lib/adsops/connect.server.ts:14:const PUBLIC_DIR = "/workspace/public/adsops";
-src/lib/adsops/connect.server.ts:100:    const raw = JSON.parse(readFileSync(SECRET_FILE, "utf8")) as Secrets;
-src/lib/adsops/connect.server.ts:109:  writeFileSync(SECRET_FILE, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-src/lib/adsops/connect.server.ts:392:      cur = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-src/lib/adsops/connect.server.ts:398:    writeFileSync(path, `${JSON.stringify(cur, null, 2)}\n`);
-src/lib/adsops/connect.server.ts:402:    writeFileSync(join(PUBLIC_DIR, "mcc.json"), `${JSON.stringify(mcc, null, 2)}\n`);
-src/lib/adsops/connect.server.ts:410:        prev = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-src/lib/adsops/connect.server.ts:426:      writeFileSync(path, `${JSON.stringify({ ...prev, ...stub }, null, 2)}\n`);
-src/lib/adsops/connect.server.ts:433:export async function installAndProbe(input: {
-src/lib/adsops/connect.server.ts:613:export async function pullKpis(clientId: string): Promise<PullKpisResult> {
-src/lib/adsops/warehouse.server.ts:5:import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-src/lib/adsops/warehouse.server.ts:7:import { getSql } from "@/lib/db";
-src/lib/adsops/warehouse.server.ts:100:      const raw = JSON.parse(readFileSync(SECRET_FILE, "utf8")) as Secrets;
-src/lib/adsops/warehouse.server.ts:330:    "/workspace/public/adsops",
-src/lib/adsops/warehouse.server.ts:331:    join(process.cwd(), "public/adsops"),
++ git mv public/adsops server-data/adsops
+fatal: renaming 'public/adsops' failed: No such file or directory
++ for f in .contentpath-test.txt .lazy-load-push-test.txt .lazy-load-push-test2.txt .size13k-test.txt .size16k-probe.txt
++ '[' -f src/components/adsops/.contentpath-test.txt ']'
++ git rm -q src/components/adsops/.contentpath-test.txt
++ for f in .contentpath-test.txt .lazy-load-push-test.txt .lazy-load-push-test2.txt .size13k-test.txt .size16k-probe.txt
++ '[' -f src/components/adsops/.lazy-load-push-test.txt ']'
++ git rm -q src/components/adsops/.lazy-load-push-test.txt
++ for f in .contentpath-test.txt .lazy-load-push-test.txt .lazy-load-push-test2.txt .size13k-test.txt .size16k-probe.txt
++ '[' -f src/components/adsops/.lazy-load-push-test2.txt ']'
++ git rm -q src/components/adsops/.lazy-load-push-test2.txt
++ for f in .contentpath-test.txt .lazy-load-push-test.txt .lazy-load-push-test2.txt .size13k-test.txt .size16k-probe.txt
++ '[' -f src/components/adsops/.size13k-test.txt ']'
++ git rm -q src/components/adsops/.size13k-test.txt
++ for f in .contentpath-test.txt .lazy-load-push-test.txt .lazy-load-push-test2.txt .size13k-test.txt .size16k-probe.txt
++ '[' -f src/components/adsops/.size16k-probe.txt ']'
++ git rm -q src/components/adsops/.size16k-probe.txt
++ ls -la src/components/adsops
++ grep '^-.* \.'
++ true
++ sed -i 's#/workspace/public/adsops#/workspace/server-data/adsops#g; s#public/adsops#server-data/adsops#g' src/lib/adsops/connect.server.ts src/lib/adsops/warehouse.server.ts
++ grep -rn 'public/adsops\|/adsops/' src '--include=*.ts' '--include=*.tsx'
++ grep -v '^src/lib/adsops/snapshots'
++ head -60
+src/components/adsops/members-panel.tsx:8:} from "@/lib/adsops/access.functions";
+src/components/adsops/mix-bar.tsx:1:import type { MixPart } from "@/lib/adsops/analytics";
+src/components/adsops/mix-bar.tsx:2:import { num } from "@/lib/adsops/format";
+src/components/adsops/analytics-view.tsx:15:} from "@/lib/adsops/analytics";
+src/components/adsops/analytics-view.tsx:16:import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
+src/components/adsops/analytics-view.tsx:18:import { BudgetBanner } from "@/components/adsops/budget-banner";
+src/components/adsops/classify-view.tsx:3:import { saveClassifyEdits, type ClassifyCluster, type ClassifyLabel, type ClassifySnap } from "@/lib/adsops/classify.functions";
+src/components/adsops/classify-view.tsx:4:import { money, num } from "@/lib/adsops/format";
+src/components/adsops/app-shell.tsx:2:import { AnalyticsView } from "@/components/adsops/analytics-view";
+src/components/adsops/app-shell.tsx:3:import { ClassifyView } from "@/components/adsops/classify-view";
+src/components/adsops/app-shell.tsx:4:import type { PacePreview } from "@/components/adsops/budget-banner";
+src/components/adsops/app-shell.tsx:5:import { MembersPanel } from "@/components/adsops/members-panel";
+src/components/adsops/app-shell.tsx:15:} from "@/components/adsops/side-panels";
+src/components/adsops/app-shell.tsx:21:} from "@/lib/adsops/access.functions";
+src/components/adsops/app-shell.tsx:22:import type { AnalyticsSnap } from "@/lib/adsops/analytics";
+src/components/adsops/app-shell.tsx:23:import type { ClassifySnap } from "@/lib/adsops/classify.types";
+src/components/adsops/side-panels.tsx:3:import { FinalWorkbook } from "@/components/adsops/final-workbook";
+src/components/adsops/side-panels.tsx:4:import { Tab12CopyDesk } from "@/components/adsops/tab12-copy";
+src/components/adsops/side-panels.tsx:5:import { money, num, pct } from "@/lib/adsops/format";
+src/components/adsops/side-panels.tsx:6:import { pullClientKpis, saveYamlAndProbe, type InstallAndProbeResult, type PullKpisResult } from "@/lib/adsops/connect.functions";
+src/components/adsops/final-workbook.tsx:3:import { money, num } from "@/lib/adsops/format";
+src/components/adsops/final-workbook.tsx:5:import { Tab12CopyDesk, DayPackOverview, type KindFilter } from "@/components/adsops/tab12-copy";
+src/components/adsops/budget-banner.tsx:3:import type { BudgetPace } from "@/lib/adsops/analytics";
+src/components/adsops/budget-banner.tsx:4:import { hoursLabel, money } from "@/lib/adsops/format";
 src/lib/adsops/warehouse.server.ts:332:    join(process.cwd(), "src/lib/adsops/snapshots"),
-src/lib/adsops/warehouse.server.ts:338:    const sql = await getSql();
-src/lib/adsops/warehouse.server.ts:340:      `insert into adsops_analytics_warehouse
-src/lib/adsops/warehouse.server.ts:360:    if (/adsops_analytics_warehouse|does not exist|relation/i.test(msg)) {
-src/lib/adsops/warehouse.server.ts:362:        "Thiếu bảng adsops_analytics_warehouse trên Neon. Chạy npm run db:migrate (hoặc để Vercel build chạy migrate).",
-src/lib/adsops/warehouse.server.ts:375:      writeFileSync(join(dir, `${snap.client_id}.json`), `${JSON.stringify(snap, null, 2)}\n`);
-src/lib/adsops/warehouse.server.ts:386:          reg = JSON.parse(readFileSync(regPath, "utf8")) as Record<string, unknown>;
-src/lib/adsops/warehouse.server.ts:404:        writeFileSync(regPath, `${JSON.stringify(reg, null, 2)}\n`);
-src/lib/adsops/warehouse.server.ts:416:export async function readAnalyticsWarehouseFromNeon(clientId: string): Promise<Json | null> {
-src/lib/adsops/warehouse.server.ts:419:    const sql = await getSql();
-src/lib/adsops/warehouse.server.ts:421:      `select payload from adsops_analytics_warehouse where client_id = $1 limit 1`,
-src/lib/adsops/warehouse.server.ts:459:export async function pullAnalyticsWarehouse(
-src/lib/adsops/classify.server.ts:1:import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-src/lib/adsops/classify.server.ts:44:export async function saveClassifyEdits(input: {
-src/lib/adsops/classify.server.ts:64:    writeFileSync(file, JSON.stringify(edits), "utf8");
-src/lib/adsops/classify.server.ts:76:      snapshot = JSON.parse(readFileSync(snapPath, "utf8")) as ClassifySnap;
-=== side-panels handlers
-6:import { pullClientKpis, saveYamlAndProbe, type InstallAndProbeResult, type PullKpisResult } from "@/lib/adsops/connect.functions";
-126:function FileLink({ href, label }: { href?: string; label: string }) {
-181:  compare,
-185:  compare: AnyRec;
-189:  const howto = asArr(compare.compare_howto).map((line) => String(line));
-190:  const windows = asObj(compare.windows);
-191:  const ranges = asObj(compare.window_ranges);
-223:export function ReportPanel({
-227:  onPulled,
-228:  viewer,
-233:  viewer?: boolean;
-234:  onPulled?: (pack: {
-236:    compare?: AnyRec | null;
-252:  const compare = asObj(data.compare);
-253:  const hasCompare = Boolean(compare.windows);
-260:      const result = (await pullClientKpis({ data: { clientId } })) as PullKpisResult;
-263:        onPulled?.({
-265:          compare: (result.compare as AnyRec) || null,
-280:        <CompareBox compare={compare} kpis={kpis.length ? kpis : fallbackKpis} currency={currency} />
-289:            {!viewer && live && clientId ? (
-290:              <button
-296:                {busy ? "Đang kéo 5 KPI…" : "Kéo lại 5 KPI"}
-299:            {!viewer ? (
-301:                <FileLink href={txt(daily.xlsx_href) || undefined} label="Tải Daily" />
-302:                <FileLink href={txt(weekly.xlsx_href) || undefined} label="Tải Weekly" />
-368:export function AlertsPanel({ data }: { data: AnyRec | null }) {
-412:export function GuardPanel({ data }: { data: AnyRec | null }) {
-483:export function HubPanel({ data }: { data: AnyRec | null }) {
-579:export function ProposalsPanel({ data }: { data: AnyRec | null }) {
-724:export function FinalPanel({
-752:          <FileLink href={txt(data.xlsx_href) || undefined} label="Tải file FINAL" />
-869:export function SopPanel({ data }: { data: AnyRec | null }) {
-896:export function ConnectPanel({
-909:    compare?: AnyRec | null;
-960:      setFormError("Kéo file yaml hoặc điền 3 ô OAuth trước khi lưu. Không dán token vào chat.");
-966:      const result = (await saveYamlAndProbe({
-992:      const result = (await pullClientKpis({ data: { clientId } })) as PullKpisResult;
-998:          compare: (result.compare as AnyRec) || null,
-1125:        <button
-1131:          {busy === "kpi" ? "Đang kéo 5 KPI…" : pulledKpis ? "Kéo lại 5 KPI" : "Kéo 5 KPI để đối chiếu"}
-1155:            Kéo file google-ads.yaml vào ô, hoặc điền 3 ô OAuth. Không dán token vào chat. Google đã
-1172:                {dragOver ? "Thả file yaml vào đây" : "Kéo file yaml vào đây"}
-1202:            <button
-1210:            <button
-=== warehouse refs
-src/lib/adsops/connect.functions.ts:90:export const pullAnalyticsWarehouseFn = createServerFn({ method: "POST" })
-src/lib/adsops/connect.functions.ts:96:    const { pullAnalyticsWarehouse } = await import("./warehouse.server.ts");
-src/lib/adsops/connect.functions.ts:97:    return pullAnalyticsWarehouse(data.clientId, data.lookbackDays) as Promise<PullAnalyticsWarehouseResult>;
-src/lib/adsops/warehouse.server.ts:459:export async function pullAnalyticsWarehouse(
-src/lib/adsops/connect.server.ts:597:        ? "Chọn tài khoản trên đầu trang. Kéo kho Phân tích từng khách — không đoán số."
-=== analytics-view props
-10:  previousEqualRange,
-11:  previousMonths,
-12:  previousWeeks,
-65:export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
-67:  const warehouseEnd = snap.warehouse_end || snap.data_through;
-121:  const prevRange = prevEqual ? previousEqualRange(start, end) : null;
-127:  const weeks = weekN ? previousWeeks(end, weekN) : [];
-128:  const prevMonths = monthN ? previousMonths(end, monthN) : [];
-312:            Kéo số phân tích
-=== final-workbook href
-  return (
-    <div className="flex flex-col gap-4">
-      <section className="rounded-xl bg-paper p-5 shadow-sheet">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-subtle">Gói FINAL · 13 tab</p>
-            <h2 className="font-display text-xl font-medium tracking-tight text-balance">
-              {txt(workbook.file_title || workbook.title || tab0.title)}
-            </h2>
-            <p className="mt-1 max-w-3xl text-pretty text-sm text-muted">{txt(tab0.banner)}</p>
-          </div>
-          {txt(data.xlsx_href) ? (
-            <a
-              href={txt(data.xlsx_href)}
-              className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg"
-            >
-              <Download className="size-4" />
-              Tải file Google Sheet
-            </a>
-          ) : null}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2 text-sm">
-          <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", statusTone(txt(tab0.guard)))}>
-            Guard {txt(tab0.guard)}
-          </span>
-          <span className="rounded-full bg-inset px-2.5 py-0.5 text-xs">
-=== xlsx_href values
-"xlsx_href": ""
-"xlsx_href": "/adsops/final/files/tkqc_6810292395-FINAL.xlsx"
-=== report json keys
-module,audience,cover_only,session,client_id,display_name,customer_id,timezone,currency,adapter,data_through,propose_only,pulled_kpis,kpis,banner,conversion_note,modeled_note,conversions_may_include_modeled,google_conversion_is_not_qualified_lead,cpa_note,cadences,sheet_names,compare
-{"module":"client_report","audience":"client_viewer","cover_only":true,"session":"11-doi-chieu-5kpi","client_id":"tkqc_6810292395","display_name":"GrowVi","customer_id":"6810292395","timezone":"Asia/Saigon","currency":"VND","adapter":"live","data_through":"2026-09-20","propose_only":true,"pulled_kpis":true,"kpis":[{"id":"cost","label":"Chi tiêu"},{"id":"impressions","label":"Hiển thị"},{"id":"clicks","label":"Lượt nhấp"},{"id":"conversions","label":"Chuyển đổi"},{"id":"cpc","label":"CPC"}],"banner":"Báo cáo khách — 5 KPI: Chi tiêu, Hiển thị, Lượt nhấp, Chuyển đổi, CPC. Không gồm tab kỹ thuật t
-=== analytics json keys
-module,client_id,display_name,customer_id,timezone,currency,adapter,data_through,warehouse_start,warehouse_end,day_count,lookback_days,analytics_lookback_days,consecutive,campaigns,ad_groups,daily,pmax_note,metrics,conversion_groups,week_choices,month_choices,rules,budget_pace
-=== vc-config
-components
-lib
-routeTree.gen.ts
-router.tsx
-routes
-styles.css
-adsops
-app-data
-auth
-cn.ts
-db.ts
-env.server.ts
-error-component.tsx
-multiplayer
-og-site.json
-preview-embedder-origin.ts
-preview-host-bridge.ts
+src/lib/adsops/access.server.ts:26: * Snapshot JSON lives in `server-data/adsops/` (NOT `public/`, so the CDN never
+src/lib/adsops/access.server.ts:328:/** `/adsops/<folder>/files/<name>.xlsx` -> authenticated download route. */
+src/routes/api/auth/$.ts:3:import { adaptAuthRequest } from "@/lib/adsops/auth-origin.server";
+src/routes/api/adsops-file.ts:5: * `/adsops/final/files/*.xlsx` CDN links. Requires the `download` capability
+src/routes/api/adsops-file.ts:14:  const p = await import("@/lib/adsops/permissions.server");
+src/routes/api/adsops-file.ts:17:    const { ensureRosterSeeded } = await import("@/lib/adsops/access.server");
+src/routes/api/adsops-file.ts:26:  const { resolveClientFile } = await import("@/lib/adsops/access.server");
+src/routes/index.tsx:2:import { AdsOpsApp } from "@/components/adsops/app-shell";
+src/routes/login.tsx:3:import { getAuthPublicOrigin } from "@/lib/adsops/login-origin.functions";
++ echo ---RCF
+---RCF
++ grep -n resolveClientFile -A40 src/lib/adsops/access.server.ts
++ head -60
+493:export function resolveClientFile(clientId: string, relPath: string): string | null {
+494-  if (!CLIENT_ID_RE.test(clientId)) return null;
+495-  const rel = normalizeRel(relPath);
+496-  if (rel.includes("..") || !/^[a-z0-9_-]+\/files\/[^/]+\.(xlsx|csv|pdf)$/i.test(rel)) return null;
+497-  const name = rel.split("/").pop() || "";
+498-  // A file belongs to exactly one account: its name starts with the account id.
+499-  if (!name.startsWith(`${clientId}-`) && !name.startsWith(`${clientId} `) && !name.startsWith(`${clientId}.`)) {
+500-    return null;
+501-  }
+502-  const dir = resolveDataDir();
+503-  if (!dir) return null;
+504-  const full = join(dir, rel);
+505-  return existsSync(full) ? full : null;
+506-}
++ echo ---PERM
+---PERM
++ grep -n 'export ' src/lib/adsops/permissions.server.ts
+30:export const CLIENT_SESSION_COOKIE = "__Host-adsops.client_session";
+31:export const VIEW_AS_COOKIE = "__Host-adsops.view_as";
+37:export type Principal = {
+50:export type AccessContext = {
+63:export class ForbiddenError extends Error {
+73:export function newId(prefix: string): string {
+81:export function parseCookies(headers: Headers): Record<string, string> {
+103:export function setCookieHeader(name: string, value: string, maxAgeS: number): string {
+107:export function clearCookieHeader(name: string): string {
+127:export async function hashPassword(password: string): Promise<string> {
+133:export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+146:export function validatePassword(password: string): void {
+153:export function actorLabel(p: Principal): string {
+157:export async function audit(
+273:export async function grantsFor(p: Principal): Promise<"all" | Set<string>> {
+301:export function signViewAs(adminUserId: string, kind: PrincipalKind, id: string): string {
+331:export const VIEW_AS_COOKIE_MAX_AGE_S = VIEW_AS_MAX_AGE_S;
+356:export async function resolvePrincipal(
+379:export async function resolveAccessFromHeaders(headers: Headers, bearerToken?: string): Promise<AccessContext> {
+414:export async function resolveAccess(bearerToken?: string): Promise<AccessContext> {
+422:export function canSeeAccount(ctx: AccessContext, adAccountId: string): boolean {
+426:export function assertAccount(ctx: AccessContext, adAccountId: string): void {
+431:export function assertCap(ctx: AccessContext, cap: keyof Capabilities, message?: string): void {
+436:export function assertWritable(ctx: AccessContext): void {
+441:export function assertRealAdmin(ctx: AccessContext): void {
+447:export const CLIENT_SESSION_COOKIE_MAX_AGE_S = CLIENT_SESSION_MAX_AGE_S;
+450:export async function clientPasswordLogin(
+498:export async function deleteClientSessionByToken(token: string | undefined): Promise<void> {
+504:export async function deleteAllClientSessions(clientUserId: string): Promise<number> {
+515:export type RosterAccount = {
+535:export async function ensureAccountsSeeded(roster: RosterAccount[]): Promise<void> {
++ sed -n '/export async function deleteClientSessionByToken/,$p' src/lib/adsops/permissions.server.ts
++ head -40
+export async function deleteClientSessionByToken(token: string | undefined): Promise<void> {
+  if (!token) return;
+  const sql = await getSql();
+  await sql`delete from client_sessions where token_hash = ${sha256Hex(token)}`;
+}
+
+export async function deleteAllClientSessions(clientUserId: string): Promise<number> {
+  const sql = await getSql();
+  const rows = await sql<{ n: number }>`
+    with d as (delete from client_sessions where client_user_id = ${clientUserId} returning 1)
+    select count(*)::int as n from d
+  `;
+  return Number(rows[0]?.n || 0);
+}
+
+// ── ad account seeding from the MCC roster ─────────────────────────────────────────────
+
+export type RosterAccount = {
+  client_id: string;
+  display_name: string;
+  customer_id_dashed?: string;
+  status?: string;
+};
+
+function customerNameFor(a: RosterAccount): string {
+  const base = a.display_name.replace(/\s*-\s*\d{3}\s*$/, "").trim();
+  return base || a.customer_id_dashed || a.client_id;
+}
+
+const seedState = globalThis as typeof globalThis & { __adsopsSeedKey__?: string; __adsopsSeedRun__?: Promise<void> };
+
+/**
+ * Make sure every roster account exists in `ad_accounts` (new ones get their
+ * own customer, no grants — i.e. admin-only until granted), and apply the
+ * one-time legacy ops grant from migration 0005. Idempotent; runs once per
+ * warm instance per roster.
+ */
+export async function ensureAccountsSeeded(roster: RosterAccount[]): Promise<void> {
+  const key = roster
+    .map((r) => r.client_id)
++ echo ---USERTABLE
+---USERTABLE
++ grep -rln 'create table' migrations
++ xargs grep -n 'create table'
++ head -30
+migrations/0001_auth.sql:19:create table if not exists "user" (
+migrations/0001_auth.sql:29:create table if not exists "session" (
+migrations/0001_auth.sql:40:create table if not exists "account" (
+migrations/0001_auth.sql:56:create table if not exists "verification" (
+migrations/0005_rbac.sql:15:create table if not exists staff_users (
+migrations/0005_rbac.sql:27:create table if not exists customers (
+migrations/0005_rbac.sql:35:create table if not exists ad_accounts (
+migrations/0005_rbac.sql:50:create table if not exists client_users (
+migrations/0005_rbac.sql:68:create table if not exists client_sessions (
+migrations/0005_rbac.sql:77:create table if not exists account_grants (
+migrations/0005_rbac.sql:90:create table if not exists grant_requests (
+migrations/0005_rbac.sql:108:create table if not exists permission_audit_log (
+migrations/0005_rbac.sql:119:create table if not exists adsops_kv (
+migrations/auth/0001_auth.sql:19:create table if not exists "user" (
+migrations/auth/0001_auth.sql:29:create table if not exists "session" (
+migrations/auth/0001_auth.sql:40:create table if not exists "account" (
+migrations/auth/0001_auth.sql:56:create table if not exists "verification" (
+migrations/0002_memberships.sql:2:create table if not exists memberships (
+migrations/0004_analytics_warehouse.sql:2:create table if not exists adsops_analytics_warehouse (
++ echo ---VITE
+---VITE
++ cat vite.config.ts
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import type { Plugin } from "vite";
+import { defineConfig } from "vite";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { nitro } from "nitro/vite";
+// @ts-expect-error JS plugin alongside the TS vite config
+import { grokPwaPlugin } from "./scripts/grok-pwa-plugin.mjs";
+// @ts-expect-error JS plugin alongside the TS vite config
+import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
+import { isMigrationFile } from "./scripts/migration-plan.mjs";
+
+/** The files `src/lib/db.ts` globs — same directory, same non-recursive scope. */
+function hasGlobbedMigrations(root: string): boolean {
+  try {
+    return readdirSync(join(root, "migrations")).some(isMigrationFile);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Finish PGLite bootstrap during dev-server setup (before traffic). Vite awaits
+ * async `configureServer` hooks. Production: `src/lib/db` kicks `ensureDbReady`
+ * on import.
+ *
+ * Vite awaiting the hook puts this on time-to-first-render, so an app with no
+ * migrations — no schema to apply — skips it entirely rather than paying for a
+ * PGLite instance it never queries.
+ */
+function pgliteBootstrapPlugin(): Plugin {
+  return {
+    name: "app-builder:pglite-bootstrap",
+    apply: "serve",
+    async configureServer(server) {
+      if (!hasGlobbedMigrations(server.config.root)) return;
+      try {
+        const mod = (await server.ssrLoadModule("/src/lib/db.ts")) as {
+          ensureDbReady?: () => Promise<void>;
+        };
+        if (typeof mod.ensureDbReady === "function") {
+          await mod.ensureDbReady();
+        }
+      } catch (err) {
+        console.error("[app-builder] DB bootstrap failed:", err);
+        throw err;
+      }
+    },
+  };
+}
+
+function adsopsJsonGuardPlugin(): Plugin {
+  const block = (
+    req: { url?: string },
+    res: { statusCode: number; setHeader: (k: string, v: string) => void; end: (b: string) => void },
+    next: () => void,
+  ) => {
+    const pathOnly = (req.url ?? "").split("?", 1)[0] ?? "";
+    if (pathOnly.startsWith("/adsops/") && pathOnly.endsWith(".json")) {
+      res.statusCode = 404;
+      res.setHeader("content-type", "text/plain; charset=utf-8");
+      res.end("Not found");
+      return;
+    }
+    next();
+  };
+  return {
+    name: "adsops-json-guard",
+    configureServer(server) {
+      server.middlewares.use(block);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(block);
+    },
+  };
+}
+
+/**
+ * Live-preview OAuth popup — handled HERE so the agent never has to create a
+ * `/auth/popup` route (and cannot break it by scaffolding a React page that
+ * paints the full app shell in the popup).
+ *
+ * `signIn` (client.ts) opens `/auth/popup?providerId=…` in a top-level window.
+ * This middleware runs before TanStack Start, calls `handleAuthPopupRequest`,
+ * and returns the 302 / completion HTML. Deployed apps do not use the popup
+ * (full-page OAuth redirect), so `apply: "serve"` is enough.
+ */
+function authPopupPlugin(): Plugin {
+  return {
+    name: "app-builder:auth-popup",
+    apply: "serve",
+    configureServer(server) {
+      // Register immediately (not in a returned post-hook) so we run BEFORE
+      // TanStack Start / the SPA HTML fallback. A model-authored
+      // `src/routes/auth/popup.tsx` React page must never win this path.
+      server.middlewares.use(async (req, res, next) => {
+        try {
+          const rawUrl = req.url ?? "";
+          const pathOnly = rawUrl.split("?", 1)[0] ?? "";
+          if (pathOnly !== "/auth/popup") {
+            next();
+            return;
+          }
+          if ((req.method ?? "GET").toUpperCase() !== "GET") {
+            res.statusCode = 405;
+            res.setHeader("content-type", "text/plain; charset=utf-8");
+            res.end("Method Not Allowed");
+            return;
+          }
+
+          const host = String(
+            req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost:8080",
+          );
+          const proto = String(
+            req.headers["x-forwarded-proto"] ??
+              ((req.socket as { encrypted?: boolean } | undefined)?.encrypted ? "https" : "http"),
+          );
+          const requestHeaders = new Headers();
+          for (const [key, value] of Object.entries(req.headers)) {
+            if (value === undefined) continue;
+            if (Array.isArray(value)) {
+              for (const v of value) requestHeaders.append(key, v);
+            } else {
+              requestHeaders.set(key, value);
+            }
+          }
+          // Ensure Host is the public preview host so Better Auth's dynamic
+          // baseURL / redirect_uri match the popup origin.
+          if (!requestHeaders.has("host")) requestHeaders.set("host", host);
+
+          const request = new Request(`${proto}://${host}${rawUrl}`, {
+            method: "GET",
+            headers: requestHeaders,
+          });
+
+          const mod = (await server.ssrLoadModule("/src/lib/auth/popup.server.ts")) as {
+            handleAuthPopupRequest: (req: Request) => Promise<Response>;
+          };
+          const response = await mod.handleAuthPopupRequest(request);
+
+          res.statusCode = response.status;
+          // Preserve multiple Set-Cookie headers (OAuth state + session).
+          const setCookies =
+            typeof response.headers.getSetCookie === "function"
+              ? response.headers.getSetCookie()
+              : [];
+          response.headers.forEach((value, key) => {
+            if (key.toLowerCase() === "set-cookie") return;
+            res.setHeader(key, value);
+          });
+          for (const cookie of setCookies) {
+            res.appendHeader("set-cookie", cookie);
+          }
+          const body = Buffer.from(await response.arrayBuffer());
+          res.end(body);
+        } catch (err) {
+          console.error("[app-builder] /auth/popup handler failed:", err);
+          if (!res.headersSent) {
+            res.statusCode = 500;
+            res.setHeader("content-type", "text/plain; charset=utf-8");
+            res.end("auth popup failed");
+          }
+        }
+      });
+    },
+  };
+}
+
+// `0.0.0.0:8080` is the live-preview contract — don't change host/port.
+// The dev server starts once `src/router.tsx` and `src/routes/` exist — see
+// AGENTS.md § "First scaffold".
+export default defineConfig(({ command, isPreview }) => ({
+  server: {
+    host: "0.0.0.0",
+    port: 8080,
+    strictPort: true,
+  },
+  preview: {
+    host: "127.0.0.1",
+    port: 8081,
+    strictPort: true,
+  },
+  resolve: { tsconfigPaths: true },
+  plugins: [
+    pgliteBootstrapPlugin(),
+    adsopsJsonGuardPlugin(),
+    // Before tanstackStart so /auth/popup never falls through to the SPA.
+    authPopupPlugin(),
+    // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
+    appEnvPlugin(),
+    // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
+    grokPwaPlugin(),
+    tailwindcss(),
+    tanstackStart(),
+    ...(command === "build" || isPreview
+      ? [
+          nitro({
+            preset: "vercel",
+            // Auto-registers server/middleware/* (the PWA install page +
+            // manifest + head-tag middleware). Nitro v3 defaults serverDir to
+            // false, so removing this silently unwires /?install=1 on deploys.
+            serverDir: "./server",
+            // Bundle AdsOps snapshot JSON into the serverless function so
+            // access.server can read via assets:adsops (no per-request HTTP).
+            serverAssets: [
+              {
+                baseName: "adsops",
+                dir: "./public/adsops",
+              },
+            ],
+          }),
+        ]
+      : []),
+    viteReact(),
+  ],
+}));
++ echo ---PKG
+---PKG
++ grep -n '"build"\|"db:migrate"\|"scripts"' -A0 package.json
+9:  "scripts": {
+--
+11:    "build": "node scripts/with-app-env.mjs vite build && npm run db:migrate",
+12:    "db:migrate": "node scripts/migrate.mjs",
++ echo ---AUTH
+---AUTH
++ grep -n 'emailAndPassword\|disableSignUp\|signUp' -n src/lib/auth/client.ts src/lib/auth/email-password.ts src/lib/auth/gate-identity.server.ts src/lib/auth/gate-identity.test.ts src/lib/auth/gate-session-marker.ts src/lib/auth/gate-session.server.ts src/lib/auth/isolation.server.ts src/lib/auth/middleware.ts src/lib/auth/pglite-dialect.ts src/lib/auth/popup.server.ts src/lib/auth/preview.ts src/lib/auth/providers.ts src/lib/auth/server.ts src/lib/auth/sign-in-gate.test.ts src/lib/auth/sign-in-gate.ts src/lib/auth/use-current-user.ts src/lib/auth/verify.server.ts
+src/lib/auth/email-password.ts:4: * Off by default. To enable: set `emailAndPasswordEnabled` to `true` below,
+src/lib/auth/email-password.ts:5: * then build sign-up / sign-in forms with `authClient.signUp.email` /
+src/lib/auth/email-password.ts:10:export const emailAndPasswordEnabled = true;
+src/lib/auth/server.ts:18:import { emailAndPasswordEnabled } from "./email-password";
+src/lib/auth/server.ts:142:    ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
++ echo ---MW
+---MW
++ cat server/middleware/adsops-json-guard.ts
+/**
+ * Production: JSON under /adsops is not a public report. Sale/client load
+ * numbers only through authenticated server functions (granted accounts).
+ */
+export default function adsopsJsonGuard(
+  event: { url: URL; req: { method: string } },
+  next: () => unknown | Promise<unknown>,
+): unknown | Promise<unknown> {
+  const method = (event.req.method ?? "GET").toUpperCase();
+  if (method !== "GET") return next();
+  const path = event.url.pathname;
+  if (path.startsWith("/adsops/") && path.endsWith(".json")) {
+    return new Response("Not found", {
+      status: 404,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
+  return next();
+}
++ echo ---VERCELJSON
+---VERCELJSON
++ cat vercel.json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "rm -rf .vercel/output && npm run build",
+  "framework": null
+}
++ ls server-data/adsops
++ head -50
+ls: cannot access 'server-data/adsops': No such file or directory

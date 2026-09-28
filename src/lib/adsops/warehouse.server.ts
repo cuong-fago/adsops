@@ -327,8 +327,8 @@ function statusCode(raw: string): string {
 
 function publicDirs(): string[] {
   return [
-    "/workspace/public/adsops",
-    join(process.cwd(), "public/adsops"),
+    "/workspace/server-data/adsops",
+    join(process.cwd(), "server-data/adsops"),
     join(process.cwd(), "src/lib/adsops/snapshots"),
   ];
 }
