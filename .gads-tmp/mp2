@@ -1,0 +1,268 @@
+diff -ruN a/src/lib/adsops/connect.types.ts b/src/lib/adsops/connect.types.ts
+--- a/src/lib/adsops/connect.types.ts
++++ b/src/lib/adsops/connect.types.ts
+@@ -106,3 +106,17 @@
+   error_vi?: string | null;
+   note_vi?: string | null;
+ };
++
++export type DeepChunkResult = {
++  ok: boolean;
++  client_id?: string;
++  pulled?: { start: string; end: string } | null;
++  target_start?: string;
++  target_end?: string;
++  covered_from?: string | null;
++  remaining_months?: number;
++  done?: boolean;
++  counts?: { ad_group: number; keyword: number; search_term: number };
++  note_vi?: string | null;
++  error_vi?: string | null;
++};
+diff -ruN a/src/lib/adsops/warehouse.server.ts b/src/lib/adsops/warehouse.server.ts
+--- a/src/lib/adsops/warehouse.server.ts
++++ b/src/lib/adsops/warehouse.server.ts
+@@ -29,7 +29,7 @@
+ /** When an account has no stored data at all, the on-view refresh seeds this many days. */
+ const SEED_WINDOW_DAYS = 90;
+ /** Search-term layer is heavy; pull a shorter window. */
+-const SEARCH_TERM_LOOKBACK_CAP = 90;
++export const SEARCH_TERM_LOOKBACK_CAP = 90;
+ 
+ const CLIENT_ID_RE = /^[a-z0-9_]+$/;
+ 
+@@ -66,7 +66,7 @@
+ 
+ // ── helpers ─────────────────────────────────────────────────────────────────
+ 
+-function ymdInTz(tz: string, d = new Date()): string {
++export function ymdInTz(tz: string, d = new Date()): string {
+   try {
+     return new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Asia/Saigon", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+   } catch {
+@@ -74,7 +74,7 @@
+   }
+ }
+ 
+-function addDaysYmd(iso: string, days: number): string {
++export function addDaysYmd(iso: string, days: number): string {
+   const d = new Date(`${iso}T12:00:00Z`);
+   d.setUTCDate(d.getUTCDate() + days);
+   return d.toISOString().slice(0, 10);
+@@ -87,16 +87,16 @@
+   return digits(clientId.replace(/^tkqc_/, ""));
+ }
+ 
+-function asRec(v: unknown): Record<string, unknown> {
++export function asRec(v: unknown): Record<string, unknown> {
+   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+ }
+ 
+-function numField(v: unknown): number {
++export function numField(v: unknown): number {
+   const n = Number(v ?? 0);
+   return Number.isFinite(n) ? n : 0;
+ }
+ 
+-function microsToCurrency(micros: unknown): number {
++export function microsToCurrency(micros: unknown): number {
+   return numField(micros) / 1_000_000;
+ }
+ 
+@@ -144,7 +144,7 @@
+   return t || "UNKNOWN";
+ }
+ 
+-function statusCode(raw: string): string {
++export function statusCode(raw: string): string {
+   const s = String(raw || "").toUpperCase();
+   if (s.includes("ENABLED")) return "ENABLED";
+   if (s.includes("PAUSED")) return "PAUSED";
+@@ -253,7 +253,7 @@
+   }
+ }
+ 
+-async function acquireLock(clientId: string, seconds: number): Promise<boolean> {
++export async function acquireLock(clientId: string, seconds: number): Promise<boolean> {
+   try {
+     const sql = await getSql();
+     const rows = await sql.query<{ client_id: string }>(
+@@ -271,7 +271,7 @@
+   }
+ }
+ 
+-async function releaseLock(clientId: string): Promise<void> {
++export async function releaseLock(clientId: string): Promise<void> {
+   try {
+     const sql = await getSql();
+     await sql.query(`delete from adsops_ads_refresh_lock where client_id = $1`, [clientId]);
+@@ -288,9 +288,9 @@
+ 
+ // ── pulls ───────────────────────────────────────────────────────────────────
+ 
+-type Meta = { displayName: string; currency: string; timezone: string };
++export type Meta = { displayName: string; currency: string; timezone: string };
+ 
+-async function pullMeta(cfg: AdsConfig, customerId: string, clientId: string): Promise<Meta> {
++export async function pullMeta(cfg: AdsConfig, customerId: string, clientId: string): Promise<Meta> {
+   const rows = await searchStream(
+     cfg,
+     customerId,
+@@ -446,107 +446,6 @@
+   notes: string[];
+ };
+ 
+-/** Ad group / keyword / search term layers (best effort). Read-only. */
+-async function pullDeep(cfg: AdsConfig, customerId: string, start: string, end: string, stStart: string): Promise<Deep> {
+-  const notes: string[] = [];
+-  const safe = async (label: string, fn: () => Promise<GaqlRow[]>): Promise<GaqlRow[]> => {
+-    try {
+-      return await fn();
+-    } catch (err) {
+-      if (err instanceof AdsApiError && (err.kind === "QUOTA" || err.kind === "TOKEN_REVOKED")) throw err;
+-      notes.push(`Chưa kéo được lớp ${label}.`);
+-      return [];
+-    }
+-  };
+-  const [agMeta, agDaily, kwDaily, stDaily] = await Promise.all([
+-    safe("nhóm quảng cáo", () =>
+-      searchStream(cfg, customerId, `SELECT ad_group.id, ad_group.name, ad_group.status, campaign.id FROM ad_group WHERE ad_group.status != 'REMOVED'`),
+-    ),
+-    safe("nhóm quảng cáo", () =>
+-      searchStream(
+-        cfg,
+-        customerId,
+-        `SELECT segments.date, campaign.id, ad_group.id, ad_group.name, ad_group.status,
+-                metrics.impressions, metrics.clicks, metrics.invalid_clicks, metrics.cost_micros, metrics.conversions
+-         FROM ad_group WHERE segments.date BETWEEN '${start}' AND '${end}'`,
+-      ),
+-    ),
+-    safe("từ khoá", () =>
+-      searchStream(
+-        cfg,
+-        customerId,
+-        `SELECT segments.date, campaign.id, ad_group.id, ad_group_criterion.criterion_id,
+-                ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.status,
+-                metrics.impressions, metrics.clicks, metrics.invalid_clicks, metrics.cost_micros, metrics.conversions
+-         FROM keyword_view WHERE segments.date BETWEEN '${start}' AND '${end}'`,
+-      ),
+-    ),
+-    safe("search term", () =>
+-      searchStream(
+-        cfg,
+-        customerId,
+-        `SELECT segments.date, campaign.id, campaign.name, ad_group.id,
+-                search_term_view.search_term, segments.search_term_match_type,
+-                metrics.impressions, metrics.clicks, metrics.invalid_clicks, metrics.cost_micros, metrics.conversions
+-         FROM search_term_view WHERE segments.date BETWEEN '${stStart}' AND '${end}'`,
+-      ),
+-    ),
+-  ]);
+-  const metricsOf = (m: Record<string, unknown>) => ({
+-    impressions: numField(m.impressions),
+-    clicks: numField(m.clicks),
+-    invalid_clicks: numField(m.invalidClicks),
+-    cost: microsToCurrency(m.costMicros),
+-    conversions: numField(m.conversions),
+-    // No per-type split on these layers (left missing, never zero-filled).
+-  });
+-  const adGroups = agMeta
+-    .map((row) => {
+-      const ag = asRec(row.adGroup);
+-      return { id: String(ag.id || ""), name: String(ag.name || ""), campaign_id: String(asRec(row.campaign).id || ""), status: statusCode(String(ag.status || "")) };
+-    })
+-    .filter((g) => g.id);
+-  const ad_group = agDaily.map((row) => {
+-    const ag = asRec(row.adGroup);
+-    return {
+-      date: String(asRec(row.segments).date || ""),
+-      campaign_id: String(asRec(row.campaign).id || ""),
+-      ad_group_id: String(ag.id || ""),
+-      ad_group_name: String(ag.name || ""),
+-      status: statusCode(String(ag.status || "")),
+-      ...metricsOf(asRec(row.metrics)),
+-    };
+-  });
+-  const keyword = kwDaily.map((row) => {
+-    const crit = asRec(row.adGroupCriterion);
+-    const kw = asRec(crit.keyword);
+-    return {
+-      date: String(asRec(row.segments).date || ""),
+-      campaign_id: String(asRec(row.campaign).id || ""),
+-      ad_group_id: String(asRec(row.adGroup).id || ""),
+-      keyword_id: String(crit.criterionId || ""),
+-      keyword_text: String(kw.text || ""),
+-      match_type: String(kw.matchType || "").replace(/^KEYWORD_MATCH_TYPE_/, ""),
+-      status: statusCode(String(crit.status || "")),
+-      ...metricsOf(asRec(row.metrics)),
+-    };
+-  });
+-  const search_term = stDaily.map((row) => {
+-    const seg = asRec(row.segments);
+-    const c = asRec(row.campaign);
+-    return {
+-      date: String(seg.date || ""),
+-      campaign_id: String(c.id || ""),
+-      campaign_name: String(c.name || ""),
+-      ad_group_id: String(asRec(row.adGroup).id || ""),
+-      query: String(asRec(row.searchTermView).searchTerm || ""),
+-      match_type: String(seg.searchTermMatchType || "").replace(/^SEARCH_TERM_MATCH_TYPE_/, ""),
+-      ...metricsOf(asRec(row.metrics)),
+-    };
+-  });
+-  return { adGroups, ad_group, keyword, search_term, notes };
+-}
+-
+ // ── merge / build ─────────────────────────────────────────────────────────────
+ 
+ /** Replace rows inside [start, end] with fresh ones; keep older history. */
+@@ -694,27 +593,13 @@
+     const end = today;
+     // Inclusive window: lookback=180 → today-(179) … today (180 days).
+     const start = addDaysYmd(today, -(lookback - 1));
+-    const stStart = addDaysYmd(today, -(Math.min(lookback, SEARCH_TERM_LOOKBACK_CAP) - 1));
+     const [stored, file] = await Promise.all([readStored(id), readSnapshotFile(id)]);
+     const base = stored?.payload || file;
+-    // Core first (account + campaign) so a long lookback still lands even if deep layers time out.
++    // Account + campaign only. Ad group / keyword / search term are pulled month by
++    // month into adsops_analytics_deep (deep-store.server.ts), resumable per request.
+     const core = await pullCore(cfg, customerId, start, end);
+     const notes: string[] = [];
+-    let deep: Deep | null = null;
+-    try {
+-      const DEEP_BUDGET_MS = 150_000;
+-      deep = await Promise.race([
+-        pullDeep(cfg, customerId, start, end, stStart),
+-        new Promise<null>((resolve) => setTimeout(() => resolve(null), DEEP_BUDGET_MS)),
+-      ]);
+-      if (deep) notes.push(...deep.notes);
+-      else notes.push("Lớp nhóm QC / từ khoá / search term kéo quá lâu — tạm giữ bản cũ, thử lại ở lần kéo sau.");
+-    } catch (err) {
+-      if (err instanceof AdsApiError && (err.kind === "QUOTA" || err.kind === "TOKEN_REVOKED")) throw err;
+-      notes.push("Chưa kéo xong lớp nhóm QC / từ khoá / search term (sẽ thử lại ở lần kéo sau). Đã lưu lớp tài khoản + chiến dịch.");
+-      console.error(`[google-ads] deep pull failed client=${id}: ${err instanceof Error ? err.message.slice(0, 200) : "unknown"}`);
+-    }
+-    if (stStart > start) notes.push(`Search term chỉ kéo ${SEARCH_TERM_LOOKBACK_CAP} ngày gần nhất.`);
++    const deep: Deep | null = null;
+     const pulledAt = new Date().toISOString();
+     const snap = buildSnap({
+       clientId: id,
+@@ -747,14 +632,14 @@
+       layers: {
+         account: core.account.length,
+         campaign: core.campaign.length,
+-        ad_group: deep?.ad_group.length ?? 0,
+-        keyword: deep?.keyword.length ?? 0,
+-        search_term: deep?.search_term.length ?? 0,
++        ad_group: 0,
++        keyword: 0,
++        search_term: 0,
+       },
+       persisted_neon: true,
+       persisted_fs: false,
+       note_vi: core.account.length
+-        ? `Đã kéo cửa sổ ${start} → ${end} (${lookback} ngày): Google Ads trả ${core.account.length} ngày có số (${firstLive} → ${lastLive}). Tháng không có dòng = không có chi tiêu, không đoán số. ${notes.join(" ")} Đã lưu Neon.`
++        ? `Đã kéo cửa sổ ${start} → ${end} (${lookback} ngày): Google Ads trả ${core.account.length} ngày có số (${firstLive} → ${lastLive}). Tháng không có dòng = không có chi tiêu, không đoán số. Đã lưu Neon.`
+         : `Google Ads không trả ngày nào có số trong ${start} → ${end} (tài khoản không chạy?). Không đoán số.`,
+       error_vi: null,
+     };
