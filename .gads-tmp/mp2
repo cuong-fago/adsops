@@ -213,7 +213,7 @@ diff -ruN a/src/lib/adsops/warehouse.server.ts b/src/lib/adsops/warehouse.server
 -  return { adGroups, ad_group, keyword, search_term, notes };
 -}
 -
- // ── merge / build ─────────────────────────────────────────────────────────────
+ // ── merge / build ───────────────────────────────────────────────────────────
  
  /** Replace rows inside [start, end] with fresh ones; keep older history. */
 @@ -694,27 +593,13 @@
