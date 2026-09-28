@@ -169,7 +169,7 @@ function freshnessLine(f: Freshness): string {
     const t = formatSaigon(f.as_of);
     if (t) {
       const [hm, day] = t.split(" ");
-      return `Số liệu Google Ads cập nhật đến ${hm} ngày ${day} (giờ VN)`;
+      return `Số liệu Google Ads cập nhật đến ${hm} ngày ${day} (giờ Việt Nam)`;
     }
   }
   if (f.data_through) {
@@ -196,6 +196,7 @@ export function AdsOpsApp() {
   const [fresh, setFresh] = useState<Freshness>({ as_of: null, data_through: null });
   const [warehouseBusy, setWarehouseBusy] = useState(false);
   const [warehouseMsg, setWarehouseMsg] = useState("");
+  const [adsStatus, setAdsStatus] = useState<{ state: string; message_vi: string } | null>(null);
   const liveConnectRef = useRef<Record<string, unknown> | null>(null);
 
   const caps = access?.caps;
@@ -226,6 +227,9 @@ export function AdsOpsApp() {
         setClients(rows);
         if (dir.mcc) setMcc(dir.mcc);
         if (!dir.access.caps.opsTabs) setTab("report");
+        else if (dir.access.real_is_admin && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("gads")) {
+          setTab("members");
+        }
         setClientId((cur) => {
           if (cur && rows.some((c) => c.client_id === cur)) return cur;
           return rows[0]?.client_id || "";
@@ -240,7 +244,12 @@ export function AdsOpsApp() {
     };
   }, []);
 
-  function noteFreshness(pack: { as_of?: string | null; data_through?: string | null }) {
+  function noteFreshness(pack: {
+    as_of?: string | null;
+    data_through?: string | null;
+    ads_status?: { state: string; message_vi: string } | null;
+  }) {
+    if ("ads_status" in pack) setAdsStatus(pack.ads_status || null);
     setFresh((prev) => ({
       as_of: pack.as_of && (!prev.as_of || pack.as_of > prev.as_of) ? pack.as_of : prev.as_of,
       data_through:
@@ -313,6 +322,7 @@ export function AdsOpsApp() {
     setScenario("");
     setBasePack({});
     setFresh({ as_of: null, data_through: null });
+    setAdsStatus(null);
     setWarehouseMsg("");
     const id = clientId;
     const isViewer = !access.caps.opsTabs;
@@ -471,6 +481,14 @@ export function AdsOpsApp() {
     hub?: Record<string, unknown> | null;
   }) {
     if (next.connect) liveConnectRef.current = next.connect;
+    const rep = next.report || null;
+    if (rep && typeof rep.pulled_at === "string") {
+      setAdsStatus(null);
+      noteFreshness({
+        as_of: rep.pulled_at,
+        data_through: typeof rep.data_through === "string" ? rep.data_through : null,
+      });
+    }
     setBasePack((prev) => ({
       ...prev,
       report: next.report
@@ -490,8 +508,9 @@ export function AdsOpsApp() {
       const res = await pullAnalyticsWarehouseFn({ data: { clientId, lookbackDays: 180 } });
       if (res.ok && res.analytics) {
         setAnalytics(res.analytics as unknown as AnalyticsSnap);
+        setAdsStatus(null);
         setFresh((prev) => ({
-          as_of: new Date().toISOString(),
+          as_of: res.pulled_at || new Date().toISOString(),
           data_through: res.warehouse_end || prev.data_through,
         }));
         setWarehouseMsg(
@@ -561,7 +580,8 @@ export function AdsOpsApp() {
         </section>
       );
     }
-    if (shownTab === "members") return <PermissionsPanel caps={access.caps} />;
+    if (shownTab === "members")
+      return <PermissionsPanel caps={access.caps} realAdmin={access.real_is_admin} readOnly={access.read_only} />;
     if (!clients.length) {
       return (
         <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
@@ -872,6 +892,9 @@ export function AdsOpsApp() {
               ? ` · ${analytics?.timezone || client.timezone}`
               : ""}
             {freshText ? <span className="font-medium text-muted">{` · ${freshText}`}</span> : null}
+            {canPull && adsStatus?.message_vi ? (
+              <span className="block text-xs text-danger">{adsStatus.message_vi}</span>
+            ) : null}
             {shownTab === "analytics"
               ? " · lọc ngày → tầng → loại conv → ST/KW · không apply"
               : viewer

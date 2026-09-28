@@ -31,6 +31,7 @@ import {
   type RequestDirectory,
 } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
+import { GoogleAdsAdminCard } from "./google-ads-admin-card";
 
 type Caps = { grant?: boolean; requestGrant?: boolean };
 
@@ -48,8 +49,15 @@ function statusVi(s: GrantRequestRow["status"]): string {
   return { pending: "Chờ duyệt", approved: "Đã duyệt", rejected: "Từ chối", cancelled: "Đã huỷ" }[s] || s;
 }
 
-export function PermissionsPanel({ caps }: { caps: Caps }) {
-  if (caps.grant) return <AdminPermissions />;
+export function PermissionsPanel({ caps, realAdmin, readOnly }: { caps: Caps; realAdmin?: boolean; readOnly?: boolean }) {
+  if (caps.grant || realAdmin) {
+    return (
+      <div className="flex flex-col gap-4">
+        {realAdmin ? <GoogleAdsAdminCard readOnly={readOnly} /> : null}
+        {caps.grant ? <AdminPermissions /> : null}
+      </div>
+    );
+  }
   if (caps.requestGrant) return <RequestPermissions />;
   return (
     <section className={card}>

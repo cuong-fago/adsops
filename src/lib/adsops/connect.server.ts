@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync, chmodSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { ConnectPublic, InstallAndProbeResult, PullKpisResult } from "./connect.types.ts";
+import type { AnalyticsSnap } from "./analytics.ts";
 
 export type { ConnectPublic, InstallAndProbeResult, InstallMeta, PullKpisResult } from "./connect.types.ts";
 
@@ -610,14 +611,40 @@ export async function installAndProbe(input: {
   }
 }
 
+/**
+ * "Kéo lại 5 KPI": force a live Google Ads pull (read-only GAQL searchStream) of the
+ * recent window into the warehouse, then derive the 5-KPI report + compare windows
+ * from it. Caller (pullClientKpis) has already enforced pull capability + account grant.
+ */
 export async function pullKpis(clientId: string): Promise<PullKpisResult> {
   const id = clientId.trim();
   if (!CLIENT_ID_RE.test(id)) {
     return { ok: false, error_vi: "Khách không hợp lệ." };
   }
+  const { refreshWarehouseOnView, readAnalyticsWarehouseFromNeon } = await import("./warehouse.server.ts");
+  const { reportFromWarehouse } = await import("./report-from-warehouse.ts");
+  const refresh = await refreshWarehouseOnView(id, { force: true, timeoutMs: 55_000 });
+  if (refresh.state === "not_configured" || refresh.state === "error") {
+    return { ok: false, client_id: id, error_vi: refresh.message_vi || "Không kéo được số Google Ads." };
+  }
+  const snap = (await readAnalyticsWarehouseFromNeon(id)) as unknown as AnalyticsSnap | null;
+  if (!snap || snap.adapter !== "live") {
+    return {
+      ok: false,
+      client_id: id,
+      error_vi: refresh.message_vi || "Chưa có số Google Ads đã kéo cho khách này.",
+    };
+  }
+  const built = reportFromWarehouse(snap);
+  if (!built) {
+    return { ok: false, client_id: id, error_vi: "Google Ads chưa trả về ngày trọn vẹn nào cho tài khoản này." };
+  }
   return {
-    ok: false,
+    ok: true,
     client_id: id,
-    error_vi: "Đã nối MCC thì kéo danh sách tài khoản trên tab Kết nối. Kéo 5 KPI từng khách — phiên này chưa kéo search term, không apply.",
+    report: built.report,
+    compare: built.compare,
+    pulled_at: snap.pulled_at || refresh.pulled_at || null,
+    note_vi: refresh.state === "busy" ? refresh.message_vi : null,
   };
 }

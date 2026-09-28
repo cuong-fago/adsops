@@ -79,6 +79,9 @@ export type PullKpisResult = {
   compare?: Json | null;
   report?: Json | null;
   hub?: Json | null;
+  /** ISO time of the real Google Ads pull. */
+  pulled_at?: string | null;
+  note_vi?: string | null;
   error_vi?: string | null;
 };
 
@@ -99,6 +102,7 @@ export type PullAnalyticsWarehouseResult = {
   };
   persisted_neon?: boolean;
   persisted_fs?: boolean;
+  pulled_at?: string | null;
   error_vi?: string | null;
   note_vi?: string | null;
 };

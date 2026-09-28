@@ -78,6 +78,8 @@ export type WorkspacePack = {
   data_through: string | null;
   /** Where the analytics came from: Neon warehouse or committed snapshot. */
   analytics_source: "neon" | "snapshot" | null;
+  /** Google Ads live-pull status (staff with pull capability only; null for customers). */
+  ads_status?: { state: string; message_vi: string } | null;
 };
 
 export type WorkspaceScene = {

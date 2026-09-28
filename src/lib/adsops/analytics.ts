@@ -122,6 +122,8 @@ export type AnalyticsSnap = {
   analytics_lookback_days?: number;
   lookback_days?: number;
   day_count?: number;
+  /** ISO time of the last real Google Ads API pull (live warehouse only). */
+  pulled_at?: string;
 };
 
 const SUM_KEYS = [
