@@ -1,585 +1,147 @@
-=== nitro pkg exports
-3.0.260610-beta
-.
-./app
-./builder
-./cache
-./config
-./context
-./database
-./h3
-./meta
-./package.json
-./runtime-config
-./storage
-./task
-./tsconfig
-./types
-./vite
-./vite/runtime
-./vite/types
-=== grep useStorage in nitro dist
-node_modules/nitro/dist/runtime/storage.d.mts
-node_modules/nitro/dist/runtime/storage.mjs
-node_modules/nitro/dist/runtime/internal/storage.d.mts
-node_modules/nitro/dist/runtime/internal/storage.mjs
-=== better-auth version
-1.6.30
-=== grep adsops urls in components
-src/components/adsops/side-panels.tsx:130:      href={href}
-src/components/adsops/side-panels.tsx:301:                <FileLink href={txt(daily.xlsx_href) || undefined} label="Tải Daily" />
-src/components/adsops/side-panels.tsx:302:                <FileLink href={txt(weekly.xlsx_href) || undefined} label="Tải Weekly" />
-src/components/adsops/side-panels.tsx:752:          <FileLink href={txt(data.xlsx_href) || undefined} label="Tải file FINAL" />
-src/components/adsops/final-workbook.tsx:316:          {txt(data.xlsx_href) ? (
-src/components/adsops/final-workbook.tsx:318:              href={txt(data.xlsx_href)}
-=== db.ts exports
-4:export type DbSource = "neon" | "pglite";
-19:export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
-29:export interface Sql {
-189:export function getSql(): Promise<Sql> {
-202:export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite> {
-222:export function ensureDbReady(): Promise<void> {
-=== routes/index + __root
-import { createFileRoute } from "@tanstack/react-router";
-import { AdsOpsApp } from "@/components/adsops/app-shell";
-import { RedirectToSignIn } from "@/lib/auth/gates";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
-
-export const Route = createFileRoute("/")({ component: Home });
-
-function Home() {
-  const { user, isPending } = useCurrentUserState();
-  if (isPending) {
-    return (
-      <div className="min-h-screen bg-bg px-6 py-16 text-center text-sm text-muted">
-        Đang mở phiên…
-      </div>
-    );
-  }
-  if (!user) return <RedirectToSignIn />;
-  return <AdsOpsApp />;
-}
-import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
-import { AuthProvider } from "@/lib/auth/provider";
-import { PreviewHostBridge } from "@/components/preview-host-bridge";
-import appCss from "../styles.css?url";
-
-const APP_NAME = "AdsOps";
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: APP_NAME },
-      { name: "theme-color", content: "#f3efe6" },
-    ],
-    links: [
-      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-      { rel: "stylesheet", href: appCss },
-      { rel: "manifest", href: "/__grok/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700&display=swap",
-      },
-    ],
-  }),
-  component: () => (
-    <html lang="vi" suppressHydrationWarning>
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <PreviewHostBridge />
-        <AuthProvider>
-          <Outlet />
-        </AuthProvider>
-        <Scripts />
-      </body>
-    </html>
-  ),
-});
-import { createFileRoute } from "@tanstack/react-router";
-import { auth, getAuthEnvProbe } from "@/lib/auth/server";
-import { adaptAuthRequest } from "@/lib/adsops/auth-origin.server";
-
-/** Force Google provider registration using live process.env on each request. */
-async function handleAuth(ctx: {
-  request: Request;
-  params?: Record<string, string | undefined>;
-}) {
-  const request = ctx.request;
-  const rawUrl = String(request?.url ?? "");
-
-  // Temporary: any GET whose URL mentions ok|debug|probe returns env probe.
-  if (request.method.toUpperCase() === "GET" && /ok|debug|probe/i.test(rawUrl)) {
-    return Response.json({
-      ...getAuthEnvProbe(),
-      ok: true,
-      via: "tanstack-auth-splat",
-      rawUrl,
-      paramKeys: Object.keys(ctx.params ?? {}),
-      commitHint: "auth-env-probe-v6",
-    });
-  }
-
-  return auth.handler(await adaptAuthRequest(request));
-}
-
-export const Route = createFileRoute("/api/auth/$")({
-  server: {
-    handlers: {
-      GET: handleAuth,
-      POST: handleAuth,
-    },
-  },
-});
-=== analytics.ts exports
-3:export type MetricMap = Record<string, number>;
-5:export type DailyRow = {
-29:export type BudgetTicket = {
-46:export type BudgetEmail = {
-57:export type BudgetPace = {
-75:export type ConvGroup = {
-82:export type AnalyticsSnap = {
-140:export function derivedMetrics(raw: MetricMap): MetricMap {
-156:export function windowComplete(dates: string[], start: string, end: string) {
-160:export function windowCoverage(dates: string[], start: string, end: string) {
-177:export function warehouseDates(snap: AnalyticsSnap) {
-200:export type LayerRow = {
-214:export type LayerBlock = {
-227:export function layerRows(
-419:export function previousWeeks(before: string, n: number) {
-440:export function previousMonths(of: string, n: number) {
-462:export function defaultRange(snap: AnalyticsSnap) {
-472:export function previousEqualRange(start: string, end: string) {
-482:export function monthsOverlapping(start: string, end: string) {
-520:export type MixPart = { id: string; label: string; value: number };
-522:export function mixParts(
-=== connect.functions
-import { createServerFn } from "@tanstack/react-start";
-import { authMiddleware } from "@/lib/auth/middleware";
-import type { InstallAndProbeResult, PullKpisResult, PullAnalyticsWarehouseResult } from "./connect.types.ts";
-
-export type { ConnectPublic, InstallAndProbeResult, InstallMeta, PullKpisResult, PullAnalyticsWarehouseResult } from "./connect.types.ts";
-
-type Intake = {
-  clientId: string;
-  yamlText: string;
-  developerToken: string;
-  oauthClientId: string;
-  oauthClientSecret: string;
-  refreshToken: string;
-  save: boolean;
-};
-
-function asIntake(data: unknown): Intake {
-  if (!data || typeof data !== "object") {
-    throw new Error("Thiếu dữ liệu");
-  }
-  const d = data as Record<string, unknown>;
-  const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
-  if (!clientId) throw new Error("Thiếu khách");
-  return {
-    clientId,
-    yamlText: typeof d.yamlText === "string" ? d.yamlText : "",
-    developerToken: typeof d.developerToken === "string" ? d.developerToken : "",
-    oauthClientId: typeof d.oauthClientId === "string" ? d.oauthClientId : "",
-    oauthClientSecret: typeof d.oauthClientSecret === "string" ? d.oauthClientSecret : "",
-    refreshToken: typeof d.refreshToken === "string" ? d.refreshToken : "",
-    save: d.save === true,
-  };
-}
-
-function asClientId(data: unknown): { clientId: string } {
-  if (!data || typeof data !== "object") {
-    throw new Error("Thiếu khách");
-  }
-  const clientId = typeof (data as { clientId?: unknown }).clientId === "string"
-    ? String((data as { clientId: string }).clientId).trim()
-    : "";
-  if (!clientId) throw new Error("Thiếu khách");
-  return { clientId };
-}
-
-export const saveYamlAndProbe = createServerFn({ method: "POST" })
-  .validator(asIntake)
-  .middleware([authMiddleware])
-  .handler(async ({ context, data }) => {
-    const { assertOps } = await import("./access.server.ts");
-    await assertOps(context.userId);
-    const { installAndProbe } = await import("./connect.server.ts");
-    return installAndProbe({
-      clientId: data.clientId,
-      yamlText: data.yamlText,
-      pieces: {
-        developer_token: data.developerToken,
-        oauth_client_id: data.oauthClientId,
-        oauth_client_secret: data.oauthClientSecret,
-        refresh_token: data.refreshToken,
-      },
-      save: data.save,
-    });
-  });
-
-export const pullClientKpis = createServerFn({ method: "POST" })
-  .validator(asClientId)
-  .middleware([authMiddleware])
-  .handler(async ({ context, data }) => {
-    const { assertOps } = await import("./access.server.ts");
-    await assertOps(context.userId);
-    const { pullKpis } = await import("./connect.server.ts");
-    return pullKpis(data.clientId) as Promise<PullKpisResult>;
-  });
-
-function asWarehousePull(data: unknown): { clientId: string; lookbackDays?: number } {
-  if (!data || typeof data !== "object") {
-    throw new Error("Thiếu khách");
-  }
-  const d = data as { clientId?: unknown; lookbackDays?: unknown };
-  const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
-  if (!clientId) throw new Error("Thiếu khách");
-  const lookbackDays =
-    typeof d.lookbackDays === "number" && Number.isFinite(d.lookbackDays)
-      ? d.lookbackDays
-      : undefined;
-  return { clientId, lookbackDays };
-}
-
-export const pullAnalyticsWarehouseFn = createServerFn({ method: "POST" })
-  .validator(asWarehousePull)
-  .middleware([authMiddleware])
-  .handler(async ({ context, data }) => {
-    const { assertOps } = await import("./access.server.ts");
-    await assertOps(context.userId);
-    const { pullAnalyticsWarehouse } = await import("./warehouse.server.ts");
-    return pullAnalyticsWarehouse(data.clientId, data.lookbackDays) as Promise<PullAnalyticsWarehouseResult>;
-  });
-=== classify.functions
-import { createServerFn } from "@tanstack/react-start";
-import { authMiddleware } from "@/lib/auth/middleware";
-import type { ClassifyEdit, ClassifySaveResult } from "./classify.types.ts";
-
-export type { ClassifyEdit, ClassifySaveResult, ClassifySnap, ClassifyCluster, ClassifyLabel } from "./classify.types.ts";
-
-function asPayload(data: unknown): { clientId: string; edits: ClassifyEdit[] } {
-  if (!data || typeof data !== "object") throw new Error("Thiếu dữ liệu");
-  const d = data as Record<string, unknown>;
-  const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
-  if (!clientId) throw new Error("Thiếu khách");
-  const edits = Array.isArray(d.edits) ? (d.edits as ClassifyEdit[]) : [];
-  return { clientId, edits };
-}
-
-export const saveClassifyEdits = createServerFn({ method: "POST" })
-  .validator(asPayload)
-  .middleware([authMiddleware])
-  .handler(async ({ context, data }) => {
-    const { assertOps } = await import("./access.server.ts");
-    await assertOps(context.userId);
-    const { saveClassifyEdits: run } = await import("./classify.server.ts");
-    return run(data) as Promise<ClassifySaveResult>;
-  });
-=== migration 0001 + 0004
--- Better Auth schema (identity + sessions for "Sign in with Grok").
---
--- Generated by the Better Auth CLI for its Postgres adapter — DO NOT EDIT by
--- hand. `@/lib/auth/server` runs Better Auth against these tables when
--- DATABASE_URL is set. The columns are camelCase and MUST stay double-quoted so
--- Postgres preserves the case Better Auth queries by.
---
--- Migrations in this folder are the single source of truth for your schema. They
--- apply to Neon during the Vercel build (`npm run build`) and to the local
--- PGLite fallback automatically on startup, so dev matches production. Applied
--- files are recorded by name in `_migrations` and NEVER run again.
---
--- Put YOUR app's schema in NEW ordered files (0002_*.sql, 0003_*.sql, …), never
--- in this one. For app tables, prefer snake_case and give per-user tables a
--- `user_id TEXT NOT NULL` column (TEXT, not UUID — the preview dev user id is
--- the string 'dev-user'), then scope every query to the authenticated user
--- server-side (see the `neon` + `auth` skills and src/lib/auth/verify.server.ts).
-
-create table if not exists "user" (
-  "id" text not null primary key,
-  "name" text not null,
-  "email" text not null unique,
-  "emailVerified" boolean not null,
-  "image" text,
-  "createdAt" timestamptz default CURRENT_TIMESTAMP not null,
-  "updatedAt" timestamptz default CURRENT_TIMESTAMP not null
-);
-
-create table if not exists "session" (
-  "id" text not null primary key,
-  "expiresAt" timestamptz not null,
-  "token" text not null unique,
-  "createdAt" timestamptz default CURRENT_TIMESTAMP not null,
-  "updatedAt" timestamptz not null,
-  "ipAddress" text,
-  "userAgent" text,
-  "userId" text not null references "user" ("id") on delete cascade
-);
-
-create table if not exists "account" (
-  "id" text not null primary key,
-  "accountId" text not null,
-  "providerId" text not null,
-  "userId" text not null references "user" ("id") on delete cascade,
-  "accessToken" text,
-  "refreshToken" text,
-  "idToken" text,
-  "accessTokenExpiresAt" timestamptz,
-  "refreshTokenExpiresAt" timestamptz,
-  "scope" text,
-  "password" text,
-  "createdAt" timestamptz default CURRENT_TIMESTAMP not null,
-  "updatedAt" timestamptz not null
-);
-
-create table if not exists "verification" (
-  "id" text not null primary key,
-  "identifier" text not null,
-  "value" text not null,
-  "expiresAt" timestamptz not null,
-  "createdAt" timestamptz default CURRENT_TIMESTAMP not null,
-  "updatedAt" timestamptz default CURRENT_TIMESTAMP not null
-);
-
-create index if not exists "session_userId_idx" on "session" ("userId");
-create index if not exists "account_userId_idx" on "account" ("userId");
-create index if not exists "verification_identifier_idx" on "verification" ("identifier");
--- One grant per email + role + account. Ops rows use NULL client_id (Postgres
--- treats NULLs as distinct, so duplicate ops invites are still blocked in code).
-create unique index if not exists memberships_email_role_client_uidx
-  on memberships (email, role, client_id);
--- Durable analytics warehouse snapshots (survive Vercel redeploys; public/ JSON is best-effort only).
-create table if not exists adsops_analytics_warehouse (
-  client_id text primary key,
-  payload jsonb not null,
-  pulled_at timestamptz not null default now(),
-  warehouse_start date,
-  warehouse_end date,
-  lookback_days integer
-);
-create index if not exists adsops_analytics_warehouse_pulled_at_idx
-  on adsops_analytics_warehouse (pulled_at desc);
-=== analytics registry head
-{
-  "product": "AdsOps",
-  "module": "analytics",
-  "rule": "Chọn A không thấy số B. All conversions không lên màn Phân tích. Không đoán kho cho tài khoản chưa kéo.",
-  "clients": [
-    {
-      "client_id": "tkqc_6419118605",
-      "display_name": "641-911-8605",
-      "data_through": "2026-09-21",
-      "warehouse_start": "2026-06-24",
-      "day_count": 89
-    },
-    {
-      "client_id": "tkqc_2950312680",
-      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 001",
-      "data_through": "2026-09-19",
-      "warehouse_start": "2026-06-24",
-      "day_count": 38
-    },
-    {
-      "client_id": "tkqc_5449401095",
-      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 002",
-      "data_through": "2026-08-17",
-      "warehouse_start": "2026-06-24",
-      "day_count": 54
-    },
-    {
-      "client_id": "tkqc_1002848762",
-      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 003",
-      "data_through": "2026-09-21",
-      "warehouse_start": "2026-06-24",
-      "day_count": 90
-    },
-    {
-      "client_id": "tkqc_5683242539",
-      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 004",
-      "data_through": "2026-09-21",
-      "warehouse_start": "2026-06-24",
-      "day_count": 76
-    },
-    {
-      "client_id": "tkqc_5305148570",
-      "display_name": "Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 005",
-      "data_thro
-=== registry.json clients
-tkqc_6419118605 | 641-911-8605 | 641-911-8605 | active live
-tkqc_2950312680 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 001 | 295-031-2680 | active live
-tkqc_5449401095 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 002 | 544-940-1095 | active live
-tkqc_1002848762 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 003 | 100-284-8762 | active live
-tkqc_5683242539 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 004 | 568-324-2539 | active live
-tkqc_5305148570 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 005 | 530-514-8570 | active live
-fago_group | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 006 | 220-413-6068 | active live
-tkqc_4925480286 | CÔNG TY CỔ PHẦN MAXDREAM | 492-548-0286 | active live
-tkqc_2956229201 | Công Ty TNHH Kiểm Toán Và Tư Vấn Bản Việt | 295-622-9201 | active live
-tkqc_6810292395 | Công Ty TNHH MTV Thương Mại Và Du Lịch Quỳnh Thanh | 681-029-2395 | active live
-tkqc_7904581470 | Công Ty TNHH Đầu Tư Phát Triển Thương Mại Dịch Vụ Minh Quân | 790-458-1470 | active live
-tkqc_6608871437 | Fago - Hạnh Long - 0312539301 | 660-887-1437 | active live
-tkqc_7167241572 | Fago - TCC - 0318902627 | 716-724-1572 | active live
-tkqc_5709560356 | Fago - Điện lạnh Tiên Tiến | 570-956-0356 | paused live
-tkqc_7117149480 | Fago Agency - Tổng đài cứu hộ 119 | 711-714-9480 | paused live
-tkqc_1537771845 | Fago Agency - vinhome-smartcity.vn | 153-777-1845 | paused live
-tkqc_9634070340 | Gloka | 963-407-0340 | active live
-tkqc_4447912752 | Rock Kitchen & Bar | 444-791-2752 | active live
-tkqc_5800099027 | Strip Việt Nam | 580-009-9027 | active live
-tkqc_1566256433 | Tài khoản Google Ads của zzz | 156-625-6433 | active live
-=== connect-registry clients
-tkqc_6419118605 | 641-911-8605 | 641-911-8605
-tkqc_2950312680 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 001 | 295-031-2680
-tkqc_5449401095 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 002 | 544-940-1095
-tkqc_1002848762 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 003 | 100-284-8762
-tkqc_5683242539 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 004 | 568-324-2539
-tkqc_5305148570 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 005 | 530-514-8570
-fago_group | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 006 | 220-413-6068
-tkqc_4925480286 | CÔNG TY CỔ PHẦN MAXDREAM | 492-548-0286
-tkqc_2956229201 | Công Ty TNHH Kiểm Toán Và Tư Vấn Bản Việt | 295-622-9201
-tkqc_6810292395 | Công Ty TNHH MTV Thương Mại Và Du Lịch Quỳnh Thanh | 681-029-2395
-tkqc_7904581470 | Công Ty TNHH Đầu Tư Phát Triển Thương Mại Dịch Vụ Minh Quân | 790-458-1470
-tkqc_6608871437 | Fago - Hạnh Long - 0312539301 | 660-887-1437
-tkqc_7167241572 | Fago - TCC - 0318902627 | 716-724-1572
-tkqc_5709560356 | Fago - Điện lạnh Tiên Tiến | 570-956-0356
-tkqc_7117149480 | Fago Agency - Tổng đài cứu hộ 119 | 711-714-9480
-tkqc_1537771845 | Fago Agency - vinhome-smartcity.vn | 153-777-1845
-tkqc_9634070340 | Gloka | 963-407-0340
-tkqc_4447912752 | Rock Kitchen & Bar | 444-791-2752
-tkqc_5800099027 | Strip Việt Nam | 580-009-9027
-tkqc_1566256433 | Tài khoản Google Ads của zzz | 156-625-6433
-=== mcc accounts
-tkqc_6419118605 | 641-911-8605 | 641-911-8605 |  ENABLED
-tkqc_2950312680 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 001 | 295-031-2680 |  ENABLED
-tkqc_5449401095 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 002 | 544-940-1095 |  ENABLED
-tkqc_1002848762 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 003 | 100-284-8762 |  ENABLED
-tkqc_5683242539 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 004 | 568-324-2539 |  ENABLED
-tkqc_5305148570 | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 005 | 530-514-8570 |  ENABLED
-fago_group | Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 006 | 220-413-6068 |  ENABLED
-tkqc_4925480286 | CÔNG TY CỔ PHẦN MAXDREAM | 492-548-0286 |  ENABLED
-tkqc_2956229201 | Công Ty TNHH Kiểm Toán Và Tư Vấn Bản Việt | 295-622-9201 |  ENABLED
-tkqc_6810292395 | Công Ty TNHH MTV Thương Mại Và Du Lịch Quỳnh Thanh | 681-029-2395 |  ENABLED
-tkqc_7904581470 | Công Ty TNHH Đầu Tư Phát Triển Thương Mại Dịch Vụ Minh Quân | 790-458-1470 |  ENABLED
-tkqc_6608871437 | Fago - Hạnh Long - 0312539301 | 660-887-1437 |  ENABLED
-tkqc_7167241572 | Fago - TCC - 0318902627 | 716-724-1572 |  ENABLED
-tkqc_5709560356 | Fago - Điện lạnh Tiên Tiến | 570-956-0356 |  SUSPENDED
-tkqc_7117149480 | Fago Agency - Tổng đài cứu hộ 119 | 711-714-9480 |  CANCELED
-tkqc_1537771845 | Fago Agency - vinhome-smartcity.vn | 153-777-1845 |  SUSPENDED
-tkqc_9634070340 | Gloka | 963-407-0340 |  ENABLED
-tkqc_4447912752 | Rock Kitchen & Bar | 444-791-2752 |  ENABLED
-tkqc_5800099027 | Strip Việt Nam | 580-009-9027 |  ENABLED
-tkqc_1566256433 | Tài khoản Google Ads của zzz | 156-625-6433 |  ENABLED
-tkqc_5321450531 | Fago Agency | 532-145-0531 | MGR ENABLED
-=== pack.json keys
-product,module,rule,google_is_not_qualified_lead,isolation,active_client_id,clients,scenarios,sop,views
-=== data-and-auth ref
-# Data & auth — implementation
-
-Read this **after** `AGENTS.md` §0.5 has already said the app needs a database
-and/or sign-in. The decision (auth OFF by default, the closed trigger list, "no
-migrations / no `@/lib/db` unless triggered") lives in `AGENTS.md`, not here.
-
-Full guides + snippets: the **`neon` skill** (database) and the **`auth` skill**
-(sign-in), under `.grok/skills/`.
-
-## Database (`@/lib/db`, server-only)
-
-- `const sql = await getSql()` from `@/lib/db`. Use it **only** inside
-  `createServerFn` handlers / server loaders.
-- Dual-mode: a regular Postgres driver (node-postgres, `pg`) when `DATABASE_URL`
-  is set, else a local **PGLite** fallback — so the preview always renders.
-- In preview, PGLite **bootstraps at server start** (`ensureDbReady`) once the
-  app has migrations. Do not remove that.
-- A deployed app is provisioned a real database when it ships `migrations/*.sql`
-  or sign-in. An app that needs one without either says so with
-  `"deploy": {"database": true}` in `.grok/app-env.json` — see the `neon` skill.
-
-## Migrations
-
-- `migrations/*.sql` is the single schema source: applied to **Neon on deploy**
-  (`npm run build` runs `npm run db:migrate`, so Vercel ships with the schema
-  ready) and to the **PGLite** preview automatically on startup.
-- Add the app's tables as ordered files (`migrations/0002_*.sql`), not inline.
-- An app that needs no database adds no `.sql` file, and then no migration runs
-  anywhere.
-- The Better Auth schema sits outside that scope in `migrations/auth/` (neither
-  applier descends into it); the `auth` skill's "Turning sign-in on" copies it
-  up. Do not edit it. Applied files are keyed by **basename**, so a database
-  that already has `0001_auth.sql` will not re-run it.
-
-## Server functions
-
-`createServerFn` with input via `.validator()` — the current API on the
-installed version (`.inputValidator()` is deprecated). Examples in the `neon`
-and `auth` skills.
-
-## Auth wiring (only once §0.5 says accounts)
-
-- The app runs its **own** Better Auth at `/api/auth/*` and federates to the
-  shared Grok auth broker for **Google** and **X**. The only other supported
-  method is this app's own **email/password** (local Better Auth, off by
-  default — enable only via `src/lib/auth/email-password.ts`; **never rewrite**
-  `src/lib/auth/server.ts`). No other social providers, magic links, passkeys,
-  or OTP/phone.
-- Two routes: `src/routes/api/auth/$.ts` (mounts Better Auth at `/api/auth/*`)
-  and `src/routes/login.tsx` (provider buttons via `signIn(providerId)`). Copy
-  the snippets from the `auth` skill.
-- The live-preview popup at `/auth/popup` is served by the template Vite plugin
-  (`vite.config.ts` → `popup.server.ts`); `AGENTS.md` § "First scaffold" states
-  the rule about not adding a React route there.
-- Read the user with `useCurrentUser()` (`@/lib/auth/use-current-user`) and gate
-  UI with `SignedIn` / `SignedOut` / `UserButton` (`@/lib/auth/gates`).
-- Sign-in is **real even in the live preview** — it federates via a baked shared
-  preview client — so a visitor is signed out until they sign in. Build real
-  sign-in; do **NOT** scaffold demo/mock/hardcoded users.
-- **Authorize every server function** with `authMiddleware`
-  (`@/lib/auth/middleware`): `createServerFn().middleware([authMiddleware])`
-  hands the handler a **verified** `context.userId` (resolved from the
-  same-origin session; throws when signed out). Scope **every** query by that
-  `user_id`. Never trust a client-sent id.
-
-## Turning sign-in on (at scaffold or later)
-
-`.grok/app-env.json` (`{"VITE_AUTH_ENABLED": "false"}`) is the switch, read by
-`npm run dev` / `build` / `preview` alike through `scripts/with-app-env.mjs` —
-which is why Vite is never started outside those scripts. Follow the `auth`
-skill's **"Turning sign-in on"** (flag, schema, then routes) in that order: the
-routes alone render the disabled branch. `npm run check:auth`, run against a
-live dev server, fails when that server and the next build disagree about the
-flag (exit 0 agree, 1 diverged, 2 could not observe).
-
-## Env
-
-On deploy the platform injects `DATABASE_URL` + per-app auth creds; live preview
-needs neither (baked preview client, PGLite fallback). Deployed behind the gate,
-signed-in Grok viewers get the app session automatically from `x-grok-identity`
-(see the `auth` skill — `references/grok-identity.md`); the broker federation
-covers anonymous viewers and no-gate contexts.
-
-## HARD RULE — connector / AppData API (backend only)
-
-**Never call connector or AppData APIs from frontend code.**
-
-| Allowed | Forbidden |
-| --- | --- |
-| `createServerFn({ method: "POST" }).handler` that dynamic-imports `@/lib/app-data/client.server` and calls `callTool` | Importing `@/lib/app-data/client.server` from a route component, `useEffect`, event handler, or any client module |
-| UI calling that **server function** only | Browser `fetch("/__gate/app-data/…")`, `fetch` to the connectors host, or any direct CallTool from the client |
-| Types/constants from `@/lib/app-data` (no network) | Putting `x-connector-access-token`, connector JWTs, or gate secrets in client state, props, or `VITE_*` env |
-
-**Flow (required):** browser → **this app's** `createServerFn` → **app backend**
-SDK → public connectors host (`connectors.grok.me`, **auth required**) → gate.
-Unauthenticated hits on the connectors host redirect to gate OIDC sign-in.
-
-If you need Drive / Gmail / calendar / connector data, load the **`app-data`
-skill** (`.grok/skills/app-data/SKILL.md`) and follow it exactly. Do not invent
-a client-side connector client.
-=== project memory
-- AdsOps giai đoạn 1 fixture đã xong (phiên 01–09 + 20–27). Root code: artifacts/AdsOps-handoff-2026-09-21/AdsOps. Brief: AdsOps-PROJECT-BRIEF.md. [2026-09-21]
-- Khách fixture chạy được: demo_clinic, demo_dental. Live đã có CID chưa CONNECTED: fago_group (220-413-6068), tkqc_6810292395 GrowVi (681-029-2395), MCC Fago Agency 532-145-0531. [2026-09-21]
-- Token/OAuth không có trên máy này (không có config/google-ads.yaml). Probe GrowVi = MISSING_CREDENTIALS vì thiếu 3 mảnh OAuth, không vì developer token. Không kéo ST/5 KPI/FINAL live khi chưa CONNECTED. Không apply Google Ads. [2026-09-21]
-- Màn Kết nối GrowVi: kéo/thả yaml hoặc 3 ô OAuth (mật khẩu) rồi Lưu trên máy rồi thử gọi. File CHANGE_ME bị từ chối, không lưu. Chỉ mở 11-doi-chieu-5kpi khi phiếu ĐÃ NỐI. [2026-09-21]
+=== fs/data refs in server files
+src/lib/adsops/connect.server.ts:1:import { mkdirSync, readFileSync, writeFileSync, chmodSync, existsSync } from "node:fs";
+src/lib/adsops/connect.server.ts:14:const PUBLIC_DIR = "/workspace/public/adsops";
+src/lib/adsops/connect.server.ts:100:    const raw = JSON.parse(readFileSync(SECRET_FILE, "utf8")) as Secrets;
+src/lib/adsops/connect.server.ts:109:  writeFileSync(SECRET_FILE, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+src/lib/adsops/connect.server.ts:392:      cur = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+src/lib/adsops/connect.server.ts:398:    writeFileSync(path, `${JSON.stringify(cur, null, 2)}\n`);
+src/lib/adsops/connect.server.ts:402:    writeFileSync(join(PUBLIC_DIR, "mcc.json"), `${JSON.stringify(mcc, null, 2)}\n`);
+src/lib/adsops/connect.server.ts:410:        prev = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+src/lib/adsops/connect.server.ts:426:      writeFileSync(path, `${JSON.stringify({ ...prev, ...stub }, null, 2)}\n`);
+src/lib/adsops/connect.server.ts:433:export async function installAndProbe(input: {
+src/lib/adsops/connect.server.ts:613:export async function pullKpis(clientId: string): Promise<PullKpisResult> {
+src/lib/adsops/warehouse.server.ts:5:import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+src/lib/adsops/warehouse.server.ts:7:import { getSql } from "@/lib/db";
+src/lib/adsops/warehouse.server.ts:100:      const raw = JSON.parse(readFileSync(SECRET_FILE, "utf8")) as Secrets;
+src/lib/adsops/warehouse.server.ts:330:    "/workspace/public/adsops",
+src/lib/adsops/warehouse.server.ts:331:    join(process.cwd(), "public/adsops"),
+src/lib/adsops/warehouse.server.ts:332:    join(process.cwd(), "src/lib/adsops/snapshots"),
+src/lib/adsops/warehouse.server.ts:338:    const sql = await getSql();
+src/lib/adsops/warehouse.server.ts:340:      `insert into adsops_analytics_warehouse
+src/lib/adsops/warehouse.server.ts:360:    if (/adsops_analytics_warehouse|does not exist|relation/i.test(msg)) {
+src/lib/adsops/warehouse.server.ts:362:        "Thiếu bảng adsops_analytics_warehouse trên Neon. Chạy npm run db:migrate (hoặc để Vercel build chạy migrate).",
+src/lib/adsops/warehouse.server.ts:375:      writeFileSync(join(dir, `${snap.client_id}.json`), `${JSON.stringify(snap, null, 2)}\n`);
+src/lib/adsops/warehouse.server.ts:386:          reg = JSON.parse(readFileSync(regPath, "utf8")) as Record<string, unknown>;
+src/lib/adsops/warehouse.server.ts:404:        writeFileSync(regPath, `${JSON.stringify(reg, null, 2)}\n`);
+src/lib/adsops/warehouse.server.ts:416:export async function readAnalyticsWarehouseFromNeon(clientId: string): Promise<Json | null> {
+src/lib/adsops/warehouse.server.ts:419:    const sql = await getSql();
+src/lib/adsops/warehouse.server.ts:421:      `select payload from adsops_analytics_warehouse where client_id = $1 limit 1`,
+src/lib/adsops/warehouse.server.ts:459:export async function pullAnalyticsWarehouse(
+src/lib/adsops/classify.server.ts:1:import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+src/lib/adsops/classify.server.ts:44:export async function saveClassifyEdits(input: {
+src/lib/adsops/classify.server.ts:64:    writeFileSync(file, JSON.stringify(edits), "utf8");
+src/lib/adsops/classify.server.ts:76:      snapshot = JSON.parse(readFileSync(snapPath, "utf8")) as ClassifySnap;
+=== side-panels handlers
+6:import { pullClientKpis, saveYamlAndProbe, type InstallAndProbeResult, type PullKpisResult } from "@/lib/adsops/connect.functions";
+126:function FileLink({ href, label }: { href?: string; label: string }) {
+181:  compare,
+185:  compare: AnyRec;
+189:  const howto = asArr(compare.compare_howto).map((line) => String(line));
+190:  const windows = asObj(compare.windows);
+191:  const ranges = asObj(compare.window_ranges);
+223:export function ReportPanel({
+227:  onPulled,
+228:  viewer,
+233:  viewer?: boolean;
+234:  onPulled?: (pack: {
+236:    compare?: AnyRec | null;
+252:  const compare = asObj(data.compare);
+253:  const hasCompare = Boolean(compare.windows);
+260:      const result = (await pullClientKpis({ data: { clientId } })) as PullKpisResult;
+263:        onPulled?.({
+265:          compare: (result.compare as AnyRec) || null,
+280:        <CompareBox compare={compare} kpis={kpis.length ? kpis : fallbackKpis} currency={currency} />
+289:            {!viewer && live && clientId ? (
+290:              <button
+296:                {busy ? "Đang kéo 5 KPI…" : "Kéo lại 5 KPI"}
+299:            {!viewer ? (
+301:                <FileLink href={txt(daily.xlsx_href) || undefined} label="Tải Daily" />
+302:                <FileLink href={txt(weekly.xlsx_href) || undefined} label="Tải Weekly" />
+368:export function AlertsPanel({ data }: { data: AnyRec | null }) {
+412:export function GuardPanel({ data }: { data: AnyRec | null }) {
+483:export function HubPanel({ data }: { data: AnyRec | null }) {
+579:export function ProposalsPanel({ data }: { data: AnyRec | null }) {
+724:export function FinalPanel({
+752:          <FileLink href={txt(data.xlsx_href) || undefined} label="Tải file FINAL" />
+869:export function SopPanel({ data }: { data: AnyRec | null }) {
+896:export function ConnectPanel({
+909:    compare?: AnyRec | null;
+960:      setFormError("Kéo file yaml hoặc điền 3 ô OAuth trước khi lưu. Không dán token vào chat.");
+966:      const result = (await saveYamlAndProbe({
+992:      const result = (await pullClientKpis({ data: { clientId } })) as PullKpisResult;
+998:          compare: (result.compare as AnyRec) || null,
+1125:        <button
+1131:          {busy === "kpi" ? "Đang kéo 5 KPI…" : pulledKpis ? "Kéo lại 5 KPI" : "Kéo 5 KPI để đối chiếu"}
+1155:            Kéo file google-ads.yaml vào ô, hoặc điền 3 ô OAuth. Không dán token vào chat. Google đã
+1172:                {dragOver ? "Thả file yaml vào đây" : "Kéo file yaml vào đây"}
+1202:            <button
+1210:            <button
+=== warehouse refs
+src/lib/adsops/connect.functions.ts:90:export const pullAnalyticsWarehouseFn = createServerFn({ method: "POST" })
+src/lib/adsops/connect.functions.ts:96:    const { pullAnalyticsWarehouse } = await import("./warehouse.server.ts");
+src/lib/adsops/connect.functions.ts:97:    return pullAnalyticsWarehouse(data.clientId, data.lookbackDays) as Promise<PullAnalyticsWarehouseResult>;
+src/lib/adsops/warehouse.server.ts:459:export async function pullAnalyticsWarehouse(
+src/lib/adsops/connect.server.ts:597:        ? "Chọn tài khoản trên đầu trang. Kéo kho Phân tích từng khách — không đoán số."
+=== analytics-view props
+10:  previousEqualRange,
+11:  previousMonths,
+12:  previousWeeks,
+65:export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
+67:  const warehouseEnd = snap.warehouse_end || snap.data_through;
+121:  const prevRange = prevEqual ? previousEqualRange(start, end) : null;
+127:  const weeks = weekN ? previousWeeks(end, weekN) : [];
+128:  const prevMonths = monthN ? previousMonths(end, monthN) : [];
+312:            Kéo số phân tích
+=== final-workbook href
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="rounded-xl bg-paper p-5 shadow-sheet">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-widest text-subtle">Gói FINAL · 13 tab</p>
+            <h2 className="font-display text-xl font-medium tracking-tight text-balance">
+              {txt(workbook.file_title || workbook.title || tab0.title)}
+            </h2>
+            <p className="mt-1 max-w-3xl text-pretty text-sm text-muted">{txt(tab0.banner)}</p>
+          </div>
+          {txt(data.xlsx_href) ? (
+            <a
+              href={txt(data.xlsx_href)}
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg"
+            >
+              <Download className="size-4" />
+              Tải file Google Sheet
+            </a>
+          ) : null}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-sm">
+          <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", statusTone(txt(tab0.guard)))}>
+            Guard {txt(tab0.guard)}
+          </span>
+          <span className="rounded-full bg-inset px-2.5 py-0.5 text-xs">
+=== xlsx_href values
+"xlsx_href": ""
+"xlsx_href": "/adsops/final/files/tkqc_6810292395-FINAL.xlsx"
+=== report json keys
+module,audience,cover_only,session,client_id,display_name,customer_id,timezone,currency,adapter,data_through,propose_only,pulled_kpis,kpis,banner,conversion_note,modeled_note,conversions_may_include_modeled,google_conversion_is_not_qualified_lead,cpa_note,cadences,sheet_names,compare
+{"module":"client_report","audience":"client_viewer","cover_only":true,"session":"11-doi-chieu-5kpi","client_id":"tkqc_6810292395","display_name":"GrowVi","customer_id":"6810292395","timezone":"Asia/Saigon","currency":"VND","adapter":"live","data_through":"2026-09-20","propose_only":true,"pulled_kpis":true,"kpis":[{"id":"cost","label":"Chi tiêu"},{"id":"impressions","label":"Hiển thị"},{"id":"clicks","label":"Lượt nhấp"},{"id":"conversions","label":"Chuyển đổi"},{"id":"cpc","label":"CPC"}],"banner":"Báo cáo khách — 5 KPI: Chi tiêu, Hiển thị, Lượt nhấp, Chuyển đổi, CPC. Không gồm tab kỹ thuật t
+=== analytics json keys
+module,client_id,display_name,customer_id,timezone,currency,adapter,data_through,warehouse_start,warehouse_end,day_count,lookback_days,analytics_lookback_days,consecutive,campaigns,ad_groups,daily,pmax_note,metrics,conversion_groups,week_choices,month_choices,rules,budget_pace
+=== vc-config
+components
+lib
+routeTree.gen.ts
+router.tsx
+routes
+styles.css
+adsops
+app-data
+auth
+cn.ts
+db.ts
+env.server.ts
+error-component.tsx
+multiplayer
+og-site.json
+preview-embedder-origin.ts
+preview-host-bridge.ts
