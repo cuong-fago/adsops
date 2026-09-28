@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { ClassifyView } from "@/components/adsops/classify-view";
 import type { PacePreview } from "@/components/adsops/budget-banner";
-import { MembersPanel } from "@/components/adsops/members-panel";
+import { PermissionsPanel } from "@/components/adsops/permissions-panel";
 import {
   AlertsPanel,
   ConnectPanel,
@@ -19,8 +19,12 @@ import {
   getWorkspaceScene,
   type AccessSnap,
 } from "@/lib/adsops/access.functions";
+import { stopViewAs } from "@/lib/adsops/admin.functions";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
+import { clientSignOut } from "@/lib/adsops/client-auth.functions";
+import { pullAnalyticsWarehouseFn } from "@/lib/adsops/connect.functions";
+import { MODULE_CAPABILITY, ROLE_LABEL_VI, formatSaigon } from "@/lib/adsops/permissions.types";
 import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/cn";
 
@@ -76,7 +80,7 @@ const OPS_TABS: { id: TabId; label: string }[] = [
   { id: "hub", label: "Data Hub" },
   { id: "connect", label: "Kết nối" },
   { id: "sop", label: "SOP" },
-  { id: "members", label: "Người dùng" },
+  { id: "members", label: "Phân quyền" },
 ];
 
 const GATE_SCENES = [
@@ -121,6 +125,24 @@ const PACK_SLICE_KEYS = [
   "sop",
 ] as const;
 
+/** UI mirror of the server permission matrix (cosmetic; the server enforces). */
+function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
+  if (!access || access.role === "pending") return false;
+  const caps = access.caps;
+  if (id === "members") return Boolean(caps.grant || caps.requestGrant);
+  if (id === "analytics") return caps.analytics;
+  const cap = MODULE_CAPABILITY[id];
+  return cap ? Boolean(caps[cap]) : false;
+}
+
+/** Only modules the role may load (the server filters again). */
+function allowedModules(access: AccessSnap, modules: string[]): string[] {
+  return modules.filter((m) => {
+    const cap = MODULE_CAPABILITY[m];
+    return cap ? Boolean(access.caps[cap]) : false;
+  });
+}
+
 function accountsFromSnap(snap: Record<string, unknown>): MccAccount[] {
   const raw = snap.mcc_accounts;
   if (!Array.isArray(raw)) return [];
@@ -139,6 +161,23 @@ function accountsFromSnap(snap: Record<string, unknown>): MccAccount[] {
     .filter((a) => a.client_id);
 }
 
+type Freshness = { as_of: string | null; data_through: string | null };
+
+function freshnessLine(f: Freshness): string {
+  if (f.as_of) {
+    const t = formatSaigon(f.as_of);
+    if (t) {
+      const [hm, day] = t.split(" ");
+      return `Số liệu Google Ads cập nhật đến ${hm} ngày ${day} (giờ VN)`;
+    }
+  }
+  if (f.data_through) {
+    const [y, m, d] = f.data_through.split("-");
+    return `Số liệu Google Ads đến hết ngày ${d}/${m}/${y}`;
+  }
+  return "";
+}
+
 export function AdsOpsApp() {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [mcc, setMcc] = useState<MccRoster | null>(null);
@@ -153,10 +192,17 @@ export function AdsOpsApp() {
   const [scenario, setScenario] = useState("");
   const [loading, setLoading] = useState(true);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [fresh, setFresh] = useState<Freshness>({ as_of: null, data_through: null });
+  const [warehouseBusy, setWarehouseBusy] = useState(false);
+  const [warehouseMsg, setWarehouseMsg] = useState("");
   const liveConnectRef = useRef<Record<string, unknown> | null>(null);
 
-  const viewer = access?.role === "sale" || access?.role === "client";
-  const shownTab: TabId = viewer ? "report" : tab;
+  const caps = access?.caps;
+  /** Customer-side view (no ops tabs). */
+  const viewer = Boolean(access && access.role !== "pending" && !access.caps.opsTabs);
+  const canPull = Boolean(caps?.pull && !access?.read_only);
+  const canInstall = Boolean(access?.real_is_admin && !access?.read_only);
+  const shownTab: TabId = access && !tabAllowed(access, tab) ? "report" : tab;
 
   useEffect(() => {
     let cancelled = false;
@@ -178,9 +224,7 @@ export function AdsOpsApp() {
         }));
         setClients(rows);
         if (dir.mcc) setMcc(dir.mcc);
-        if (dir.access.role === "sale" || dir.access.role === "client") {
-          setTab("report");
-        }
+        if (!dir.access.caps.opsTabs) setTab("report");
         setClientId((cur) => {
           if (cur && rows.some((c) => c.client_id === cur)) return cur;
           return rows[0]?.client_id || "";
@@ -194,6 +238,16 @@ export function AdsOpsApp() {
       cancelled = true;
     };
   }, []);
+
+  function noteFreshness(pack: { as_of?: string | null; data_through?: string | null }) {
+    setFresh((prev) => ({
+      as_of: pack.as_of && (!prev.as_of || pack.as_of > prev.as_of) ? pack.as_of : prev.as_of,
+      data_through:
+        pack.data_through && (!prev.data_through || pack.data_through > prev.data_through)
+          ? pack.data_through
+          : prev.data_through,
+    }));
+  }
 
   function mergePackSlice(
     prev: Record<string, unknown>,
@@ -255,27 +309,22 @@ export function AdsOpsApp() {
     setScenePack(null);
     setScenario("");
     setBasePack({});
+    setFresh({ as_of: null, data_through: null });
+    setWarehouseMsg("");
     const id = clientId;
-    const isViewer = access.role === "sale" || access.role === "client";
-    const activeTab: TabId = isViewer ? "report" : tab;
-    const primary = isViewer ? (["report"] as string[]) : TAB_MODULES[activeTab];
-    setAnalyticsLoading(!isViewer && (activeTab === "analytics" || primary.includes("analytics")));
+    const isViewer = !access.caps.opsTabs;
+    const activeTab: TabId = tabAllowed(access, tab) ? tab : "report";
+    const primary = allowedModules(access, isViewer ? ["report"] : TAB_MODULES[activeTab]);
+    setAnalyticsLoading(activeTab === "analytics" || primary.includes("analytics"));
 
     (async () => {
       try {
-        if (isViewer) {
-          // Viewer: report-only full path (server ignores modules for sale/client).
-          const pack = await getWorkspacePack({ data: { clientId: id } });
-          if (cancelled) return;
-          setBasePack(mergePackSlice({}, pack, ["report"], id));
-          return;
-        }
-
         if (primary.length) {
           const pack = await getWorkspacePack({ data: { clientId: id, modules: primary } });
           if (cancelled) return;
           setBasePack((prev) => mergePackSlice(prev, pack, primary, id));
           applyAnalyticsPace(pack, primary);
+          noteFreshness(pack);
         }
 
         if (!cancelled) {
@@ -283,13 +332,14 @@ export function AdsOpsApp() {
           if (activeTab !== "analytics") setAnalyticsLoading(false);
         }
 
-        // Background full pack — do not keep the spinner.
-        if (!cancelled) {
+        // Background full pack for internal roles (server returns only allowed modules).
+        if (!cancelled && !isViewer) {
           getWorkspacePack({ data: { clientId: id } })
             .then((pack) => {
               if (cancelled) return;
               setBasePack((prev) => mergePackSlice(prev, pack, null, id));
               applyAnalyticsPace(pack, null);
+              noteFreshness(pack);
               setAnalyticsLoading(false);
             })
             .catch(() => {
@@ -299,12 +349,6 @@ export function AdsOpsApp() {
       } catch {
         if (!cancelled) {
           setBasePack({ report: null });
-          setLoading(false);
-          setAnalyticsLoading(false);
-        }
-      } finally {
-        // Success path already clears loading after primary; keep finally as safety net.
-        if (!cancelled && isViewer) {
           setLoading(false);
           setAnalyticsLoading(false);
         }
@@ -321,8 +365,7 @@ export function AdsOpsApp() {
   useEffect(() => {
     if (!access || access.role === "pending" || loading) return;
     if (!clientId || !clients.some((c) => c.client_id === clientId)) return;
-    if (viewer) return;
-    const needed = TAB_MODULES[shownTab];
+    const needed = allowedModules(access, TAB_MODULES[shownTab]);
     if (!needed.length) return;
     const missing = needed.filter((key) => {
       if (key === "analytics") return analytics === undefined;
@@ -333,19 +376,22 @@ export function AdsOpsApp() {
 
     let cancelled = false;
     const id = clientId;
+    if (missing.includes("analytics")) setAnalyticsLoading(true);
     getWorkspacePack({ data: { clientId: id, modules: missing } })
       .then((pack) => {
         if (cancelled) return;
         setBasePack((prev) => mergePackSlice(prev, pack, missing, id));
         applyAnalyticsPace(pack, missing);
+        noteFreshness(pack);
+        setAnalyticsLoading(false);
       })
       .catch(() => {
-        /* keep undefined keys; UI shows Đang mở… */
+        if (!cancelled) setAnalyticsLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [shownTab, clientId, clients, access, viewer, loading, basePack, analytics, pace]);
+  }, [shownTab, clientId, clients, access, loading, basePack, analytics, pace]);
 
   useEffect(() => {
     if (!scenario || viewer) {
@@ -374,8 +420,7 @@ export function AdsOpsApp() {
   }, [scenario, clientId, basePack, viewer]);
 
   function goTab(next: TabId) {
-    if (viewer && next !== "report") return;
-    if (access?.role !== "ops" && (next === "members" || next === "analytics")) return;
+    if (!tabAllowed(access, next)) return;
     setTab(next);
     const ops = next === "final" || next === "proposals" || next === "guard" || next === "alerts";
     const list = next === "alerts" ? ALERT_SCENES : GATE_SCENES;
@@ -386,7 +431,12 @@ export function AdsOpsApp() {
     liveConnectRef.current = snap;
     setBasePack((prev) => ({ ...prev, connect: snap }));
     const accounts = accountsFromSnap(snap);
-    const ads = accounts.filter((a) => !a.is_manager && a.client_id);
+    let ads = accounts.filter((a) => !a.is_manager && a.client_id);
+    // Only admin may widen the roster from an MCC probe.
+    if (!access?.all_clients) {
+      const allowed = new Set(clients.map((c) => c.client_id));
+      ads = ads.filter((a) => allowed.has(a.client_id));
+    }
     if (!ads.length) return;
     setClients(
       ads.map((a) => ({
@@ -397,14 +447,16 @@ export function AdsOpsApp() {
         customer_id_dashed: a.customer_id_dashed,
       })),
     );
-    setMcc({
-      mcc_id_dashed: String(snap.mcc_id_dashed || "532-145-0531"),
-      mcc_display_name: String(snap.mcc_display_name || "Fago Agency"),
-      last_probe_accessible_count: Number(snap.accessible_count || ads.length),
-      roster_complete: Boolean(snap.roster_complete),
-      note_vi: String(snap.detail_vi || ""),
-      accounts: ads,
-    });
+    if (access?.all_clients) {
+      setMcc({
+        mcc_id_dashed: String(snap.mcc_id_dashed || "532-145-0531"),
+        mcc_display_name: String(snap.mcc_display_name || "Fago Agency"),
+        last_probe_accessible_count: Number(snap.accessible_count || ads.length),
+        roster_complete: Boolean(snap.roster_complete),
+        note_vi: String(snap.detail_vi || ""),
+        accounts: ads,
+      });
+    }
     setClientId((cur) => (ads.some((a) => a.client_id === cur) ? cur : ads[0].client_id));
   }
 
@@ -418,16 +470,60 @@ export function AdsOpsApp() {
     setBasePack((prev) => ({
       ...prev,
       report: next.report
-        ? { ...next.report, ...(next.compare ? { compare: next.compare } : {}) }
+        ? { ...next.report, ...(next.compare && caps?.compare ? { compare: next.compare } : {}) }
         : prev.report,
       connect: next.connect || prev.connect,
       hub: next.hub || prev.hub,
     }));
     setTab("report");
   }
+
+  async function pullWarehouse() {
+    if (!clientId || !canPull) return;
+    setWarehouseBusy(true);
+    setWarehouseMsg("");
+    try {
+      const res = await pullAnalyticsWarehouseFn({ data: { clientId, lookbackDays: 180 } });
+      if (res.ok && res.analytics) {
+        setAnalytics(res.analytics as unknown as AnalyticsSnap);
+        setFresh((prev) => ({
+          as_of: new Date().toISOString(),
+          data_through: res.warehouse_end || prev.data_through,
+        }));
+        setWarehouseMsg(
+          `Đã kéo kho ${res.day_count ?? ""} ngày (${res.warehouse_start || "?"} → ${res.warehouse_end || "?"})${
+            res.persisted_neon ? " · đã lưu Neon" : ""
+          }.`,
+        );
+      } else {
+        setWarehouseMsg(res.error_vi || res.note_vi || "Không kéo được kho phân tích.");
+      }
+    } catch (err) {
+      setWarehouseMsg(err instanceof Error && err.message ? err.message : "Không kéo được kho phân tích.");
+    } finally {
+      setWarehouseBusy(false);
+    }
+  }
+
+  async function exitViewAs() {
+    try {
+      await stopViewAs();
+    } finally {
+      window.location.reload();
+    }
+  }
+
+  async function signOutClient() {
+    try {
+      await clientSignOut();
+    } finally {
+      window.location.assign("/login");
+    }
+  }
+
   const pack = scenePack || basePack;
   const client = clients.find((c) => c.client_id === clientId);
-  const firing = pace?.firing || analytics?.budget_pace?.firing;
+  const firing = caps?.optimize ? pace?.firing || analytics?.budget_pace?.firing : false;
   const fixture = !viewer && client?.adapter !== "live";
   const scenes = shownTab === "alerts" ? ALERT_SCENES : GATE_SCENES;
   const showScenes =
@@ -435,15 +531,9 @@ export function AdsOpsApp() {
     !loading &&
     fixture &&
     (shownTab === "final" || shownTab === "proposals" || shownTab === "guard" || shownTab === "alerts");
-  const opsTabs = viewer ? OPS_TABS.filter((t) => t.id === "report") : OPS_TABS;
-  const roleVi =
-    access?.role === "ops"
-      ? "Vận hành"
-      : access?.role === "sale"
-        ? "Sale"
-        : access?.role === "client"
-          ? "Khách hàng"
-          : "";
+  const opsTabs = OPS_TABS.filter((t) => tabAllowed(access, t.id));
+  const roleVi = access ? ROLE_LABEL_VI[access.role] || "" : "";
+  const freshText = freshnessLine(fresh);
 
   const body = useMemo(() => {
     if (accessError) {
@@ -461,16 +551,24 @@ export function AdsOpsApp() {
         <section className="rounded-xl bg-paper px-5 py-10 text-center shadow-sheet">
           <h2 className="font-display text-xl font-medium">Chưa được cấp quyền</h2>
           <p className="mt-2 text-sm text-muted">
-            {access.email || "Email này"} chưa được gắn tài khoản. Nhờ vận hành AdsOps cấp quyền
-            khách hàng hoặc sale — chỉ vào chỉ số báo cáo. Không dán token.
+            {access.email || "Tài khoản này"} chưa có vai trò trong AdsOps. Nhờ admin cấp vai trò và tài khoản
+            quảng cáo. Không dán token.
           </p>
+        </section>
+      );
+    }
+    if (shownTab === "members") return <PermissionsPanel caps={access.caps} />;
+    if (!clients.length) {
+      return (
+        <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
+          Chưa được cấp tài khoản quảng cáo nào. Nhờ admin cấp quyền.
         </section>
       );
     }
     if (loading) {
       return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở khách…</p>;
     }
-    const tabKeys = TAB_MODULES[shownTab];
+    const tabKeys = allowedModules(access, TAB_MODULES[shownTab]);
     const tabMissing = tabKeys.some((key) => {
       if (key === "analytics") return analytics === undefined;
       if (key === "pace") return pace === undefined;
@@ -480,31 +578,53 @@ export function AdsOpsApp() {
       return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở…</p>;
     }
     if (shownTab === "analytics") {
+      const pullBar = canPull ? (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={warehouseBusy || !clientId}
+            onClick={() => void pullWarehouse()}
+            className="h-10 rounded-full bg-inset px-4 text-sm font-medium text-ink hover:bg-line disabled:opacity-60"
+          >
+            {warehouseBusy ? "Đang kéo kho…" : "Kéo kho phân tích (180 ngày)"}
+          </button>
+          {warehouseMsg ? <span className="text-sm text-muted">{warehouseMsg}</span> : null}
+        </div>
+      ) : null;
       if (analyticsLoading && analytics === undefined) {
         return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở Phân tích…</p>;
       }
       if (!analytics || !(analytics.daily?.account || []).length) {
         return (
-          <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
-            {client?.display_name || "Khách này"} chưa có ngày chi tiêu trong 90 ngày Google Ads (tài
-            khoản mới, tạm ngưng, hoặc Google không trả ngày). Không đoán số. Không apply.
-          </section>
+          <>
+            {pullBar}
+            <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
+              {client?.display_name || "Khách này"} chưa có ngày chi tiêu trong kho phân tích Google Ads (tài khoản
+              mới, tạm ngưng, hoặc chưa kéo kho). Không đoán số.
+            </section>
+          </>
         );
       }
-      return <AnalyticsView key={analytics.client_id} snap={analytics} />;
+      return (
+        <>
+          {pullBar}
+          <AnalyticsView key={analytics.client_id} snap={analytics} allowCompare={Boolean(access.caps.compare)} />
+        </>
+      );
     }
     if (shownTab === "report") {
       if (!pack.report) {
-        return viewer ? (
+        return viewer || !access.caps.opsTabs ? (
           <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
-            Chưa có chỉ số báo cáo cho tài khoản này. Vận hành kéo 5 KPI rồi khách/sale mới xem được.
-            Không đoán số.
+            Chưa có chỉ số báo cáo cho tài khoản này. Không đoán số.
           </section>
         ) : (
           <ConnectPanel
             data={pack.connect as never}
             clientId={clientId}
             live={client?.adapter === "live"}
+            canPull={canPull}
+            canInstall={canInstall}
             onConnectResult={applyConnectResult}
             onKpiPulled={(next) => applyKpiPack(next)}
           />
@@ -516,48 +636,32 @@ export function AdsOpsApp() {
           live={client?.adapter === "live"}
           clientId={clientId}
           viewer={viewer}
+          canPull={canPull}
           onPulled={(next) => applyKpiPack(next)}
         />
       );
     }
+    const connectFallback = (withKpi: boolean) => (
+      <ConnectPanel
+        data={pack.connect as never}
+        clientId={clientId}
+        live={client?.adapter === "live"}
+        canPull={canPull}
+        canInstall={canInstall}
+        onConnectResult={applyConnectResult}
+        {...(withKpi ? { onKpiPulled: (next: Parameters<typeof applyKpiPack>[0]) => applyKpiPack(next) } : {})}
+      />
+    );
     if (shownTab === "alerts") {
-      if (!pack.alerts) {
-        return (
-          <ConnectPanel
-            data={pack.connect as never}
-            clientId={clientId}
-            live={client?.adapter === "live"}
-            onConnectResult={applyConnectResult}
-          />
-        );
-      }
+      if (!pack.alerts) return connectFallback(false);
       return <AlertsPanel data={pack.alerts as never} />;
     }
     if (shownTab === "guard") {
-      if (!pack.guard) {
-        return (
-          <ConnectPanel
-            data={pack.connect as never}
-            clientId={clientId}
-            live={client?.adapter === "live"}
-            onConnectResult={applyConnectResult}
-          />
-        );
-      }
+      if (!pack.guard) return connectFallback(false);
       return <GuardPanel data={pack.guard as never} />;
     }
     if (shownTab === "hub") {
-      if (!pack.hub) {
-        return (
-          <ConnectPanel
-            data={pack.connect as never}
-            clientId={clientId}
-            live={client?.adapter === "live"}
-            onConnectResult={applyConnectResult}
-            onKpiPulled={(next) => applyKpiPack(next)}
-          />
-        );
-      }
+      if (!pack.hub) return connectFallback(true);
       return <HubPanel data={pack.hub as never} />;
     }
     if (shownTab === "classify") {
@@ -583,16 +687,7 @@ export function AdsOpsApp() {
       );
     }
     if (shownTab === "proposals") {
-      if (!pack.proposals) {
-        return (
-          <ConnectPanel
-            data={pack.connect as never}
-            clientId={clientId}
-            live={client?.adapter === "live"}
-            onConnectResult={applyConnectResult}
-          />
-        );
-      }
+      if (!pack.proposals) return connectFallback(false);
       return <ProposalsPanel data={pack.proposals as never} />;
     }
     if (shownTab === "final") {
@@ -605,16 +700,8 @@ export function AdsOpsApp() {
       );
     }
     if (shownTab === "sop") return <SopPanel data={pack.sop as never} />;
-    if (shownTab === "members") return <MembersPanel clients={clients} />;
-    return (
-      <ConnectPanel
-        data={pack.connect as never}
-        clientId={clientId}
-        live={client?.adapter === "live"}
-        onConnectResult={applyConnectResult}
-        onKpiPulled={(next) => applyKpiPack(next)}
-      />
-    );
+    return connectFallback(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     shownTab,
     analytics,
@@ -629,34 +716,69 @@ export function AdsOpsApp() {
     accessError,
     viewer,
     clients,
+    canPull,
+    canInstall,
+    warehouseBusy,
+    warehouseMsg,
   ]);
 
   const adsCount = mcc?.accounts.filter((a) => !a.is_manager).length ?? mcc?.accounts.length ?? 0;
   const accessible = mcc?.last_probe_accessible_count || adsCount;
+  const isClientKind = access?.kind === "client" && !access.view_as;
 
   return (
     <div className="min-h-screen bg-bg text-ink">
+      {access?.view_as ? (
+        <div className="bg-warn-bg px-4 py-2 text-sm text-warn md:px-6">
+          <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-2">
+            <span>
+              Đang <b>Xem như người dùng này</b>: {access.view_as.label} ({ROLE_LABEL_VI[access.view_as.role] || access.view_as.role}) —
+              chỉ đọc, thấy đúng những gì người này thấy. Được ghi nhật ký.
+            </span>
+            <button
+              type="button"
+              onClick={() => void exitViewAs()}
+              className="h-9 rounded-md border border-line-strong bg-paper px-3 text-sm font-medium text-ink"
+            >
+              Thoát chế độ xem
+            </button>
+          </div>
+        </div>
+      ) : null}
       <header className="border-b border-line bg-paper">
         <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 md:flex-row md:items-end md:justify-between md:px-6">
           <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-subtle">AdsOps</p>
+            <p className="text-xs font-medium uppercase tracking-widest text-subtle">AdsOps · Fago Group</p>
             <h1 className="font-display text-2xl font-medium tracking-tight text-balance">
               {viewer ? "Báo cáo Google Ads" : "Vận hành Google Ads"}
             </h1>
             <p className="mt-0.5 max-w-xl text-pretty text-sm text-muted">
               {viewer
-                ? "Chỉ chỉ số báo cáo. CPA Google không phải Qualified Lead. Không vào FINAL / kết nối / đề xuất."
-                : "Chỉ đề xuất. CPA Google không phải Qualified Lead. MCC Fago Agency — chọn A không thấy số B."}
+                ? "Chỉ số của tài khoản được cấp. CPA Google không phải Qualified Lead."
+                : "Chỉ đề xuất, không apply Google Ads. CPA Google không phải Qualified Lead. Chỉ thấy tài khoản được cấp."}
             </p>
           </div>
           <div className="flex min-w-64 flex-col gap-3">
             <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-xs font-medium text-muted">{roleVi}</span>
-              <UserButton />
+              <span className="text-xs font-medium text-muted">
+                {roleVi}
+                {access?.display_name && access.kind === "client" ? ` · ${access.display_name}` : ""}
+              </span>
+              {isClientKind ? (
+                <button
+                  type="button"
+                  onClick={() => void signOutClient()}
+                  className="h-9 rounded-md border border-line-strong bg-inset px-3 text-sm font-medium text-ink hover:bg-line"
+                >
+                  Đăng xuất
+                </button>
+              ) : (
+                <UserButton />
+              )}
             </div>
-            {access?.role !== "pending" ? (
+            {access && access.role !== "pending" && clients.length ? (
               <label className="flex flex-col gap-1 text-xs font-medium text-muted">
-                {viewer ? "Tài khoản được cấp" : `Tài khoản MCC ${mcc?.mcc_id_dashed || "532-145-0531"}`}
+                {access.all_clients ? `Tài khoản MCC ${mcc?.mcc_id_dashed || "532-145-0531"}` : "Tài khoản được cấp"}
                 <select
                   value={clientId}
                   onChange={(e) => setClientId(e.target.value)}
@@ -671,7 +793,7 @@ export function AdsOpsApp() {
                     </option>
                   ))}
                 </select>
-                {mcc && !viewer ? (
+                {mcc && access.all_clients ? (
                   <span className="text-xs font-normal text-subtle">
                     {mcc.mcc_display_name} · {adsCount}/{accessible} tài khoản
                     {mcc.roster_complete ? " đã kéo từ MCC" : " — chưa kéo đủ danh sách MCC"}
@@ -681,7 +803,7 @@ export function AdsOpsApp() {
             ) : null}
           </div>
         </div>
-        {access?.role !== "pending" ? (
+        {access && access.role !== "pending" ? (
           <nav className="mx-auto max-w-screen-2xl px-4 pb-3 md:px-6">
             <p className="mb-1 text-xs font-medium text-subtle">{viewer ? "Báo cáo" : "Vận hành"}</p>
             <div className="flex flex-wrap gap-1">
@@ -699,7 +821,7 @@ export function AdsOpsApp() {
                 </button>
               ))}
             </div>
-            {!viewer ? (
+            {caps?.analytics ? (
               <>
                 <p className="mb-1 mt-3 text-xs font-medium text-subtle">Phân tích</p>
                 <button
@@ -722,20 +844,21 @@ export function AdsOpsApp() {
       </header>
 
       <main className="mx-auto max-w-screen-2xl px-4 py-4 md:px-6">
-        {client && (
+        {client && shownTab !== "members" && (
           <p className="mb-3 text-xs text-subtle">
             {client.display_name}
             {client.customer_id_dashed && client.display_name !== client.customer_id_dashed
               ? ` · ${client.customer_id_dashed}`
               : ""}
-            {!viewer && mcc?.mcc_id_dashed ? ` · MCC ${mcc.mcc_id_dashed}` : ""}
+            {access?.all_clients && mcc?.mcc_id_dashed ? ` · MCC ${mcc.mcc_id_dashed}` : ""}
             {analytics?.timezone || client.timezone
               ? ` · ${analytics?.timezone || client.timezone}`
               : ""}
+            {freshText ? <span className="font-medium text-muted">{` · ${freshText}`}</span> : null}
             {shownTab === "analytics"
               ? " · lọc ngày → tầng → loại conv → ST/KW · không apply"
               : viewer
-                ? " · Chỉ 5 KPI báo cáo. CPA Google không phải Qualified Lead."
+                ? " · CPA Google không phải Qualified Lead."
                 : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}
           </p>
         )}

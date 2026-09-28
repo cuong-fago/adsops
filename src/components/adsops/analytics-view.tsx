@@ -62,7 +62,7 @@ function formatRangeShort(start: string, end: string) {
   return `${a[2]}/${a[1]}–${b[2]}/${b[1]}`;
 }
 
-export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
+export function AnalyticsView({ snap, allowCompare = true }: { snap: AnalyticsSnap; allowCompare?: boolean }) {
   const range0 = defaultRange(snap);
   const warehouseEnd = snap.warehouse_end || snap.data_through;
   const [draftStart, setDraftStart] = useState(range0.start);
@@ -76,7 +76,7 @@ export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
   const [onlyConv, setOnlyConv] = useState(false);
   const [weekN, setWeekN] = useState(0);
   const [monthN, setMonthN] = useState(0);
-  const [prevEqual, setPrevEqual] = useState(true);
+  const [prevEqual, setPrevEqual] = useState(allowCompare);
 
   const groups = snap.conversion_groups.groups;
 
@@ -118,14 +118,14 @@ export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
     [snap, layer, start, end, campaignId, adGroupId, onlyConv],
   );
 
-  const prevRange = prevEqual ? previousEqualRange(start, end) : null;
+  const prevRange = allowCompare && prevEqual ? previousEqualRange(start, end) : null;
   const prevAccount = useMemo(
     () => (prevRange ? layerRows(snap, { layer: "account", start: prevRange.start, end: prevRange.end }) : null),
     [snap, prevRange?.start, prevRange?.end],
   );
 
-  const weeks = weekN ? previousWeeks(end, weekN) : [];
-  const prevMonths = monthN ? previousMonths(end, monthN) : [];
+  const weeks = allowCompare && weekN ? previousWeeks(end, weekN) : [];
+  const prevMonths = allowCompare && monthN ? previousMonths(end, monthN) : [];
   const inMonths = monthsOverlapping(start, end);
   const dates = warehouseDates(snap);
 
@@ -235,7 +235,7 @@ export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
               {n} ngày
             </button>
           ))}
-          {snap.week_choices.map((n) => (
+          {(allowCompare ? snap.week_choices : []).map((n) => (
             <button
               key={`w${n}`}
               type="button"
@@ -251,6 +251,7 @@ export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
               {n} tuần (T2–CN)
             </button>
           ))}
+          {allowCompare ? (
           <label
             className={cn(
               "inline-flex h-11 items-center gap-2 rounded-full px-3.5 text-sm font-medium",
@@ -276,6 +277,7 @@ export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
               )}
             </select>
           </label>
+          ) : null}
         </div>
 
         <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
@@ -295,6 +297,7 @@ export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
               className={controlClass}
             />
           </Field>
+          {allowCompare ? (
           <label className="flex h-11 items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -304,6 +307,7 @@ export function AnalyticsView({ snap }: { snap: AnalyticsSnap }) {
             />
             So kỳ trước cùng độ dài
           </label>
+          ) : null}
           <button
             type="button"
             onClick={() => applyRange(draftStart, draftEnd)}

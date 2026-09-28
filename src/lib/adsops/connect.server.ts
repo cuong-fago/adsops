@@ -11,7 +11,7 @@ const MCC_NAME = "Fago Agency";
 const API_VERSIONS = ["v22", "v21", "v20", "v19", "v18", "v23", "v24", "v25", "v17"];
 const SECRET_DIR = "/workspace/.secrets";
 const SECRET_FILE = join(SECRET_DIR, "adsops-google-ads.json");
-const PUBLIC_DIR = "/workspace/public/adsops";
+const PUBLIC_DIR = "/workspace/server-data/adsops";
 
 const KNOWN: Record<string, { client_id: string; display_name: string }> = {
   "6810292395": { client_id: "tkqc_6810292395", display_name: "GrowVi" },

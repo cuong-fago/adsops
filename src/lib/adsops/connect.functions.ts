@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
-import { authMiddleware } from "@/lib/auth/middleware";
-import type { InstallAndProbeResult, PullKpisResult, PullAnalyticsWarehouseResult } from "./connect.types.ts";
+import { principalMiddleware } from "./principal-middleware";
+import type { ConnectPublic, InstallAndProbeResult, PullKpisResult, PullAnalyticsWarehouseResult } from "./connect.types.ts";
 
 export type { ConnectPublic, InstallAndProbeResult, InstallMeta, PullKpisResult, PullAnalyticsWarehouseResult } from "./connect.types.ts";
 
@@ -43,14 +43,30 @@ function asClientId(data: unknown): { clientId: string } {
   return { clientId };
 }
 
+/** Non-admin callers never receive other MCC accounts in a probe result. */
+function scopeConnect(
+  connect: ConnectPublic | null | undefined,
+  canSee: (id: string) => boolean,
+  isAll: boolean,
+): ConnectPublic | null {
+  if (!connect) return null;
+  if (isAll || !Array.isArray(connect.mcc_accounts)) return connect;
+  const mcc_accounts = connect.mcc_accounts.filter((a) => !a.is_manager && canSee(a.client_id));
+  return { ...connect, mcc_accounts, accessible_count: mcc_accounts.length };
+}
+
+/** Installing Google Ads API credentials for the MCC: admin only. */
 export const saveYamlAndProbe = createServerFn({ method: "POST" })
   .validator(asIntake)
-  .middleware([authMiddleware])
+  .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {
-    const { assertOps } = await import("./access.server.ts");
-    await assertOps(context.userId);
+    const { assertRealAdmin, assertWritable, assertAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertRealAdmin(ctx);
+    assertWritable(ctx);
+    assertAccount(ctx, data.clientId);
     const { installAndProbe } = await import("./connect.server.ts");
-    return installAndProbe({
+    return (await installAndProbe({
       clientId: data.clientId,
       yamlText: data.yamlText,
       pieces: {
@@ -60,17 +76,25 @@ export const saveYamlAndProbe = createServerFn({ method: "POST" })
         refresh_token: data.refreshToken,
       },
       save: data.save,
-    });
+    })) as InstallAndProbeResult;
   });
 
+/** Pull / refresh KPIs (read-only Google Ads pull): admin, head_ads, optimizer. */
 export const pullClientKpis = createServerFn({ method: "POST" })
   .validator(asClientId)
-  .middleware([authMiddleware])
+  .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {
-    const { assertOps } = await import("./access.server.ts");
-    await assertOps(context.userId);
+    const { assertCap, assertWritable, assertAccount, canSeeAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertCap(ctx, "pull", "Chỉ admin / trưởng phòng Ads / người tối ưu được kéo số.");
+    assertWritable(ctx);
+    assertAccount(ctx, data.clientId);
     const { pullKpis } = await import("./connect.server.ts");
-    return pullKpis(data.clientId) as Promise<PullKpisResult>;
+    const result = (await pullKpis(data.clientId)) as PullKpisResult;
+    return {
+      ...result,
+      connect: scopeConnect(result.connect, (id) => canSeeAccount(ctx, id), ctx.allowed === "all"),
+    } as PullKpisResult;
   });
 
 function asWarehousePull(data: unknown): { clientId: string; lookbackDays?: number } {
@@ -87,12 +111,16 @@ function asWarehousePull(data: unknown): { clientId: string; lookbackDays?: numb
   return { clientId, lookbackDays };
 }
 
+/** "Kéo kho phân tích (180 ngày)": admin, head_ads, optimizer. */
 export const pullAnalyticsWarehouseFn = createServerFn({ method: "POST" })
   .validator(asWarehousePull)
-  .middleware([authMiddleware])
+  .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {
-    const { assertOps } = await import("./access.server.ts");
-    await assertOps(context.userId);
+    const { assertCap, assertWritable, assertAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertCap(ctx, "pull", "Chỉ admin / trưởng phòng Ads / người tối ưu được kéo số.");
+    assertWritable(ctx);
+    assertAccount(ctx, data.clientId);
     const { pullAnalyticsWarehouse } = await import("./warehouse.server.ts");
     return pullAnalyticsWarehouse(data.clientId, data.lookbackDays) as Promise<PullAnalyticsWarehouseResult>;
   });

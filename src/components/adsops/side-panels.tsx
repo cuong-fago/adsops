@@ -226,11 +226,14 @@ export function ReportPanel({
   clientId,
   onPulled,
   viewer,
+  canPull,
 }: {
   data: AnyRec | null;
   live?: boolean;
   clientId?: string;
   viewer?: boolean;
+  /** Pull / refresh buttons: admin, head_ads, optimizer only. */
+  canPull?: boolean;
   onPulled?: (pack: {
     report?: AnyRec | null;
     compare?: AnyRec | null;
@@ -286,7 +289,7 @@ export function ReportPanel({
             <p className="mt-1 text-sm text-muted">{txt(data.banner)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {!viewer && live && clientId ? (
+            {!viewer && canPull !== false && live && clientId ? (
               <button
                 type="button"
                 onClick={() => void refreshKpis()}
@@ -899,11 +902,17 @@ export function ConnectPanel({
   live,
   onConnectResult,
   onKpiPulled,
+  canPull,
+  canInstall,
 }: {
   data: AnyRec | null;
   clientId?: string;
   live?: boolean;
   onConnectResult?: (snap: AnyRec) => void;
+  /** Pull / refresh buttons: admin, head_ads, optimizer only. */
+  canPull?: boolean;
+  /** Google Ads API credential intake: admin only. */
+  canInstall?: boolean;
   onKpiPulled?: (pack: {
     report?: AnyRec | null;
     compare?: AnyRec | null;
@@ -937,7 +946,7 @@ export function ConnectPanel({
     }[status] || status;
   const yamlPresent = Boolean(data.yaml_file_present);
   const probed = formatProbed(data.probed_at);
-  const showIntake = Boolean(live && clientId);
+  const showIntake = Boolean(live && clientId && canInstall !== false);
   const connected = status === "CONNECTED";
   const pulledKpis = Boolean(data.pulled_kpis);
   const hasIntake = Boolean(
@@ -1121,7 +1130,7 @@ export function ConnectPanel({
           Chưa ĐÃ NỐI — không đối chiếu 5 KPI, không kéo search term, không sinh FINAL.
         </p>
       )}
-      {connected && live && clientId ? (
+      {connected && canPull !== false && live && clientId ? (
         <button
           type="button"
           disabled={busy !== null}
