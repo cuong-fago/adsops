@@ -1,0 +1,302 @@
+                    <span className="h-1.5 overflow-hidden rounded-full bg-inset"><span className="block h-full rounded-full bg-accent/70" style={{ width: `${maxCost ? ((row.metrics.cost || 0) / maxCost) * 100 : 0}%` }} /></span>
+                    <span className="text-right text-xs text-muted tabular-nums">{convNum(row.metrics.conversions || 0)} conv · CPL {dongShort(row.metrics.cost_per_conversion || 0)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ def, metrics, prev, values, big }: { def: KpiDef; metrics: Record<string, number>; prev?: Record<string, number>; prevIncomplete?: boolean; values: (number | null)[]; big?: boolean }) {
+  const d = prev ? deltaWord(metrics[def.id], prev[def.id]) : null;
+  return (
+    <div className={cn(card, "flex min-w-0 flex-col gap-1 p-3 md:p-4", big && "ring-1 ring-accent/10")}>
+      <p className="truncate text-xs font-medium uppercase tracking-wider text-subtle" title={def.hint || def.label}>{def.label}</p>
+      <p className={cn("truncate font-display font-medium tracking-tight tabular-nums", big ? "text-2xl md:text-[1.75rem]" : "text-lg md:text-xl")}>{def.value(metrics)}</p>
+      <Sparkline values={values} tone={def.tone} />
+      {d ? (
+        <p className="flex items-center gap-1 text-xs text-muted">{d.dir > 0 ? <ArrowUp className="size-3" /> : d.dir < 0 ? <ArrowDown className="size-3" /> : null}{d.word} vs kỳ trước</p>
+      ) : null}
+    </div>
+  );
+}
+
+const PERIOD_KPIS = [
+  { id: "cost", label: "Chi tiêu", fmt: (m: Record<string, number>) => dong(m.cost || 0), tone: "cool" as const },
+  { id: "clicks", label: "Click", fmt: (m: Record<string, number>) => num(m.clicks || 0), tone: "cool" as const },
+  { id: "conversions", label: "Conv", fmt: (m: Record<string, number>) => convNum(m.conversions || 0), tone: "cool" as const },
+  { id: "cost_per_conversion", label: "CPL", fmt: (m: Record<string, number>) => dong(m.cost_per_conversion || 0), tone: "warm" as const },
+] as const;
+type PeriodKpi = (typeof PERIOD_KPIS)[number]["id"];
+type MetricDef = { key: string; label: string; cell: (m: Record<string, number>) => string; strong?: boolean; tone: "cool" | "warm" };
+
+function metricDefs(groups: { id: string; label: string; metric: string }[]): MetricDef[] {
+  return [
+    { key: "cost", label: "Chi tiêu", cell: (m) => dong(m.cost || 0), strong: true, tone: "cool" },
+    { key: "clicks", label: "Click", cell: (m) => num(m.clicks || 0), tone: "cool" },
+    { key: "invalid_clicks", label: "Click lệch", cell: (m) => invalidLabel(m), tone: "warm" },
+    { key: "conversions", label: "Conv", cell: (m) => convNum(m.conversions || 0), strong: true, tone: "cool" },
+    { key: "cpc", label: "CPC", cell: (m) => dong(m.cpc || 0), tone: "warm" },
+    { key: "cost_per_conversion", label: "CPL", cell: (m) => dong(m.cost_per_conversion || 0), tone: "warm" },
+    ...groups.map((g) => ({ key: g.metric, label: g.label, cell: (m: Record<string, number>) => convNum(Number(m[g.metric] || 0)), tone: "cool" as const })),
+  ];
+}
+
+function entityUnion(blocks: LayerBlock[]) {
+  const map = new Map<string, { id: string; name: string; cost: number; status?: string; pmax?: boolean }>();
+  for (const block of blocks) {
+    for (const row of block.rows) {
+      const prev = map.get(row.id);
+      map.set(row.id, { id: row.id, name: row.name, status: row.status, pmax: row.pmax, cost: (prev?.cost || 0) + (row.metrics.cost || 0) });
+    }
+  }
+  return [...map.values()].sort((a, b) => b.cost - a.cost);
+}
+
+const scrollBox = "relative max-h-[70vh] overflow-auto overscroll-contain rounded-lg border border-line bg-paper";
+const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-paper px-3 py-2.5 text-xs font-medium text-muted";
+const stickyCol = "sticky left-0 z-[5] bg-paper shadow-[1px_0_0_var(--color-line)]";
+const cornerCell = "sticky left-0 top-0 z-20 bg-paper shadow-[1px_0_0_var(--color-line)]";
+
+function PeriodSection({
+  title, cols, blocks, accountBlocks, groups, layer, onLayerChange, onPickCampaign, onWholeWarehouse, splitKnown,
+}: {
+  title: string;
+  cols: { id: string; label: string; sub: string; complete: boolean }[];
+  blocks: LayerBlock[]; accountBlocks: LayerBlock[];
+  groups: { id: string; label: string; metric: string }[];
+  layer: "account" | "campaign";
+  onLayerChange: (next: "account" | "campaign") => void;
+  onPickCampaign: (id: string) => void;
+  onWholeWarehouse: () => void;
+  splitKnown: boolean;
+}) {
+  const [kpi, setKpi] = useState<PeriodKpi>("cost");
+  const [mode, setMode] = useState<"matrix" | "full">("matrix");
+  const [showAll, setShowAll] = useState(false);
+  const defs = metricDefs(groups);
+  const campaigns = layer === "campaign" ? entityUnion(blocks) : [];
+  const kpiMeta = PERIOD_KPIS.find((item) => item.id === kpi) || PERIOD_KPIS[0];
+  const TOP = 15;
+  const shown = showAll ? campaigns : campaigns.slice(0, TOP);
+  const colMax = cols.map((_, i) => Math.max(0, ...campaigns.map((c) => Number(blocks[i]?.rows.find((r) => r.id === c.id)?.metrics[kpi] || 0))));
+  const colMin =
+    kpi === "cost_per_conversion"
+      ? cols.map((_, i) => {
+          const v = campaigns.map((c) => Number(blocks[i]?.rows.find((r) => r.id === c.id)?.metrics[kpi] || 0)).filter((x) => x > 0);
+          return v.length > 2 ? Math.min(...v) * 0.85 : 0;
+        })
+      : cols.map(() => 0);
+
+  if (cols.length < 2) {
+    return (
+      <section className={cn(card, "flex flex-col items-start gap-3 p-5")}>
+        <h3 className="font-display text-lg font-medium">{title}</h3>
+        <p className="text-sm text-muted">Khoảng ngày đang chọn nằm trong 1 tháng. Chọn khoảng dài hơn để xem các tháng cạnh nhau.</p>
+        <button type="button" onClick={onWholeWarehouse} className="h-10 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg">Xem toàn kho theo tháng</button>
+      </section>
+    );
+  }
+
+  const header = (firstLabel: string) => (
+    <thead>
+      <tr>
+        <th className={cn(thBase, cornerCell, "min-w-[11rem] text-left md:min-w-[16rem]")}>{firstLabel}</th>
+        {cols.map((col) => (
+          <th key={col.id} className={cn(thBase, "text-right")}>
+            <span className="block text-sm font-semibold text-ink">{col.label}</span>
+            <span className="block font-normal text-subtle">{col.sub}</span>
+            {!col.complete ? <span className="mt-0.5 inline-block rounded bg-warn-bg px-1.5 text-[11px] font-medium text-warn">Thiếu dữ liệu</span> : null}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+
+  const rowCells = (def: MetricDef, pick: (i: number) => Record<string, number> | undefined, rowHeat: boolean, isAccount = false) => {
+    const vals = cols.map((_, i) => pick(i));
+    const nums = vals.map((m) => Number(m?.[def.key] || 0)).filter((v) => v > 0);
+    const max = rowHeat && nums.length ? Math.max(...nums) : 0;
+    const min = nums.length > 2 ? Math.min(...nums) * 0.85 : 0;
+    const splitHidden = !isAccount && !splitKnown && def.key.startsWith("conv_") && def.key !== "conversions";
+    return cols.map((col, i) => {
+      const m = vals[i];
+      return (
+        <td key={col.id} className={cn("whitespace-nowrap border-b border-line/60 px-3 py-2 text-right tabular-nums", def.strong && "font-medium")} style={m && rowHeat && !splitHidden ? heat(Number(m[def.key] || 0), max, def.tone, min) : undefined}>
+          {m && !splitHidden ? def.cell(m) : "—"}
+        </td>
+      );
+    });
+  };
+
+  return (
+    <section className={cn(card, "flex min-w-0 flex-col gap-3 p-3 md:p-4")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
+          <h3 className="font-display text-lg font-medium tracking-tight">{title}</h3>
+          <InfoPopover label="Giải thích bảng theo tháng" align="left">
+            <p className="text-muted">
+              {layer === "campaign" ? "Mỗi dòng một chiến dịch, cột là tháng (hoặc tuần). Dòng cuối = tổng tài khoản. Bấm tên chiến dịch để xuống nhóm. Tháng cắt theo khoảng ngày đang chọn." : "Tổng mọi chiến dịch theo tháng. Đổi sang Chiến dịch để so từng chiến dịch."}{" "}
+              Tháng chưa đủ ngày trong kho được đánh dấu &quot;Thiếu dữ liệu&quot;. Ô trống (—) = không có số, không điền 0.
+            </p>
+          </InfoPopover>
+        </div>
+        <Segmented size="sm" items={[{ id: "account", label: "Tài khoản" }, { id: "campaign", label: "Chiến dịch" }] as const} value={layer} onChange={onLayerChange} />
+      </div>
+      {layer === "campaign" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented size="sm" items={[{ id: "matrix", label: "1 chỉ số" }, { id: "full", label: "Đủ chỉ số" }] as const} value={mode} onChange={setMode} />
+          {mode === "matrix" ? <Segmented size="sm" items={PERIOD_KPIS} value={kpi} onChange={setKpi} /> : null}
+        </div>
+      ) : null}
+
+      <div className={scrollBox}>
+        {layer === "account" ? (
+          <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
+            {header("Chỉ số")}
+            <tbody>
+              {defs.map((def) => (
+                <tr key={def.key}>
+                  <td className={cn(stickyCol, "whitespace-nowrap border-b border-line/60 px-3 py-2 text-muted", def.strong && "font-medium text-ink")}>{def.label}</td>
+                  {rowCells(def, (i) => blocks[i]?.rows[0]?.metrics, true, true)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : campaigns.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-muted">Không có chiến dịch có số trong các kỳ này. Không đoán số.</p>
+        ) : mode === "matrix" ? (
+          <table id="analytics-campaign-matrix" className="min-w-full border-separate border-spacing-0 text-left text-sm">
+            {header(`${kpiMeta.label} theo chiến dịch`)}
+            <tbody>
+              {shown.map((camp) => (
+                <tr key={camp.id} className="group">
+                  <td className={cn(stickyCol, "border-b border-line/60 px-3 py-1 group-hover:bg-inset")}>
+                    <button type="button" onClick={() => onPickCampaign(camp.id)} className="flex min-h-10 w-full max-w-[11rem] items-center gap-2 text-left font-medium md:max-w-[22rem]" title={camp.name}>
+                      <span className="truncate">{camp.name}</span>
+                      {camp.pmax ? <span className="shrink-0 rounded-full bg-inset px-1.5 text-[11px] text-muted">PMax</span> : null}
+                    </button>
+                  </td>
+                  {cols.map((col, i) => {
+                    const m = blocks[i]?.rows.find((r) => r.id === camp.id)?.metrics;
+                    return (
+                      <td key={col.id} className="whitespace-nowrap border-b border-line/60 px-3 py-2 text-right tabular-nums" style={m ? heat(Number(m[kpi] || 0), colMax[i], kpiMeta.tone, colMin[i]) : undefined}>
+                        {m ? kpiMeta.fmt(m) : "—"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className={cn(stickyCol, "sticky bottom-0 z-[15] border-t border-line-strong bg-inset px-3 py-2.5 font-semibold")}>Tài khoản (tổng)</td>
+                {cols.map((col, i) => {
+                  const m = accountBlocks[i]?.rows[0]?.metrics;
+                  return <td key={col.id} className="sticky bottom-0 z-10 whitespace-nowrap border-t border-line-strong bg-inset px-3 py-2.5 text-right font-semibold tabular-nums">{m ? kpiMeta.fmt(m) : "—"}</td>;
+                })}
+              </tr>
+            </tfoot>
+          </table>
+        ) : (
+          <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
+            {header("Chiến dịch / chỉ số")}
+            {shown.map((camp) => (
+              <tbody key={camp.id}>
+                <tr>
+                  <td className={cn(stickyCol, "border-b border-line bg-inset px-3 py-1")}>
+                    <button type="button" onClick={() => onPickCampaign(camp.id)} className="flex min-h-10 w-full max-w-[11rem] items-center gap-2 text-left font-semibold text-ink md:max-w-[22rem]" title={camp.name}>
+                      <span className="truncate">{camp.name}</span>
+                      {camp.pmax ? <span className="shrink-0 rounded-full bg-paper px-1.5 text-[11px] text-muted">PMax</span> : null}
+                    </button>
+                  </td>
+                  {cols.map((col) => <td key={col.id} className="border-b border-line bg-inset" />)}
+                </tr>
+                {defs.map((def) => (
+                  <tr key={def.key}>
+                    <td className={cn(stickyCol, "whitespace-nowrap border-b border-line/60 py-2 pl-6 pr-3 text-muted", def.strong && "font-medium text-ink")}>{def.label}</td>
+                    {rowCells(def, (i) => blocks[i]?.rows.find((r) => r.id === camp.id)?.metrics, true)}
+                  </tr>
+                ))}
+              </tbody>
+            ))}
+            <tbody>
+              <tr>
+                <td className={cn(stickyCol, "border-b border-line-strong bg-inset px-3 py-2.5 font-semibold")}>Tài khoản (tổng)</td>
+                {cols.map((col) => <td key={col.id} className="border-b border-line-strong bg-inset" />)}
+              </tr>
+              {defs.map((def) => (
+                <tr key={`acct-${def.key}`}>
+                  <td className={cn(stickyCol, "whitespace-nowrap border-b border-line/60 py-2 pl-6 pr-3 text-muted", def.strong && "font-medium text-ink")}>{def.label}</td>
+                  {rowCells(def, (i) => accountBlocks[i]?.rows[0]?.metrics, false, true)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {layer === "campaign" && campaigns.length > TOP ? (
+        <button type="button" onClick={() => setShowAll((v) => !v)} className="self-start rounded-full bg-inset px-3.5 py-2 text-sm font-medium text-ink hover:bg-line">
+          {showAll ? `Chỉ hiện top ${TOP} chiến dịch` : `Xem tất cả ${campaigns.length} chiến dịch (đang hiện top ${TOP} theo chi tiêu)`}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function coverageNote(block: LayerBlock | DeepLayerBlock, layer: string): { text: string; warn: boolean } | null {
+  if (!("coverage" in block)) return null;
+  const deep = block as DeepLayerBlock;
+  const ranges = deep.coverage;
+  const cap = deep.search_term_cap_days ?? 90;
+  if (!ranges.length) {
+    return {
+      text: layer === "search_term" ? `Search terms: kho tối đa ${cap} ngày gần nhất; chưa kéo phần này trong khoảng đã chọn. Không đoán số.` : "Chưa kéo lớp này trong khoảng đã chọn. Không đoán số.",
+      warn: true,
+    };
+  }
+  const rangeText = ranges.map((r) => `${dmy(r.start)} → ${dmy(r.end)}`).join("; ");
+  const name = layer === "ad_group" ? "Nhóm quảng cáo" : layer === "keyword" ? "Từ khoá" : "Search terms";
+  const bits = [`${name} có số từ ${rangeText}`];
+  if (!deep.complete) bits.push("ngoài khoảng này chưa kéo — tổng chỉ gồm ngày đã kéo, không điền 0");
+  if (layer === "search_term") bits.push(`search term tối đa ${cap} ngày gần nhất`);
+  return { text: bits.join(" · "), warn: !deep.complete };
+}
+
+type ColDef = {
+  key: string;
+  label: string;
+  cell: (r: LayerRow) => string;
+  sortVal: (r: LayerRow) => number;
+  total?: (t: Record<string, number>) => string;
+  heat?: "cool" | "warm";
+  strong?: boolean;
+};
+
+function DataTable({
+  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true,
+}: {
+  layer: TableLayer;
+  block: LayerBlock | DeepLayerBlock;
+  groups: { id: string; label: string; metric: string }[];
+  canDrill: boolean;
+  onDrill: (row: LayerRow) => void;
+  campaignNames: Record<string, string>;
+  splitKnown?: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "cost", dir: -1 });
+  const [showAll, setShowAll] = useState(false);
+  const [page, setPage] = useState(0);
+  const note = coverageNote(block, layer);
+  const deep = "coverage" in block ? (block as DeepLayerBlock) : null;
+  const isDeep = Boolean(deep);
+  const showMatch = layer === "keyword" || layer === "search_term";
+  const showConvSplit = deep ? deep.conv_split : splitKnown;
+
+  const cols: ColDef[] = useMemo(
+    () => [
