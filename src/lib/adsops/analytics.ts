@@ -319,100 +319,9 @@ function computeLayer(
     return { complete: true, rows, pmax_note: null };
   }
 
-  if (opts.layer === "ad_group") {
-    let part = snap.daily.ad_group.filter((r) => inRange(r, opts.start, opts.end));
-    if (opts.campaignId) part = part.filter((r) => String(r.campaign_id) === opts.campaignId);
-    const by = new Map<string, DailyRow[]>();
-    for (const row of part) {
-      const id = String(row.ad_group_id || "");
-      const list = by.get(id) || [];
-      list.push(row);
-      by.set(id, list);
-    }
-    let rows: LayerRow[] = [];
-    for (const [id, chunk] of by) {
-      const metrics = sumChunk(chunk);
-      if (!hasNumbers(metrics)) continue;
-      rows.push({
-        id,
-        name: String(chunk[0]?.ad_group_name || id),
-        status: String(chunk[0]?.status || ""),
-        campaign_id: String(chunk[0]?.campaign_id || ""),
-        pmax: false,
-        metrics,
-      });
-    }
-    if (opts.onlyWithConv) rows = rows.filter((r) => (r.metrics.conversions || 0) > 0);
-    rows.sort((a, b) => (b.metrics.cost || 0) - (a.metrics.cost || 0));
-    return { complete: true, rows, pmax_note: null };
-  }
-
-  if (opts.layer === "keyword") {
-    let part = snap.daily.keyword.filter((r) => inRange(r, opts.start, opts.end));
-    if (opts.campaignId) part = part.filter((r) => String(r.campaign_id) === opts.campaignId);
-    if (opts.adGroupId) part = part.filter((r) => String(r.ad_group_id) === opts.adGroupId);
-    const by = new Map<string, DailyRow[]>();
-    for (const row of part) {
-      const id = String(row.keyword_id || "");
-      const list = by.get(id) || [];
-      list.push(row);
-      by.set(id, list);
-    }
-    let rows: LayerRow[] = [];
-    for (const [id, chunk] of by) {
-      const metrics = sumChunk(chunk);
-      if (!hasNumbers(metrics)) continue;
-      const code = String(chunk[0]?.match_type || "");
-      rows.push({
-        id,
-        name: String(chunk[0]?.keyword_text || id),
-        match_type: code,
-        match_type_label: MATCH[code] || code,
-        status: String(chunk[0]?.status || ""),
-        ad_group_id: String(chunk[0]?.ad_group_id || ""),
-        campaign_id: String(chunk[0]?.campaign_id || ""),
-        pmax: false,
-        metrics,
-      });
-    }
-    if (opts.onlyWithConv) rows = rows.filter((r) => (r.metrics.conversions || 0) > 0);
-    rows.sort((a, b) => (b.metrics.cost || 0) - (a.metrics.cost || 0));
-    return { complete: true, rows, pmax_note: null };
-  }
-
-  if (opts.layer === "search_term") {
-    let part = snap.daily.search_term.filter((r) => inRange(r, opts.start, opts.end));
-    if (opts.campaignId) part = part.filter((r) => String(r.campaign_id) === opts.campaignId);
-    if (opts.adGroupId) part = part.filter((r) => String(r.ad_group_id) === opts.adGroupId);
-    const by = new Map<string, DailyRow[]>();
-    for (const row of part) {
-      const key = `${row.query}|${row.campaign_id}|${row.ad_group_id}`;
-      const list = by.get(key) || [];
-      list.push(row);
-      by.set(key, list);
-    }
-    let rows: LayerRow[] = [];
-    for (const chunk of by.values()) {
-      const metrics = sumChunk(chunk);
-      if (!hasNumbers(metrics)) continue;
-      const rec = chunk[0];
-      const code = String(rec?.match_type || "");
-      const q = String(rec?.query || "");
-      rows.push({
-        id: `${rec?.campaign_id}:${rec?.ad_group_id}:${q}`,
-        name: q,
-        match_type: code,
-        match_type_label: MATCH[code] || code,
-        campaign_id: String(rec?.campaign_id || ""),
-        campaign_name: String(rec?.campaign_name || ""),
-        ad_group_id: String(rec?.ad_group_id || ""),
-        pmax: false,
-        metrics,
-      });
-    }
-    if (opts.onlyWithConv) rows = rows.filter((r) => (r.metrics.conversions || 0) > 0);
-    rows.sort((a, b) => (b.metrics.cost || 0) - (a.metrics.cost || 0));
-    return { complete: true, rows, pmax_note: null };
+  if (opts.layer === "ad_group" || opts.layer === "keyword" || opts.layer === "search_term") {
+    const src = (snap.daily as Record<string, DailyRow[] | undefined>)[opts.layer] || [];
+    return aggregateDeepRows(opts.layer, src, opts);
   }
 
   return { complete: true, rows: [], pmax_note: null };
@@ -531,3 +440,144 @@ export function mixParts(
     value: Number(metrics[g.metric] || 0),
   }));
 }
+
+export type DeepLayerId = "ad_group" | "keyword" | "search_term";
+
+export function isDeepLayer(layer: string): layer is DeepLayerId {
+  return layer === "ad_group" || layer === "keyword" || layer === "search_term";
+}
+
+/**
+ * Aggregate daily ad group / keyword / search term rows into table rows for a
+ * date range. Pure (used by the browser for legacy payloads and by the server
+ * for the chunked deep store).
+ */
+export function aggregateDeepRows(
+  layer: string,
+  source: DailyRow[],
+  opts: {
+    start: string;
+    end: string;
+    campaignId?: string | null;
+    adGroupId?: string | null;
+    onlyWithConv?: boolean;
+  },
+): LayerBlock {
+  if (layer === "ad_group") {
+    let part = source.filter((r) => inRange(r, opts.start, opts.end));
+    if (opts.campaignId) part = part.filter((r) => String(r.campaign_id) === opts.campaignId);
+    const by = new Map<string, DailyRow[]>();
+    for (const row of part) {
+      const id = String(row.ad_group_id || "");
+      const list = by.get(id) || [];
+      list.push(row);
+      by.set(id, list);
+    }
+    let rows: LayerRow[] = [];
+    for (const [id, chunk] of by) {
+      const metrics = sumChunk(chunk);
+      if (!hasNumbers(metrics)) continue;
+      rows.push({
+        id,
+        name: String(chunk[0]?.ad_group_name || id),
+        status: String(chunk[0]?.status || ""),
+        campaign_id: String(chunk[0]?.campaign_id || ""),
+        pmax: false,
+        metrics,
+      });
+    }
+    if (opts.onlyWithConv) rows = rows.filter((r) => (r.metrics.conversions || 0) > 0);
+    rows.sort((a, b) => (b.metrics.cost || 0) - (a.metrics.cost || 0));
+    return { complete: true, rows, pmax_note: null };
+  }
+
+  if (layer === "keyword") {
+    let part = source.filter((r) => inRange(r, opts.start, opts.end));
+    if (opts.campaignId) part = part.filter((r) => String(r.campaign_id) === opts.campaignId);
+    if (opts.adGroupId) part = part.filter((r) => String(r.ad_group_id) === opts.adGroupId);
+    const by = new Map<string, DailyRow[]>();
+    for (const row of part) {
+      const id = String(row.keyword_id || "");
+      const list = by.get(id) || [];
+      list.push(row);
+      by.set(id, list);
+    }
+    let rows: LayerRow[] = [];
+    for (const [id, chunk] of by) {
+      const metrics = sumChunk(chunk);
+      if (!hasNumbers(metrics)) continue;
+      const code = String(chunk[0]?.match_type || "");
+      rows.push({
+        id,
+        name: String(chunk[0]?.keyword_text || id),
+        match_type: code,
+        match_type_label: MATCH[code] || code,
+        status: String(chunk[0]?.status || ""),
+        ad_group_id: String(chunk[0]?.ad_group_id || ""),
+        campaign_id: String(chunk[0]?.campaign_id || ""),
+        pmax: false,
+        metrics,
+      });
+    }
+    if (opts.onlyWithConv) rows = rows.filter((r) => (r.metrics.conversions || 0) > 0);
+    rows.sort((a, b) => (b.metrics.cost || 0) - (a.metrics.cost || 0));
+    return { complete: true, rows, pmax_note: null };
+  }
+
+  if (layer === "search_term") {
+    let part = source.filter((r) => inRange(r, opts.start, opts.end));
+    if (opts.campaignId) part = part.filter((r) => String(r.campaign_id) === opts.campaignId);
+    if (opts.adGroupId) part = part.filter((r) => String(r.ad_group_id) === opts.adGroupId);
+    const by = new Map<string, DailyRow[]>();
+    for (const row of part) {
+      const key = `${row.query}|${row.campaign_id}|${row.ad_group_id}`;
+      const list = by.get(key) || [];
+      list.push(row);
+      by.set(key, list);
+    }
+    let rows: LayerRow[] = [];
+    for (const chunk of by.values()) {
+      const metrics = sumChunk(chunk);
+      if (!hasNumbers(metrics)) continue;
+      const rec = chunk[0];
+      const code = String(rec?.match_type || "");
+      const q = String(rec?.query || "");
+      rows.push({
+        id: `${rec?.campaign_id}:${rec?.ad_group_id}:${q}`,
+        name: q,
+        match_type: code,
+        match_type_label: MATCH[code] || code,
+        campaign_id: String(rec?.campaign_id || ""),
+        campaign_name: String(rec?.campaign_name || ""),
+        ad_group_id: String(rec?.ad_group_id || ""),
+        pmax: false,
+        metrics,
+      });
+    }
+    if (opts.onlyWithConv) rows = rows.filter((r) => (r.metrics.conversions || 0) > 0);
+    rows.sort((a, b) => (b.metrics.cost || 0) - (a.metrics.cost || 0));
+    return { complete: true, rows, pmax_note: null };
+  }
+
+  return { complete: true, rows: [], pmax_note: null };
+}
+
+export type CoveredRange = { start: string; end: string };
+
+/** Result of the server-side deep layer read (ad group / keyword / search term). */
+export type DeepLayerBlock = LayerBlock & {
+  layer: DeepLayerId;
+  /** Days inside the selected range that were actually pulled (merged, sorted). */
+  coverage: CoveredRange[];
+  covered_days: number;
+  total_days: number;
+  /** Totals over the covered days only (null when nothing covered). */
+  totals: MetricMap | null;
+  row_count: number;
+  truncated: boolean;
+  /** Search terms are kept for this many recent days only. */
+  search_term_cap_days: number | null;
+  /** False when Google refused the Gọi/Zalo/Form split for this layer (UI shows "—"). */
+  conv_split: boolean;
+  note_vi: string | null;
+};

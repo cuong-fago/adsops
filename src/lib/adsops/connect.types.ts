@@ -106,3 +106,17 @@ export type PullAnalyticsWarehouseResult = {
   error_vi?: string | null;
   note_vi?: string | null;
 };
+
+export type DeepChunkResult = {
+  ok: boolean;
+  client_id?: string;
+  pulled?: { start: string; end: string } | null;
+  target_start?: string;
+  target_end?: string;
+  covered_from?: string | null;
+  remaining_months?: number;
+  done?: boolean;
+  counts?: { ad_group: number; keyword: number; search_term: number };
+  note_vi?: string | null;
+  error_vi?: string | null;
+};
