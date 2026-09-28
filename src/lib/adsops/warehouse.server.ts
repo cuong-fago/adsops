@@ -585,6 +585,8 @@ function buildSnap(input: {
   lookback: number | null;
   pulledAt: string;
   notes: string[];
+  /** When set (full warehouse pull), becomes warehouse_start even if early days have no spend. */
+  forceWarehouseStart?: string;
 }): AnalyticsSnap {
   const { base, core, deep, start, end } = input;
   const daily = {
@@ -599,7 +601,11 @@ function buildSnap(input: {
   const campaigns = [...campaignMap.values()];
   const hasPmax = campaigns.some((c) => c.pmax);
   const lastDay = daily.account.length ? daily.account[daily.account.length - 1].date : end;
-  const warehouseStart = minDate(base?.warehouse_start, daily.account[0]?.date, start) || start;
+  const warehouseStart =
+    input.forceWarehouseStart ||
+    minDate(base?.warehouse_start, daily.account[0]?.date, start) ||
+    start;
+  // Full pull overwrites the leftover seed lookback (e.g. 90); on-view keeps the last full-pull value.
   const lookback = input.lookback ?? base?.analytics_lookback_days ?? null;
   const includesToday = end >= input.today;
   const snap: AnalyticsSnap = {
@@ -673,26 +679,59 @@ export async function pullAnalyticsWarehouse(
   }
   const customerId = customerIdFor(id);
   if (customerId.length !== 10) return { ok: false, client_id: id, error_vi: "Không suy ra Customer ID từ khách." };
-  if (!(await acquireLock(id, 300))) {
+  // An on-view refresh may hold the lock briefly: wait up to ~30 s before giving up.
+  let locked = await acquireLock(id, 300);
+  for (let i = 0; !locked && i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    locked = await acquireLock(id, 300);
+  }
+  if (!locked) {
     return { ok: false, client_id: id, error_vi: "Đang có một lượt kéo khác cho tài khoản này — thử lại sau ít phút." };
   }
   try {
     const meta = await pullMeta(cfg, customerId, id);
     const today = ymdInTz(meta.timezone);
     const end = today;
-    const start = addDaysYmd(today, -lookback);
-    const stStart = addDaysYmd(today, -Math.min(lookback, SEARCH_TERM_LOOKBACK_CAP));
-    const [core, deep, stored, file] = await Promise.all([
-      pullCore(cfg, customerId, start, end),
-      pullDeep(cfg, customerId, start, end, stStart),
-      readStored(id),
-      readSnapshotFile(id),
-    ]);
+    // Inclusive window: lookback=180 → today-(179) … today (180 days).
+    const start = addDaysYmd(today, -(lookback - 1));
+    const stStart = addDaysYmd(today, -(Math.min(lookback, SEARCH_TERM_LOOKBACK_CAP) - 1));
+    const [stored, file] = await Promise.all([readStored(id), readSnapshotFile(id)]);
     const base = stored?.payload || file;
-    const notes = [...deep.notes];
-    if (stStart !== start) notes.push(`Search term chỉ kéo ${SEARCH_TERM_LOOKBACK_CAP} ngày gần nhất.`);
+    // Core first (account + campaign) so a long lookback still lands even if deep layers time out.
+    const core = await pullCore(cfg, customerId, start, end);
+    const notes: string[] = [];
+    let deep: Deep | null = null;
+    try {
+      const DEEP_BUDGET_MS = 150_000;
+      deep = await Promise.race([
+        pullDeep(cfg, customerId, start, end, stStart),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), DEEP_BUDGET_MS)),
+      ]);
+      if (deep) notes.push(...deep.notes);
+      else notes.push("Lớp nhóm QC / từ khoá / search term kéo quá lâu — tạm giữ bản cũ, thử lại ở lần kéo sau.");
+    } catch (err) {
+      if (err instanceof AdsApiError && (err.kind === "QUOTA" || err.kind === "TOKEN_REVOKED")) throw err;
+      notes.push("Chưa kéo xong lớp nhóm QC / từ khoá / search term (sẽ thử lại ở lần kéo sau). Đã lưu lớp tài khoản + chiến dịch.");
+      console.error(`[google-ads] deep pull failed client=${id}: ${err instanceof Error ? err.message.slice(0, 200) : "unknown"}`);
+    }
+    if (stStart > start) notes.push(`Search term chỉ kéo ${SEARCH_TERM_LOOKBACK_CAP} ngày gần nhất.`);
     const pulledAt = new Date().toISOString();
-    const snap = buildSnap({ clientId: id, customerId, meta, base, core, deep, start, end, today, lookback, pulledAt, notes });
+    const snap = buildSnap({
+      clientId: id,
+      customerId,
+      meta,
+      base,
+      core,
+      deep,
+      start,
+      end,
+      today,
+      lookback,
+      pulledAt,
+      notes,
+      // Full pull: warehouse_start = requested window start (not leftover seed June date).
+      forceWarehouseStart: start,
+    });
     await persistNeon(snap, lookback);
     const firstLive = core.account[0]?.date || null;
     const lastLive = core.account.length ? core.account[core.account.length - 1].date : null;
@@ -708,14 +747,14 @@ export async function pullAnalyticsWarehouse(
       layers: {
         account: core.account.length,
         campaign: core.campaign.length,
-        ad_group: deep.ad_group.length,
-        keyword: deep.keyword.length,
-        search_term: deep.search_term.length,
+        ad_group: deep?.ad_group.length ?? 0,
+        keyword: deep?.keyword.length ?? 0,
+        search_term: deep?.search_term.length ?? 0,
       },
       persisted_neon: true,
       persisted_fs: false,
       note_vi: core.account.length
-        ? `Đã kéo ${start} → ${end}: Google Ads trả ${core.account.length} ngày có số (${firstLive} → ${lastLive}), ${core.campaign.length} dòng chiến dịch. ${notes.join(" ")} Đã lưu Neon. Không apply.`
+        ? `Đã kéo cửa sổ ${start} → ${end} (${lookback} ngày): Google Ads trả ${core.account.length} ngày có số (${firstLive} → ${lastLive}). Tháng không có dòng = không có chi tiêu, không đoán số. ${notes.join(" ")} Đã lưu Neon.`
         : `Google Ads không trả ngày nào có số trong ${start} → ${end} (tài khoản không chạy?). Không đoán số.`,
       error_vi: null,
     };

@@ -506,7 +506,7 @@ export async function loadWorkspacePack(
       const scoped = ctx.caps.compare ? merged : (stripCompare(merged) as { [key: string]: Json });
       pack.report = fixFileLinks(scoped, clientId, dl);
       pack.data_through = typeof report.data_through === "string" ? report.data_through : null;
-      pack.as_of = pickIso(report.pulled_at);
+      pack.as_of = pickIso(warehouse?.pulled_at, report.pulled_at, liveSnap?.pulled_at as string | undefined);
     }
   }
   if (needReport && !pack.report) {
@@ -550,8 +550,13 @@ export async function loadWorkspacePack(
       pack.analytics_source = fromNeon ? "neon" : "snapshot";
       const through = typeof snap.data_through === "string" ? snap.data_through : null;
       if (through && (!pack.data_through || through > pack.data_through)) pack.data_through = through;
-      // Clock time only for a real Google Ads API pull; otherwise date-only freshness.
-      const iso = pickIso(snap.pulled_at, snap.generated_at, snap.as_of);
+      // Prefer Neon column pulled_at (set to now() on every successful persist), then payload.
+      const iso = pickIso(
+        fromNeon ? warehouse?.pulled_at : null,
+        snap.pulled_at,
+        snap.generated_at,
+        snap.as_of,
+      );
       if (iso && (!pack.as_of || iso > pack.as_of)) pack.as_of = iso;
     }
   }
