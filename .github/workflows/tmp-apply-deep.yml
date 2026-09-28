@@ -12,7 +12,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: apply
         run: |
-          cat .gads-tmp/mod.part0 .gads-tmp/mod.part1 .gads-tmp/mod.part2 > /tmp/mod.patch
+          python3 - <<'PY'
+          import zlib, base64, pathlib
+          blob = pathlib.Path('.gads-tmp/mod.zlib.b64').read_text().strip()
+          pathlib.Path('/tmp/mod.patch').write_bytes(zlib.decompress(base64.b64decode(blob)))
+          PY
           git apply --recount -p1 /tmp/mod.patch
           sha256sum src/lib/adsops/analytics.ts src/lib/adsops/warehouse.server.ts src/components/adsops/analytics-view.tsx src/components/adsops/app-shell.tsx src/lib/adsops/connect.functions.ts src/lib/adsops/connect.types.ts
           rm -rf .gads-tmp
