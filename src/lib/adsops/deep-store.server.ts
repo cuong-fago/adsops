@@ -19,6 +19,7 @@ import {
   derivedMetrics,
   type CoveredRange,
   type DailyRow,
+  type DeepFacets,
   type DeepLayerBlock,
   type DeepLayerId,
 } from "./analytics.ts";
@@ -256,7 +257,7 @@ async function pullKeywords(cfg: AdsConfig, cid: string, start: string, end: str
     searchStream(
       cfg,
       cid,
-      `SELECT segments.date, campaign.id, ad_group.id, ad_group.name, ad_group_criterion.criterion_id,
+      `SELECT segments.date, campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group_criterion.criterion_id,
               ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.status,
               metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions
        FROM keyword_view WHERE ${range}`,
@@ -283,6 +284,7 @@ async function pullKeywords(cfg: AdsConfig, cid: string, start: string, end: str
         return {
           date,
           campaign_id: String(asRec(row.campaign).id || ""),
+          campaign_name: String(asRec(row.campaign).name || ""),
           ad_group_id: agId,
           ad_group_name: String(asRec(row.adGroup).name || ""),
           // criterion ids are only unique inside an ad group
@@ -304,7 +306,7 @@ async function pullSearchTerms(cfg: AdsConfig, cid: string, start: string, end: 
     searchStream(
       cfg,
       cid,
-      `SELECT segments.date, campaign.id, campaign.name, ad_group.id,
+      `SELECT segments.date, campaign.id, campaign.name, ad_group.id, ad_group.name,
               search_term_view.search_term, segments.search_term_match_type,
               metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions
        FROM search_term_view WHERE ${range}`,
@@ -333,6 +335,7 @@ async function pullSearchTerms(cfg: AdsConfig, cid: string, start: string, end: 
           campaign_id: String(c.id || ""),
           campaign_name: String(c.name || ""),
           ad_group_id: agId,
+          ad_group_name: String(asRec(row.adGroup).name || ""),
           query: q,
           match_type: String(seg.searchTermMatchType || "").replace(/^SEARCH_TERM_MATCH_TYPE_/, ""),
           ...metricsOf(asRec(row.metrics)),
@@ -522,6 +525,8 @@ export async function readDeepLayer(
       if (row.date >= opts.start && row.date <= opts.end && row.date >= r.covered_start && row.date <= r.covered_end) all.push(row);
     }
   }
+  await backfillNames(clientId, layer, all, opts.start, opts.end);
+  const facets = buildFacets(layer, all, opts);
   let filtered = all;
   if (opts.campaignId) filtered = filtered.filter((r) => String(r.campaign_id) === opts.campaignId);
   if (opts.adGroupId && layer !== "ad_group") filtered = filtered.filter((r) => String(r.ad_group_id) === opts.adGroupId);
@@ -544,5 +549,73 @@ export async function readDeepLayer(
     covered_days,
     totals,
     conv_split: convSplit,
+    facets,
   };
+}
+
+/**
+ * Rows stored before names were pulled lack campaign / ad group names:
+ * fill them from the ad group layer (same client, same days). Ids only — never numbers.
+ */
+async function backfillNames(clientId: string, layer: DeepLayerId, rows: DailyRow[], start: string, end: string): Promise<void> {
+  const needs = rows.some((r) => (r.ad_group_id && !r.ad_group_name) || (r.campaign_id && !r.campaign_name));
+  if (!needs) return;
+  const agNames = new Map<string, string>();
+  const campNames = new Map<string, string>();
+  for (const r of rows) {
+    if (r.ad_group_id && r.ad_group_name) agNames.set(String(r.ad_group_id), r.ad_group_name);
+    if (r.campaign_id && r.campaign_name) campNames.set(String(r.campaign_id), r.campaign_name);
+  }
+  if (layer !== "ad_group") {
+    try {
+      const sql = await getSql();
+      const src = await sql.query<{ rows: unknown }>(
+        `select rows from adsops_analytics_deep
+         where client_id = $1 and layer = 'ad_group' and covered_end >= ($2::date - 120) and covered_start <= $3::date`,
+        [clientId, start, end],
+      );
+      for (const r of src) {
+        const payload = (typeof r.rows === "string" ? JSON.parse(r.rows) : r.rows) as MonthPayload | null;
+        for (const row of payload?.rows || []) {
+          if (row.ad_group_id && row.ad_group_name && !agNames.has(String(row.ad_group_id))) agNames.set(String(row.ad_group_id), row.ad_group_name);
+          if (row.campaign_id && row.campaign_name && !campNames.has(String(row.campaign_id))) campNames.set(String(row.campaign_id), row.campaign_name);
+        }
+      }
+    } catch {
+      /* names stay as ids */
+    }
+  }
+  for (const r of rows) {
+    if (r.ad_group_id && !r.ad_group_name) r.ad_group_name = agNames.get(String(r.ad_group_id)) || "";
+    if (r.campaign_id && !r.campaign_name) r.campaign_name = campNames.get(String(r.campaign_id)) || "";
+  }
+}
+
+/** Campaign / ad group choices with row counts, computed before the scope filter. */
+function buildFacets(
+  layer: DeepLayerId,
+  rows: DailyRow[],
+  opts: { start: string; end: string; onlyWithConv?: boolean },
+): DeepFacets {
+  const block = aggregateDeepRows(layer, rows, { start: opts.start, end: opts.end, onlyWithConv: opts.onlyWithConv });
+  const camps = new Map<string, { id: string; name: string; rows: number }>();
+  const groups = new Map<string, { id: string; name: string; campaign_id: string; rows: number }>();
+  for (const row of block.rows) {
+    const cid = String(row.campaign_id || "");
+    if (cid) {
+      const c = camps.get(cid) || { id: cid, name: row.campaign_name || "", rows: 0 };
+      c.rows += 1;
+      if (!c.name && row.campaign_name) c.name = row.campaign_name;
+      camps.set(cid, c);
+    }
+    const gid = layer === "ad_group" ? "" : String(row.ad_group_id || "");
+    if (gid) {
+      const g = groups.get(gid) || { id: gid, name: row.ad_group_name || "", campaign_id: cid, rows: 0 };
+      g.rows += 1;
+      if (!g.name && row.ad_group_name) g.name = row.ad_group_name;
+      groups.set(gid, g);
+    }
+  }
+  const byName = (a: { name: string; id: string }, b: { name: string; id: string }) => (a.name || a.id).localeCompare(b.name || b.id, "vi");
+  return { campaigns: [...camps.values()].sort(byName), ad_groups: [...groups.values()].sort(byName), total_rows: block.rows.length };
 }

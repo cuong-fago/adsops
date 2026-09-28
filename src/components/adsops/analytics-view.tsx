@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { ArrowDown, ArrowUp, ChevronRight, Info, Search, SlidersHorizontal, X } from "lucide-react";
 import {
   type AnalyticsSnap,
+  type DeepFacets,
   type DeepLayerBlock,
   type DeepLayerId,
   type LayerBlock,
@@ -33,6 +34,7 @@ const SUBTABS = [
 type SubTab = (typeof SUBTABS)[number]["id"];
 type TableLayer = "campaign" | DeepLayerId;
 const TAB_KEY = "adsops:analytics:subtab:";
+const SCOPE_KEY = "adsops:analytics:scope:";
 
 function isSubTab(v: unknown): v is SubTab {
   return SUBTABS.some((t) => t.id === v);
@@ -204,6 +206,8 @@ export function AnalyticsView({
   const [adGroupId, setAdGroupId] = useState<string | null>(null);
   const [adGroupLabel, setAdGroupLabel] = useState("");
   const [onlyConv, setOnlyConv] = useState(false);
+  const [tableQuery, setTableQuery] = useState("");
+  const [facetsByLayer, setFacetsByLayer] = useState<Partial<Record<DeepLayerId, DeepFacets>>>({});
   const [weekN, setWeekN] = useState(0);
   const [monthN, setMonthN] = useState(0);
   const [prevEqual, setPrevEqual] = useState(allowCompare);
@@ -220,6 +224,29 @@ export function AnalyticsView({
     setTabState(next);
     try { window.localStorage.setItem(storageKey, next); } catch { /* ignore */ }
   }
+
+  // Last campaign / ad group filter, per user + account.
+  const scopeKey = `${SCOPE_KEY}${userKey || "anon"}:${snap.client_id}`;
+  const scopeLoaded = useRef("");
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(scopeKey);
+      const saved = raw ? (JSON.parse(raw) as { c?: string | null; g?: string | null; gl?: string }) : null;
+      if (saved?.c && snap.campaigns.some((c) => c.id === saved.c)) {
+        setCampaignId(saved.c);
+        setAdGroupId(saved.g || null);
+        setAdGroupLabel(saved.gl || "");
+      }
+    } catch { /* storage blocked */ }
+    scopeLoaded.current = scopeKey;
+  }, [scopeKey, snap.campaigns]);
+  useEffect(() => {
+    if (scopeLoaded.current !== scopeKey) return;
+    try {
+      if (campaignId || adGroupId) window.localStorage.setItem(scopeKey, JSON.stringify({ c: campaignId, g: adGroupId, gl: adGroupLabel }));
+      else window.localStorage.removeItem(scopeKey);
+    } catch { /* ignore */ }
+  }, [scopeKey, campaignId, adGroupId, adGroupLabel]);
 
   const groups = snap.conversion_groups.groups;
   function applyRange(nextStart: string, nextEnd: string) {
@@ -267,7 +294,11 @@ export function AnalyticsView({
     let cancelled = false;
     setDeepLoading(true); setDeepError("");
     readDeepLayerFn({ data: { clientId: snap.client_id, layer: tableLayer, start, end, campaignId, adGroupId, onlyWithConv: onlyConv } })
-      .then((block) => { if (!cancelled) { setDeepBlock(block); setDeepLoading(false); } })
+      .then((block) => {
+        if (cancelled) return;
+        setDeepBlock(block); setDeepLoading(false);
+        if (block.facets) setFacetsByLayer((prev) => ({ ...prev, [tableLayer]: block.facets as DeepFacets }));
+      })
       .catch((err) => { if (!cancelled) { setDeepBlock(null); setDeepError(err instanceof Error ? err.message : "Không đọc được lớp nhóm / từ khoá."); setDeepLoading(false); } });
     return () => { cancelled = true; };
   }, [snap.client_id, tableLayer, pmaxSelected, start, end, campaignId, adGroupId, onlyConv, deepEpoch]);
@@ -312,14 +343,17 @@ export function AnalyticsView({
 
   const metrics = account.rows[0]?.metrics || {};
   const prevMetrics = prevAccount?.complete ? prevAccount.rows[0]?.metrics : undefined;
-  const campaignName = snap.campaigns.find((c) => c.id === campaignId)?.name;
-  const adGroupName = snap.ad_groups?.find((g) => g.id === adGroupId)?.name || (adGroupId ? adGroupLabel : "");
+  const deepLayer = tableLayer && isDeepLayer(tableLayer) ? tableLayer : null;
+  const facets = deepLayer ? facetsByLayer[deepLayer] : undefined;
+  const scoped = Boolean(deepLayer && (campaignId || (adGroupId && deepLayer !== "ad_group")));
+  useEffect(() => { setTableQuery(""); }, [tableLayer]);
 
   function drill(row: LayerRow) {
     if (tableLayer === "campaign") { setCampaignId(row.id); setAdGroupId(null); setTab(row.pmax ? "search_term" : "ad_group"); }
     else if (tableLayer === "ad_group") { setAdGroupId(row.id); setAdGroupLabel(row.name); setTab("keyword"); }
   }
-  function clearScope() { setCampaignId(null); setAdGroupId(null); }
+  function clearScope() { setCampaignId(null); setAdGroupId(null); setAdGroupLabel(""); }
+  function clearFilters() { clearScope(); setTableQuery(""); }
   const rangeLabel = formatRangeVi(start, end);
 
   return (
@@ -420,20 +454,29 @@ export function AnalyticsView({
 
       {tableLayer ? (
         <section className={cn(card, "flex min-w-0 flex-col gap-3 p-3 md:p-4")}>
-          <div className="flex flex-wrap items-center gap-2">
-            <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-sm text-muted" aria-label="Phạm vi">
-              <button type="button" className="rounded px-1 hover:text-ink hover:underline" onClick={() => { clearScope(); setTab("campaign"); }}>{snap.display_name}</button>
-              {campaignName ? (<><ChevronRight className="size-3.5 shrink-0" /><button type="button" className="max-w-[16rem] truncate rounded px-1 hover:text-ink hover:underline" title={campaignName} onClick={() => { setAdGroupId(null); setTab("ad_group"); }}>{campaignName}</button></>) : null}
-              {adGroupName ? (<><ChevronRight className="size-3.5 shrink-0" /><span className="max-w-[16rem] truncate px-1 text-ink" title={adGroupName}>{adGroupName}</span></>) : null}
-              {(campaignId || adGroupId) && tableLayer !== "campaign" ? (
-                <button type="button" onClick={clearScope} className="ml-1 inline-flex h-7 items-center gap-1 rounded-full bg-inset px-2.5 text-xs font-medium text-ink hover:bg-line"><X className="size-3" /> Bỏ lọc</button>
-              ) : null}
-            </nav>
-            <label className="flex h-9 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => setOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
-          </div>
+          {deepLayer ? (
+            <ScopeFilters
+              layer={deepLayer}
+              facets={facets}
+              campaigns={snap.campaigns}
+              campaignId={campaignId}
+              adGroupId={adGroupId}
+              adGroupLabel={adGroupLabel}
+              onCampaign={(id) => { setCampaignId(id); setAdGroupId(null); setAdGroupLabel(""); }}
+              onAdGroup={(id, label, cid) => { setAdGroupId(id); setAdGroupLabel(label); if (id && cid) setCampaignId(cid); }}
+              onlyConv={onlyConv}
+              onOnlyConv={setOnlyConv}
+              canClear={scoped || Boolean(tableQuery) || onlyConv}
+              onClear={() => { clearFilters(); setOnlyConv(false); }}
+            />
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => setOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
+            </div>
+          )}
           {isDeepLayer(tableLayer) && deepLoading && !pmaxSelected ? <Skeleton rows={8} /> :
            deepError && isDeepLayer(tableLayer) ? <p className="rounded-md bg-warn-bg px-4 py-6 text-sm text-warn">{deepError}</p> :
-           current ? <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={current} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} /> :
+           current ? <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={current} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} /> :
            <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">Chưa kéo lớp này. Dùng nút &quot;Kéo nhóm / từ khoá&quot; phía trên (admin / trưởng phòng Ads / người tối ưu).</p>}
         </section>
       ) : null}
@@ -817,6 +860,80 @@ function coverageNote(block: LayerBlock | DeepLayerBlock, layer: string): { text
   return { text: bits.join(" · "), warn: !deep.complete };
 }
 
+type CampaignLite = { id: string; name: string; pmax?: boolean };
+
+function ScopeFilters({
+  layer, facets, campaigns, campaignId, adGroupId, adGroupLabel, onCampaign, onAdGroup, onlyConv, onOnlyConv, canClear, onClear,
+}: {
+  layer: DeepLayerId;
+  facets?: DeepFacets;
+  campaigns: CampaignLite[];
+  campaignId: string | null;
+  adGroupId: string | null;
+  adGroupLabel: string;
+  onCampaign: (id: string | null) => void;
+  onAdGroup: (id: string | null, label: string, campaignId: string | null) => void;
+  onlyConv: boolean;
+  onOnlyConv: (v: boolean) => void;
+  canClear: boolean;
+  onClear: () => void;
+}) {
+  const snapName = (id: string) => campaigns.find((c) => c.id === id)?.name || "";
+  const campOpts = (facets?.campaigns || []).map((c) => ({ id: c.id, name: c.name || snapName(c.id) || c.id, rows: c.rows as number | null }));
+  if (campaignId && !campOpts.some((c) => c.id === campaignId)) campOpts.unshift({ id: campaignId, name: snapName(campaignId) || campaignId, rows: null });
+  const allGroups = facets?.ad_groups || [];
+  let groupOpts = (campaignId ? allGroups.filter((g) => g.campaign_id === campaignId) : allGroups).map((g) => ({ ...g, rows: g.rows as number | null }));
+  const nameCount = new Map<string, number>();
+  for (const g of groupOpts) nameCount.set(g.name, (nameCount.get(g.name) || 0) + 1);
+  if (adGroupId && !groupOpts.some((g) => g.id === adGroupId)) groupOpts = [{ id: adGroupId, name: adGroupLabel || adGroupId, campaign_id: campaignId || "", rows: null }, ...groupOpts];
+  const showGroups = layer !== "ad_group";
+  const selectBox = "flex h-10 min-w-0 items-center gap-2 rounded-full bg-inset pl-3.5 pr-1.5 text-sm sm:max-w-[20rem]";
+  const selectEl = "h-9 min-w-0 flex-1 cursor-pointer truncate rounded-full bg-transparent pr-1 text-base font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-sm";
+  const countSuffix = (n: number | null) => (n == null ? "" : ` (${n})`);
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center" role="group" aria-label="Lọc theo chiến dịch / nhóm">
+      <label className={selectBox}>
+        <span className="shrink-0 text-xs font-medium text-muted">Chiến dịch</span>
+        <select value={campaignId || ""} onChange={(e) => onCampaign(e.target.value || null)} className={selectEl} aria-label="Lọc theo chiến dịch">
+          <option value="">Tất cả chiến dịch{facets ? ` (${facets.campaigns.length})` : ""}</option>
+          {campOpts.map((c) => <option key={c.id} value={c.id}>{c.name}{countSuffix(c.rows)}</option>)}
+        </select>
+      </label>
+      {showGroups ? (
+        <label className={cn(selectBox, !groupOpts.length && "opacity-60")}>
+          <span className="shrink-0 text-xs font-medium text-muted">Nhóm</span>
+          <select
+            value={adGroupId || ""}
+            disabled={!groupOpts.length}
+            onChange={(e) => {
+              const id = e.target.value || null;
+              const g = groupOpts.find((x) => x.id === id);
+              onAdGroup(id, g?.name || "", g?.campaign_id || null);
+            }}
+            className={selectEl}
+            aria-label="Lọc theo nhóm quảng cáo"
+          >
+            <option value="">{campaignId ? "Tất cả nhóm trong chiến dịch" : "Tất cả nhóm"}{groupOpts.length ? ` (${groupOpts.filter((g) => g.rows != null).length})` : ""}</option>
+            {groupOpts.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name || g.id}
+                {!campaignId && (nameCount.get(g.name) || 0) > 1 ? ` — ${snapName(g.campaign_id) || campOpts.find((c) => c.id === g.campaign_id)?.name || g.campaign_id}` : ""}
+                {countSuffix(g.rows)}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <div className="flex items-center gap-2">
+        <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => onOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
+        {canClear ? (
+          <button type="button" onClick={onClear} className="inline-flex h-10 items-center gap-1 rounded-full px-3 text-sm font-medium text-accent hover:bg-inset"><X className="size-4" /> Xoá lọc</button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 type ColDef = {
   key: string;
   label: string;
@@ -828,7 +945,7 @@ type ColDef = {
 };
 
 function DataTable({
-  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true,
+  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll,
 }: {
   layer: TableLayer;
   block: LayerBlock | DeepLayerBlock;
@@ -837,8 +954,16 @@ function DataTable({
   onDrill: (row: LayerRow) => void;
   campaignNames: Record<string, string>;
   splitKnown?: boolean;
+  query?: string;
+  onQueryChange?: (q: string) => void;
+  /** Campaign / ad group filter active (count shows "x / total"). */
+  scoped?: boolean;
+  /** Rows in the whole layer for the range, before campaign / ad group / text filters. */
+  totalAll?: number;
 }) {
-  const [query, setQuery] = useState("");
+  const [queryLocal, setQueryLocal] = useState("");
+  const query = queryProp ?? queryLocal;
+  const setQuery = onQueryChange ?? setQueryLocal;
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "cost", dir: -1 });
   const [showAll, setShowAll] = useState(false);
   const [page, setPage] = useState(0);
@@ -873,7 +998,7 @@ function DataTable({
   const filtered = useMemo(() => {
     const q = fold(query.trim());
     let rows = block.rows;
-    if (q) rows = rows.filter((r) => fold(`${r.name} ${r.campaign_name || campaignNames[r.campaign_id || ""] || ""}`).includes(q));
+    if (q) rows = rows.filter((r) => fold(`${r.name} ${r.campaign_name || campaignNames[r.campaign_id || ""] || ""} ${r.ad_group_name || ""}`).includes(q));
     const col = cols.find((c) => c.key === sort.key);
     return [...rows].sort((a, b) => {
       if (sort.key === "name") return a.name.localeCompare(b.name, "vi") * sort.dir;
@@ -915,7 +1040,7 @@ function DataTable({
       <div className="space-y-2">
         {note ? <p className={cn("rounded-md px-3 py-2 text-sm", note.warn ? "bg-warn-bg text-warn" : "bg-inset text-muted")}>{note.text}</p> : null}
         <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">
-          {block.complete ? "Không có dòng trong khoảng ngày này." : note?.text || "Thiếu dữ liệu — mốc chưa đủ ngày; API không trả hết cửa sổ. Không đoán số."}
+          {scoped ? "Không có dòng khớp bộ lọc chiến dịch / nhóm trong khoảng ngày này." : block.complete ? "Không có dòng trong khoảng ngày này." : note?.text || "Thiếu dữ liệu — mốc chưa đủ ngày; API không trả hết cửa sổ. Không đoán số."}
         </p>
       </div>
     );
@@ -929,6 +1054,10 @@ function DataTable({
   const visible = !showAll && !query ? filtered.slice(0, TOP) : paginate ? filtered.slice(safePage * PAGE, safePage * PAGE + PAGE) : filtered;
   const firstLabel = layer === "campaign" ? "Chiến dịch" : layer === "ad_group" ? "Nhóm quảng cáo" : layer === "keyword" ? "Từ khoá" : "Search term";
 
+  function contextLine(row: LayerRow) {
+    const camp = row.campaign_name || campaignNames[row.campaign_id || ""] || "";
+    return [camp, row.ad_group_name || ""].filter(Boolean).join(" · ");
+  }
   function toggleSort(key: string) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" || key === "status" ? 1 : -1 }));
     setPage(0);
@@ -938,6 +1067,11 @@ function DataTable({
     ? `Tổng (chỉ ngày đã kéo${deep.coverage.length ? `: ${deep.coverage.map((r) => `${dmy(r.start)}→${dmy(r.end)}`).join("; ")}` : ""})`
     : `Tổng ${block.rows.length} chiến dịch`;
   const stickyFoot = "sticky bottom-0 z-10 border-t border-line-strong bg-inset";
+  const rowCount = deep ? deep.row_count : block.rows.length;
+  const countLabel =
+    query || scoped
+      ? `${num(query ? filtered.length : rowCount, 0)} / ${num(totalAll ?? rowCount, 0)} dòng`
+      : `${num(rowCount, 0)} dòng`;
 
   return (
     <div className="flex min-w-0 flex-col gap-2">
@@ -953,7 +1087,7 @@ function DataTable({
           <input type="search" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} placeholder={`Tìm ${firstLabel.toLowerCase()}…`} className="h-9 w-full rounded-full border border-line bg-bg pl-9 pr-3 text-sm text-ink placeholder:text-subtle" />
         </label>
         <span className="text-xs text-muted tabular-nums">
-          {query ? `${filtered.length}/${block.rows.length} dòng khớp` : `${block.rows.length} dòng`}
+          {countLabel}
           {canDrill ? " · bấm tên để xuống tầng dưới" : ""}
         </span>
       </div>
@@ -991,7 +1125,7 @@ function DataTable({
                   ) : (
                     <div className="flex min-h-9 max-w-[10rem] flex-col justify-center md:max-w-[24rem]" title={row.name}>
                       <span className="truncate font-medium">{row.name}</span>
-                      {layer === "search_term" && (row.campaign_name || campaignNames[row.campaign_id || ""]) ? <span className="truncate text-xs text-subtle">{row.campaign_name || campaignNames[row.campaign_id || ""]}</span> : null}
+                      {(layer === "search_term" || layer === "keyword") && contextLine(row) ? <span className="truncate text-xs text-subtle" title={contextLine(row)}>{contextLine(row)}</span> : null}
                     </div>
                   )}
                 </td>
