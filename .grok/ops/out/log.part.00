@@ -1,295 +1,152 @@
-== server-data/adsops/analytics/tkqc_9634070340.json topkeys: module,client_id,display_name,customer_id,timezone,currency,adapter,data_through,warehouse_start,warehouse_end,day_count,lookback_days,analytics_lookback_days,consecutive,campaigns,ad_groups,daily,pmax_note,metrics,conversion_groups,week_choices,month_choices,rules,budget_pace
-== server-data/adsops/report/tkqc_6810292395.json topkeys: module,audience,cover_only,session,client_id,display_name,customer_id,timezone,currency,adapter,data_through,propose_only,pulled_kpis,kpis,banner,conversion_note,modeled_note,conversions_may_include_modeled,google_conversion_is_not_qualified_lead,cpa_note,cadences,sheet_names,compare
-  .cadences.daily.compare_label :: "so với ngày trước"
-  .cadences.daily.primary.previous :: object
-  .cadences.daily.primary.delta :: object
-  .cadences.daily.context.7.previous :: object
-  .cadences.daily.context.7.delta :: object
-  .cadences.weekly.compare_label :: "so với 7 ngày trước"
-  .cadences.weekly.primary.previous :: object
-  .cadences.weekly.primary.delta :: object
-  .cadences.weekly.context.14.previous :: object
-  .cadences.weekly.context.14.delta :: object
-  .cadences.weekly.context.30.previous :: object
-  .cadences.weekly.context.30.delta :: object
-  .compare :: object
-  .compare.compare_howto :: array
-  .compare.windows.1.previous :: object
-  .compare.windows.1.delta :: object
-  .compare.windows.7.previous :: object
-  .compare.windows.7.delta :: object
-  .compare.windows.14.previous :: object
-  .compare.windows.14.delta :: object
-  .compare.windows.30.previous :: object
-  .compare.windows.30.delta :: object
-  .compare.windows.90.previous :: object
-  .compare.windows.90.delta :: object
-== server-data/adsops/compare/tkqc_6810292395.json topkeys: module,session,client_id,display_name,customer_id,customer_id_dashed,timezone,currency,adapter,data_through,lookback_days,day_count,pulled_kpis,pulled_search_terms,never_apply_google_ads,propose_only,kpis,metric_map_vi,compare_howto,windows,window_ranges,campaigns_7d
-  .compare_howto :: array
-  .windows.1.previous :: object
-  .windows.1.delta :: object
-  .windows.7.previous :: object
-  .windows.7.delta :: object
-  .windows.14.previous :: object
-  .windows.14.delta :: object
-  .windows.30.previous :: object
-  .windows.30.delta :: object
-  .windows.90.previous :: object
-  .windows.90.delta :: object
-== server-data/adsops/connect/tkqc_6810292395.json topkeys: client_id,display_name,customer_id,customer_id_dashed,mcc_id,mcc_id_dashed,mcc_display_name,adapter,status,title_vi,detail_vi,next_step_vi,checklist,account_name,currency,account_timezone,is_manager,account_status,accessible_count,target_in_accessible,yaml_file_present,api_version,probed_at,propose_only,pulled_search_terms,pulled_kpis,never_apply_google_ads,error_hint,session,module,rule,isolation,pulled_opt_sources,mcc_accounts,roster_complete
-== server-data/adsops/hub/tkqc_6810292395.json topkeys: client_id,display_name,customer_id,timezone,currency,status,adapter,data_through,lookback_days,day_count,date_start,source_flag,propose_only,kpis,windows,campaigns,daily,opt_sources
-  .windows.7.previous :: object
-  .windows.7.delta :: object
-  .windows.14.previous :: object
-  .windows.14.delta :: object
-  .windows.30.previous :: object
-  .windows.30.delta :: object
-  .windows.90.previous :: object
-  .windows.90.delta :: object
-  .opt_sources.search_term_preview :: array
-{
- "rules": {
-  "primary_conversions_only": true,
-  "missing_label": "Thiếu dữ liệu",
-  "never_fill_missing_with_zero": true,
-  "sort": "cost_desc",
-  "week": "monday_sunday",
-  "source_note": "90 ngày hoàn chỉnh từ Google Ads API (đến hôm qua). Chưa kéo ST/KW. Không apply.",
-  "st_truncated": true,
-  "budget_pace_separate_from_guard": true
- },
- "week": [
-  3,
-  5,
-  7
- ],
- "month": [
-  1,
-  2,
-  3,
-  4,
-  5,
-  6,
-  7,
-  8,
-  9
- ],
- "metrics": [
-  {
-   "id": "cost",
-   "label": "Chi tiêu"
-  },
-  {
-   "id": "impressions",
-   "label": "Hiển thị"
-  },
-  {
-   "id": "clicks",
-   "label": "Click"
-  },
-  {
-   "id": "invalid_clicks",
-   "label": "Click không hợp lệ"
-  },
-  {
-   "id": "invalid_click_rate",
-   "label": "Tỷ lệ click không hợp lệ"
-  },
-  {
-   "id": "cpc",
-   "label": "CPC"
-  },
-  {
-   "id": "conversions",
-   "label": "Chuyển đổi"
-  },
-  {
-   "id": "conv_other",
-   "label": "Chuyển đổi Google"
-  },
-  {
-   "id": "cost_per_conversion",
-   "label": "Chi phí/chuyển đổi"
-  },
-  {
-   "id": "ctr",
-   "label": "CTR"
-  },
-  {
-   "id": "cr",
-   "label": "CR"
-  }
- ],
- "cg": {
-  "attribution": "DATA_DRIVEN",
-  "rule": "Nhóm Gọi / Zalo / Facebook chat / Form / Khác theo tên hành động Google Ads — không hard-code khách. All conversions không lên màn. CPA Google ≠ Qualified Lead.",
-  "groups": [
-   {
-    "id": "call",
-    "label": "Gọi",
-    "metric": "conv_call",
-    "actions": [
-     "Gads - Click gọi điện"
-    ]
-   },
-   {
-    "id": "zalo",
-    "label": "Zalo",
-    "metric": "conv_zalo",
-    "actions": [
-     "Gads - Click chat zalo"
-    ]
-   },
-   {
-    "id": "facebook_chat",
-    "label": "Facebook chat",
-    "metric": "conv_facebook_chat",
-    "actions": []
-   },
-   {
-    "id": "form",
-    "label": "Form",
-    "metric": "conv_form",
-    "actions": []
-   },
-   {
-    "id": "other",
-    "label": "Khác",
-    "metric": "conv_other",
-    "actions": [
-     "Gads - Click chat facebook",
-     "Gads - Đặt hàng thành công"
-    ]
-   }
-  ],
-  "skipped": [
-   {
-    "action": "All conversions",
-    "reason": "không lên màn Phân tích"
-   },
-   {
-    "action": "search_term",
-    "reason": "chưa kéo ST phiên này"
-   }
-  ]
- },
- "camps": [
-  {
-   "id": "21428665404",
-   "name": "3. Fago - Sim du lịch Hàn Quốc - Search",
-   "type": "SEARCH",
-   "status": "ENABLED",
-   "pmax": false
-  },
-  {
-   "id": "21435285089",
-   "name": "5. Fago - Sim du lịch Châu Âu - Search",
-   "type": "SEARCH",
-   "status": "ENABLED",
-   "pmax": false
-  },
-  {
-   "id": "21435425957",
-   "name": "6. Fago - Sim du lịch Mỹ - Search",
-   "type": "SEARCH",
-   "status": "ENABLED",
-   "pmax": false
-  }
- ],
- "acc": [
-  {
-   "date": "2026-09-20",
-   "impressions": 1382,
-   "clicks": 81,
-   "invalid_clicks": 17,
-   "cost": 1060098.19,
-   "conversions": 4,
-   "conv_call": 2,
-   "conv_zalo": 0,
-   "conv_facebook_chat": 0,
-   "conv_form": 0,
-   "conv_other": 2
-  },
-  {
-   "date": "2026-09-21",
-   "impressions": 1572,
-   "clicks": 106,
-   "invalid_clicks": 20,
-   "cost": 1253978.42,
-   "conversions": 8,
-   "conv_call": 4,
-   "conv_zalo": 4,
-   "conv_facebook_chat": 0,
-   "conv_form": 0,
-   "conv_other": 0
-  }
- ],
- "camp": [
-  {
-   "campaign_id": "23939401873",
-   "campaign_name": "1.1 Fago - Sim du lịch - HN",
-   "campaign_type": "SEARCH",
-   "status": "ENABLED",
-   "date": "2026-09-20",
-   "impressions": 27,
-   "clicks": 6,
-   "invalid_clicks": 0,
-   "cost": 153914.5,
-   "conversions": 0,
-   "conv_call": 0,
-   "conv_zalo": 0,
-   "conv_facebook_chat": 0,
-   "conv_form": 0,
-   "conv_other": 0
-  },
-  {
-   "campaign_id": "23939401873",
-   "campaign_name": "1.1 Fago - Sim du lịch - HN",
-   "campaign_type": "SEARCH",
-   "status": "ENABLED",
-   "date": "2026-09-21",
-   "impressions": 48,
-   "clicks": 11,
-   "invalid_clicks": 0,
-   "cost": 165089,
-   "conversions": 1,
-   "conv_call": 0,
-   "conv_zalo": 0,
-   "conv_facebook_chat": 0,
-   "conv_form": 0,
-   "conv_other": 0
-  }
- ],
- "through": "2026-09-21",
- "ws": "2026-06-24",
- "we": "2026-09-21",
- "n": 90
-}
-server-data/adsops/analytics/fago_group.json 4 2026-09-18 2026-09-21 919281 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 006 undefined
-server-data/adsops/analytics/tkqc_1002848762.json 90 2026-06-24 2026-09-21 30625934 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 003 undefined
-server-data/adsops/analytics/tkqc_1537771845.json 0 null null 0 Fago Agency - vinhome-smartcity.vn undefined
-server-data/adsops/analytics/tkqc_1566256433.json 0 null null 0 Tài khoản Google Ads của zzz undefined
-server-data/adsops/analytics/tkqc_2950312680.json 38 2026-06-24 2026-09-19 11901 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 001 undefined
-server-data/adsops/analytics/tkqc_2956229201.json 64 2026-06-24 2026-09-21 8493228 Công Ty TNHH Kiểm Toán Và Tư Vấn Bản Việt undefined
-server-data/adsops/analytics/tkqc_4447912752.json 84 2026-06-24 2026-09-21 16237679 Rock Kitchen & Bar undefined
-server-data/adsops/analytics/tkqc_4925480286.json 0 null null 0 CÔNG TY CỔ PHẦN MAXDREAM undefined
-server-data/adsops/analytics/tkqc_5305148570.json 13 2026-08-05 2026-08-27 7499381 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 005 undefined
-server-data/adsops/analytics/tkqc_5449401095.json 54 2026-06-24 2026-08-17 15204903 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 002 undefined
-server-data/adsops/analytics/tkqc_5683242539.json 76 2026-06-24 2026-09-21 14403124 Cty TNHH Giải Pháp Thương Mại Fago Group - 0108755817 - 004 undefined
-server-data/adsops/analytics/tkqc_5709560356.json 6 2026-08-28 2026-09-08 3314985 Fago - Điện lạnh Tiên Tiến undefined
-server-data/adsops/analytics/tkqc_5800099027.json 90 2026-06-24 2026-09-21 565572733 Strip Việt Nam undefined
-server-data/adsops/analytics/tkqc_6419118605.json 89 2026-06-24 2026-09-21 27388001 641-911-8605 undefined
-server-data/adsops/analytics/tkqc_6608871437.json 61 2026-07-21 2026-09-21 34488160 Fago - Hạnh Long - 0312539301 undefined
-server-data/adsops/analytics/tkqc_6810292395.json 44 2026-07-31 2026-09-21 33091804 Công Ty TNHH MTV Thương Mại Và Du Lịch Quỳnh Thanh undefined
-server-data/adsops/analytics/tkqc_7117149480.json 0 null null 0 Fago Agency - Tổng đài cứu hộ 119 undefined
-server-data/adsops/analytics/tkqc_7167241572.json 75 2026-06-24 2026-09-21 10882331 Fago - TCC - 0318902627 undefined
-server-data/adsops/analytics/tkqc_7904581470.json 77 2026-06-24 2026-09-21 57328997 Công Ty TNHH Đầu Tư Phát Triển Thương Mại Dịch Vụ Minh Quân undefined
-server-data/adsops/analytics/tkqc_9634070340.json 90 2026-06-24 2026-09-21 89213468 Gloka undefined
-.grok/ops/run.sh: line 12: rg: command not found
-.grok/ops/run.sh: line 13: rg: command not found
-.grok/ops/run.sh: line 14: rg: command not found
-src/styles.css
-src/styles.css
-__grok
-favicon.svg
+119:create table if not exists adsops_kv (
+120-  key text primary key,
+121-  value jsonb,
+122-  updated_at timestamptz not null default now()
+123-);
+124-
+125--- ── Carry over legacy Google-login memberships (0002) ───────────────────────
+126--- ops -> optimizer, sale -> sale. The super admin is hard-coded, never a row.
+127-insert into staff_users (id, email, role, created_by)
+--
+149:insert into adsops_kv (key, value)
+150-select 'legacy_ops_emails', coalesce(jsonb_agg(distinct lower(email)), '[]'::jsonb)
+151-from memberships
+152-where role = 'ops' and lower(email) <> 'cuong@fagogroup.vn'
+153-on conflict (key) do nothing;
+154-
+155-insert into permission_audit_log (actor, action, target_kind, target_id, detail)
+156-select 'migration:0005', 'staff.migrated', 'staff', s.id,
+157-       jsonb_build_object('email', s.email, 'role', s.role)
+6: *   - principal: internal staff (Better Auth Google session) or customer user
+37:export type Principal = {
+50:export type AccessContext = {
+51:  /** Effective principal (the view-as target while impersonating). */
+52:  principal: Principal;
+73:export function newId(prefix: string): string {
+81:export function parseCookies(headers: Headers): Record<string, string> {
+103:export function setCookieHeader(name: string, value: string, maxAgeS: number): string {
+107:export function clearCookieHeader(name: string): string {
+127:export async function hashPassword(password: string): Promise<string> {
+133:export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+146:export function validatePassword(password: string): void {
+153:export function actorLabel(p: Principal): string {
+157:export async function audit(
+171:// ── principals ────────────────────────────────────────────────────────────────────
+173:type StaffRowDb = { id: string; email: string; role: string; display_name: string | null };
+174:type ClientRowDb = {
+186:      kind: "staff",
+208:    kind: "staff",
+221:    kind: "client",
+251:async function principalByRef(kind: PrincipalKind, id: string): Promise<Principal | null> {
+262:    kind: "staff",
+273:export async function grantsFor(p: Principal): Promise<"all" | Set<string>> {
+281:    where g.principal_kind = ${p.kind} and g.principal_id = ${p.id}
+301:export function signViewAs(adminUserId: string, kind: PrincipalKind, id: string): string {
+356:export async function resolvePrincipal(
+363:      kind: "staff",
+379:export async function resolveAccessFromHeaders(headers: Headers, bearerToken?: string): Promise<AccessContext> {
+383:  let principal = real;
+388:      const target = await principalByRef(va.k, va.i);
+390:        principal = target;
+402:  const allowed = await grantsFor(principal);
+404:    principal,
+406:    caps: capabilitiesFor(principal.role),
+414:export async function resolveAccess(bearerToken?: string): Promise<AccessContext> {
+422:export function canSeeAccount(ctx: AccessContext, adAccountId: string): boolean {
+426:export function assertAccount(ctx: AccessContext, adAccountId: string): void {
+427:  if (ctx.principal.role === "pending") throw new ForbiddenError("Chưa được cấp quyền.");
+431:export function assertCap(ctx: AccessContext, cap: keyof Capabilities, message?: string): void {
+436:export function assertWritable(ctx: AccessContext): void {
+441:export function assertRealAdmin(ctx: AccessContext): void {
+450:export async function clientPasswordLogin(
+454:): Promise<{ token: string; principal: Principal }> {
+495:  return { token, principal: clientPrincipalFromRow(row) };
+498:export async function deleteClientSessionByToken(token: string | undefined): Promise<void> {
+504:export async function deleteAllClientSessions(clientUserId: string): Promise<number> {
+515:export type RosterAccount = {
+535:export async function ensureAccountsSeeded(roster: RosterAccount[]): Promise<void> {
+583:  const legacy = await sql<{ value: unknown }>`select value from adsops_kv where key = ${"legacy_ops_emails"} limit 1`;
+590:        insert into account_grants (id, principal_kind, principal_id, ad_account_id, granted_by)
+597:    await sql`delete from adsops_kv where key = ${"legacy_ops_emails"}`;
+import { createMiddleware } from "@tanstack/react-start";
+
+/**
+ * Server-function middleware that resolves the caller as an AdsOps principal:
+ * internal staff (Better Auth Google session) OR a customer user (username +
+ * password session cookie). Puts `context.access` (role, capabilities, allowed
+ * ad accounts, view-as state) on every call. Throws 401 when signed out.
+ *
+ * Grants / roles / client sessions are re-read from Neon on every request, so
+ * revocation is immediate.
+ */
+export const principalMiddleware = createMiddleware({ type: "function" })
+  .client(async ({ next }) => {
+    const { getBearerToken } = await import("@/lib/auth/client");
+    return next({ sendContext: { bearerToken: getBearerToken() ?? undefined } });
+  })
+  .server(async ({ next, context }) => {
+    const { assertSameSiteRequest } = await import("@/lib/auth/isolation.server");
+    assertSameSiteRequest();
+    const { ensureRosterSeeded } = await import("./access.server");
+    await ensureRosterSeeded();
+    const { resolveAccess } = await import("./permissions.server");
+    const access = await resolveAccess(context.bearerToken);
+    return next({ context: { access } });
+  });
+181:  compare,
+185:  compare: AnyRec;
+189:  const howto = asArr(compare.compare_howto).map((line) => String(line));
+190:  const windows = asObj(compare.windows);
+191:  const ranges = asObj(compare.window_ranges);
+223:export function ReportPanel({
+239:    compare?: AnyRec | null;
+248:  const cadences = asObj(data.cadences);
+249:  const daily = asObj(cadences.daily);
+250:  const weekly = asObj(cadences.weekly);
+255:  const compare = asObj(data.compare);
+256:  const hasCompare = Boolean(compare.windows);
+268:          compare: (result.compare as AnyRec) || null,
+283:        <CompareBox compare={compare} kpis={kpis.length ? kpis : fallbackKpis} currency={currency} />
+371:export function AlertsPanel({ data }: { data: AnyRec | null }) {
+415:export function GuardPanel({ data }: { data: AnyRec | null }) {
+486:export function HubPanel({ data }: { data: AnyRec | null }) {
+582:export function ProposalsPanel({ data }: { data: AnyRec | null }) {
+727:export function FinalPanel({
+872:export function SopPanel({ data }: { data: AnyRec | null }) {
+899:export function ConnectPanel({
+918:    compare?: AnyRec | null;
+1007:          compare: (result.compare as AnyRec) || null,
+25: *   const sql = await getSql();
+45: * `getSql()`). A failed init clears its slot so the next call retries.
+175:      "@/lib/db is server-only — call getSql() from a createServerFn handler " +
+189:export function getSql(): Promise<Sql> {
+206:  await getSql();
+224:  return getSql().then(() => undefined);
+228:// Node. Client bundles never hit this path (`getSql` throws in the browser).
+adsops
+app-data
+auth
+cn.ts
+db.ts
+env.server.ts
+error-component.tsx
+multiplayer
+og-site.json
+preview-embedder-origin.ts
+preview-host-bridge.ts
+Ảnh màn hình 2026-09-20 lúc 09.31.24.png
+Ảnh màn hình 2026-09-20 lúc 16.59.09.png
+Ảnh màn hình 2026-09-20 lúc 16.59.21.png
+Ảnh màn hình 2026-09-20 lúc 17.50.23.png
+Ảnh màn hình 2026-09-21 lúc 18.11.42.png
+Ảnh màn hình 2026-09-21 lúc 20.31.47.png
+Ảnh màn hình 2026-09-21 lúc 21.51.42.png
+Ảnh màn hình 2026-09-21 lúc 21.55.27.png
+Ảnh màn hình 2026-09-21 lúc 22.27.45.png
+Ảnh màn hình 2026-09-22 lúc 06.18.03.png
+Ảnh màn hình 2026-09-22 lúc 06.42.27.png
+Ảnh màn hình 2026-09-22 lúc 10.11.51.png
+icon-180.png
+install
+31208 /tmp/d.b64
 EXIT=0
