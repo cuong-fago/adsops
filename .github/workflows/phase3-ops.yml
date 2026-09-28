@@ -31,7 +31,7 @@ jobs:
         run: |
           git config user.name 'grok-ops'
           git config user.email 'grok-ops@users.noreply.github.com'
-          git add -A
-          git reset -q node_modules || true
+          git add -A -- . ':!node_modules' ':!.vercel' ':!.output' ':!dist'
           git commit -m 'chore(ops): phase3 ops output' || exit 0
+          git stash --include-untracked || true
           for i in 1 2 3; do git pull --rebase -X theirs origin feat/phase3 && git push origin HEAD:feat/phase3 && break; sleep 3; done
