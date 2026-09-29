@@ -14,6 +14,8 @@ export type AccessClient = {
   client_id: string;
   display_name: string;
   customer_id_dashed: string;
+  /** Local short name. Empty/absent = show the Google name. Never a Google Ads rename. */
+  alias?: string | null;
   status?: string;
   adapter?: string;
 };
@@ -48,6 +50,7 @@ export type MccRosterSnap = {
     client_id: string;
     display_name: string;
     customer_id_dashed?: string;
+    alias?: string | null;
     in_system?: boolean;
     is_manager?: boolean;
     status?: string;

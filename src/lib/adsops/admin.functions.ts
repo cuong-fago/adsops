@@ -142,7 +142,12 @@ export const adminDeleteCustomer = createServerFn({ method: "POST" })
 export const adminUpdateAdAccount = createServerFn({ method: "POST" })
   .validator((data: unknown) => {
     const d = obj(data);
-    return { id: str(d, "id"), customer_id: optStr(d, "customer_id"), sale_staff_id: optStr(d, "sale_staff_id") };
+    return {
+      id: str(d, "id"),
+      customer_id: optStr(d, "customer_id"),
+      sale_staff_id: optStr(d, "sale_staff_id"),
+      alias: optStr(d, "alias"),
+    };
   })
   .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {

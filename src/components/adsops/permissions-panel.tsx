@@ -68,7 +68,12 @@ export function PermissionsPanel({ caps, realAdmin, readOnly }: { caps: Caps; re
 
 // ── shared: account checklist ────────────────────────────────────────────────────────────────
 
-type AccountOpt = { id: string; display_name: string; external_id: string | null; group?: string };
+type AccountOpt = { id: string; display_name: string; external_id: string | null; group?: string; alias?: string | null };
+
+function accountOptLabel(a: AccountOpt): string {
+  const alias = (a.alias || "").trim();
+  return alias ? `${alias} — ${a.display_name}` : a.display_name;
+}
 
 function AccountChecklist({
   accounts,
@@ -84,10 +89,15 @@ function AccountChecklist({
     const needle = q.trim().toLowerCase();
     const list = needle
       ? accounts.filter((a) =>
-          `${a.display_name} ${a.external_id || ""} ${a.id} ${a.group || ""}`.toLowerCase().includes(needle),
+          `${accountOptLabel(a)} ${a.display_name} ${a.alias || ""} ${a.external_id || ""} ${a.id} ${a.group || ""}`.toLowerCase().includes(needle),
         )
       : accounts;
-    return [...list].sort((a, b) => (a.group || "").localeCompare(b.group || "") || a.display_name.localeCompare(b.display_name));
+    return [...list].sort(
+      (a, b) =>
+        (a.group || "").localeCompare(b.group || "", "vi") ||
+        accountOptLabel(a).localeCompare(accountOptLabel(b), "vi") ||
+        a.display_name.localeCompare(b.display_name, "vi"),
+    );
   }, [accounts, q]);
   const toggle = (id: string) => onChange(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]);
   return (
@@ -108,7 +118,14 @@ function AccountChecklist({
             <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-inset">
               <input type="checkbox" checked={picked.includes(a.id)} onChange={() => toggle(a.id)} />
               <span className="flex-1">
-                {a.display_name}
+                {(a.alias || "").trim() ? (
+                  <>
+                    <span className="font-medium">{(a.alias || "").trim()}</span>
+                    <span className="text-subtle"> — {a.display_name}</span>
+                  </>
+                ) : (
+                  a.display_name
+                )}
                 {a.external_id ? <span className="text-subtle"> · {a.external_id}</span> : null}
               </span>
               {a.group ? <span className="text-xs text-subtle">{a.group}</span> : null}
@@ -183,6 +200,7 @@ function AdminPermissions() {
         id: a.id,
         display_name: a.display_name,
         external_id: a.external_id,
+        alias: a.alias,
         group: a.customer_id ? customerName.get(a.customer_id) : undefined,
       })),
     [dir, customerName],
@@ -623,7 +641,7 @@ function AccountsTab({ dir, busy, run }: { dir: AdminDirectory; busy: boolean; r
       <article className={card}>
         <h3 className="font-display text-lg font-medium tracking-tight">Tài khoản quảng cáo</h3>
         <p className="mt-1 text-sm text-muted">
-          Đổi Sale = chuyển giao từng tài khoản: Sale mới được cấp quyền tài khoản này, Sale cũ bị gỡ quyền trên tài khoản này.
+          Tên gọi là tên ngắn lưu trong AdsOps, không đổi tên trên Google Ads. Để trống = hiện tên Google. Đổi Sale = chuyển giao từng tài khoản.
         </p>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
@@ -640,10 +658,42 @@ function AccountsTab({ dir, busy, run }: { dir: AdminDirectory; busy: boolean; r
               {dir.accounts.map((a) => (
                 <tr key={a.id}>
                   <td className="py-2 pr-2">
-                    {a.display_name}
+                    {(a.alias || "").trim() ? (
+                      <span className="font-medium">{(a.alias || "").trim()}</span>
+                    ) : (
+                      <span className="text-muted">Chưa đặt tên gọi</span>
+                    )}
                     <span className="block text-xs text-subtle">
-                      {a.external_id || a.id} · {a.id}
+                      {a.display_name}
+                      {(a.external_id || a.id) ? ` · ${a.external_id || a.id}` : ""}
                     </span>
+                    <form
+                      className="mt-1 flex max-w-xs gap-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const input = (e.currentTarget.elements.namedItem("alias") as HTMLInputElement | null);
+                        const next = (input?.value || "").trim();
+                        if (next === (a.alias || "").trim()) return;
+                        void run(
+                          () => adminUpdateAdAccount({ data: { id: a.id, alias: next } }),
+                          next ? "Đã lưu tên gọi." : "Đã xoá tên gọi. Danh sách hiện tên Google.",
+                        );
+                      }}
+                    >
+                      <input
+                        key={a.alias || ""}
+                        name="alias"
+                        defaultValue={a.alias || ""}
+                        maxLength={80}
+                        placeholder="Tên gọi ngắn"
+                        aria-label={`Tên gọi cho ${a.display_name}`}
+                        disabled={busy}
+                        className="h-10 min-w-0 flex-1 rounded-md border border-line bg-bg px-2 text-base text-ink"
+                      />
+                      <button type="submit" className={btn} disabled={busy}>
+                        Lưu
+                      </button>
+                    </form>
                   </td>
                   <td className="py-2 pr-2">{a.platform}</td>
                   <td className="py-2 pr-2">
@@ -831,6 +881,7 @@ const ACTION_VI: Record<string, string> = {
   "staff.role_set": "Đổi vai trò nhân sự",
   "staff.remove": "Gỡ nhân sự",
   "staff.migrated": "Chuyển từ quyền cũ",
+  "account.alias_set": "Đặt tên gọi TKQC",
   "account.customer_set": "Gán khách hàng cho TKQC",
   "account.sale_transfer": "Chuyển Sale",
   "account.discovered": "TKQC mới (chỉ admin thấy)",

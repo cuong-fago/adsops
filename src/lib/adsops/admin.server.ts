@@ -112,11 +112,11 @@ export async function adminDirectory(ctx: AccessContext): Promise<AdminDirectory
     ),
     sql<CustomerRow>`select id, name, note from customers order by name`,
     sql.query<AdAccountRow>(
-      `select a.id, a.platform, a.external_id, a.display_name, a.customer_id, a.sale_staff_id, a.status,
+      `select a.id, a.platform, a.external_id, a.display_name, a.alias, a.customer_id, a.sale_staff_id, a.status,
               ${iso("a.first_seen_at")} as first_seen_at,
               (select count(*)::int from account_grants g where g.ad_account_id = a.id) as grant_count
        from ad_accounts a
-       order by a.display_name`,
+       order by coalesce(nullif(btrim(a.alias), ''), a.display_name), a.display_name`,
     ),
     grantsMap("staff"),
     grantsMap("client"),
@@ -415,16 +415,32 @@ export async function deleteCustomer(ctx: AccessContext, id: string): Promise<vo
  */
 export async function updateAdAccount(
   ctx: AccessContext,
-  input: { id: string; customer_id?: string | null; sale_staff_id?: string | null },
+  input: { id: string; customer_id?: string | null; sale_staff_id?: string | null; alias?: string | null },
 ): Promise<void> {
   assertRealAdmin(ctx);
   const sql = await getSql();
   const prev = (
-    await sql<{ id: string; customer_id: string | null; sale_staff_id: string | null; display_name: string }>`
-      select id, customer_id, sale_staff_id, display_name from ad_accounts where id = ${input.id} limit 1
+    await sql<{ id: string; customer_id: string | null; sale_staff_id: string | null; display_name: string; alias: string | null; external_id: string | null }>`
+      select id, customer_id, sale_staff_id, display_name, alias, external_id from ad_accounts where id = ${input.id} limit 1
     `
   )[0];
   if (!prev) throw new Error("Không tìm thấy tài khoản quảng cáo.");
+  if (input.alias !== undefined) {
+    assertWritable(ctx);
+    const trimmed = (input.alias ?? "").trim().replace(/\s+/g, " ");
+    if (trimmed.length > 80) throw new Error("Tên gọi tối đa 80 ký tự.");
+    const next = trimmed || null;
+    const prevAlias = (prev.alias || "").trim() || null;
+    if (next !== prevAlias) {
+      await sql`update ad_accounts set alias = ${next}, updated_at = now() where id = ${input.id}`;
+      await audit(adminActor(ctx), "account.alias_set", "ad_account", input.id, {
+        google_name: prev.display_name,
+        customer_id: prev.external_id,
+        from: prevAlias,
+        to: next,
+      });
+    }
+  }
   if (input.customer_id !== undefined && input.customer_id !== prev.customer_id) {
     const next = input.customer_id || null;
     if (next) {
@@ -510,10 +526,10 @@ export async function requestDirectory(ctx: AccessContext): Promise<RequestDirec
   assertCap(ctx, "requestGrant");
   const sql = await getSql();
   const allowed = ctx.allowed === "all" ? null : [...ctx.allowed];
-  const accounts = await sql.query<{ id: string; display_name: string; external_id: string | null }>(
+  const accounts = await sql.query<{ id: string; display_name: string; external_id: string | null; alias: string | null }>(
     allowed
-      ? `select id, display_name, external_id from ad_accounts where id = any($1::text[]) order by display_name`
-      : `select id, display_name, external_id from ad_accounts order by display_name`,
+      ? `select id, display_name, external_id, alias from ad_accounts where id = any($1::text[]) order by coalesce(nullif(btrim(alias), ''), display_name), display_name`
+      : `select id, display_name, external_id, alias from ad_accounts order by coalesce(nullif(btrim(alias), ''), display_name), display_name`,
     allowed ? [allowed] : [],
   );
   const accountIds = accounts.map((a) => a.id);

@@ -222,6 +222,8 @@ async function readMcc(ctx: AccessContext): Promise<MccRosterSnap | null> {
     .filter((a) => a.client_id)
     // Non-admin staff never learn other accounts in the MCC.
     .filter((a) => ctx.allowed === "all" || (!a.is_manager && canSeeAccount(ctx, a.client_id)));
+  const aliases = await loadAliasMap();
+  const named = rows.map((a) => withAlias(a, aliases));
   return {
     mcc_id_dashed: String(raw.mcc_id_dashed || "532-145-0531"),
     mcc_display_name: String(raw.mcc_display_name || "Fago Agency"),
@@ -229,14 +231,35 @@ async function readMcc(ctx: AccessContext): Promise<MccRosterSnap | null> {
       ctx.allowed === "all" ? Number(raw.last_probe_accessible_count || accounts.length) : rows.length,
     roster_complete: ctx.allowed === "all" ? Boolean(raw.roster_complete) : true,
     note_vi: ctx.allowed === "all" ? String(raw.note_vi || "") : "",
-    accounts: rows,
+    accounts: named,
   };
+}
+
+/** Local aliases keyed by ad account id. Re-pulls never write this column. */
+async function loadAliasMap(): Promise<Map<string, string>> {
+  const sql = await getSql();
+  const rows = await sql<{ id: string; alias: string | null }>`
+    select id, alias from ad_accounts where alias is not null and btrim(alias) <> ''
+  `;
+  const map = new Map<string, string>();
+  for (const r of rows) {
+    const alias = String(r.alias || "").trim();
+    if (alias) map.set(r.id, alias);
+  }
+  return map;
+}
+
+function withAlias<T extends { client_id: string }>(row: T, aliases: Map<string, string>): T & { alias?: string } {
+  const alias = aliases.get(row.client_id);
+  return alias ? { ...row, alias } : row;
 }
 
 async function visibleClients(ctx: AccessContext): Promise<AccessClient[]> {
   if (ctx.principal.role === "pending") return [];
   const all = await mergeAllClients();
-  return all.filter((c) => canSeeAccount(ctx, c.client_id));
+  const visible = all.filter((c) => canSeeAccount(ctx, c.client_id));
+  const aliases = await loadAliasMap();
+  return visible.map((c) => withAlias(c, aliases));
 }
 
 /** adsops_kv key holding a principal's UI language. */

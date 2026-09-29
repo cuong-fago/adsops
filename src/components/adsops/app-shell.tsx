@@ -20,7 +20,8 @@ import {
   getWorkspaceScene,
   type AccessSnap,
 } from "@/lib/adsops/access.functions";
-import { stopViewAs } from "@/lib/adsops/admin.functions";
+import { adminUpdateAdAccount, stopViewAs } from "@/lib/adsops/admin.functions";
+import { accountOptionLabel, compareAccountsByAlias } from "@/lib/adsops/account-label";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
 import { clientSignOut } from "@/lib/adsops/client-auth.functions";
@@ -38,6 +39,7 @@ type ClientRow = {
   currency?: string;
   has_warehouse?: boolean;
   customer_id_dashed?: string;
+  alias?: string | null;
 };
 
 type MccAccount = {
@@ -207,6 +209,10 @@ export function AdsOpsApp() {
   const canInstall = Boolean(access?.real_is_admin && !access?.read_only);
   const shownTab: TabId = access && !tabAllowed(access, tab) ? "report" : tab;
 
+  const [dirEpoch, setDirEpoch] = useState(0);
+  const [aliasDraft, setAliasDraft] = useState<string | null>(null);
+  const [aliasMsg, setAliasMsg] = useState("");
+
   useEffect(() => {
     let cancelled = false;
     getWorkspaceDirectory()
@@ -222,6 +228,7 @@ export function AdsOpsApp() {
           client_id: c.client_id,
           display_name: c.display_name,
           customer_id_dashed: c.customer_id_dashed,
+          alias: c.alias || "",
           adapter: c.adapter || "live",
           status: c.status,
         }));
@@ -243,7 +250,7 @@ export function AdsOpsApp() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dirEpoch]);
 
   function noteFreshness(pack: {
     as_of?: string | null;
@@ -453,13 +460,14 @@ export function AdsOpsApp() {
       ads = ads.filter((a) => allowed.has(a.client_id));
     }
     if (!ads.length) return;
-    setClients(
+    setClients((prev) =>
       ads.map((a) => ({
         client_id: a.client_id,
         display_name: a.display_name,
         adapter: "live" as const,
         status: a.status === "ENABLED" ? "active" : "paused",
         customer_id_dashed: a.customer_id_dashed,
+        alias: prev.find((c) => c.client_id === a.client_id)?.alias || "",
       })),
     );
     if (access?.all_clients) {
@@ -873,15 +881,16 @@ export function AdsOpsApp() {
                 {access.all_clients ? `Tài khoản MCC ${mcc?.mcc_id_dashed || "532-145-0531"}` : "Tài khoản được cấp"}
                 <select
                   value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  className="h-11 rounded-md border border-line bg-bg px-3 text-sm text-ink"
+                  onChange={(e) => {
+                    setClientId(e.target.value);
+                    setAliasDraft(null);
+                    setAliasMsg("");
+                  }}
+                  className="h-11 rounded-md border border-line bg-bg px-3 text-base text-ink"
                 >
-                  {clients.map((c) => (
+                  {[...clients].sort(compareAccountsByAlias).map((c) => (
                     <option key={c.client_id} value={c.client_id}>
-                      {c.display_name}
-                      {c.customer_id_dashed && c.display_name !== c.customer_id_dashed
-                        ? ` · ${c.customer_id_dashed}`
-                        : ""}
+                      {accountOptionLabel(c)}
                     </option>
                   ))}
                 </select>
@@ -893,6 +902,45 @@ export function AdsOpsApp() {
                 ) : null}
               </label>
             ) : null}
+            {access && access.real_is_admin && !access.read_only && client ? (
+                  <form
+                    className="mt-1 flex flex-col gap-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const next = (aliasDraft ?? client.alias ?? "").trim();
+                      const id = client.client_id;
+                      setAliasMsg("");
+                      void adminUpdateAdAccount({ data: { id, alias: next } })
+                        .then(() => {
+                          setAliasMsg(next ? "Đã lưu tên gọi." : "Đã xoá tên gọi. Danh sách hiện tên Google.");
+                          setAliasDraft(null);
+                          setDirEpoch((n) => n + 1);
+                        })
+                        .catch(() => setAliasMsg("Không lưu được tên gọi."));
+                    }}
+                  >
+                    <span className="text-xs font-normal text-subtle">
+                      Tên gọi của tài khoản đang chọn — chỉ admin, không đổi tên trên Google Ads
+                    </span>
+                    <div className="flex gap-1">
+                      <input
+                        value={aliasDraft ?? client.alias ?? ""}
+                        maxLength={80}
+                        placeholder="Tên gọi ngắn, ví dụ website"
+                        aria-label="Tên gọi tài khoản"
+                        onChange={(e) => {
+                          setAliasDraft(e.target.value);
+                          setAliasMsg("");
+                        }}
+                        className="h-11 min-w-0 flex-1 rounded-md border border-line bg-bg px-3 text-base text-ink"
+                      />
+                      <button type="submit" className="h-11 shrink-0 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg">
+                        Lưu
+                      </button>
+                    </div>
+                    {aliasMsg ? <span className="text-xs font-normal text-muted">{aliasMsg}</span> : null}
+                  </form>
+                ) : null}
           </div>
         </div>
         {access && access.role !== "pending" ? (
@@ -938,7 +986,14 @@ export function AdsOpsApp() {
       <main className="mx-auto max-w-screen-2xl px-4 py-4 md:px-6">
         {client && shownTab !== "members" && (
           <p className="mb-3 text-xs text-subtle">
-            {client.display_name}
+            {client.alias ? (
+              <>
+                <span className="font-medium text-ink">{client.alias}</span>
+                <span> — {client.display_name}</span>
+              </>
+            ) : (
+              client.display_name
+            )}
             {client.customer_id_dashed && client.display_name !== client.customer_id_dashed
               ? ` · ${client.customer_id_dashed}`
               : ""}
