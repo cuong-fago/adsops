@@ -12,13 +12,16 @@ export function accountOptionLabel(c: {
   alias?: string | null;
   display_name: string;
   customer_id_dashed?: string | null;
+  mcc_id_dashed?: string | null;
 }): string {
   const google = c.display_name || "";
   const id = (c.customer_id_dashed || "").trim();
   const idPart = id && id !== google ? ` · ${id}` : "";
+  const mcc = (c.mcc_id_dashed || "").trim();
+  const mccPart = mcc ? ` · MCC ${mcc}` : "";
   const alias = normalizeAccountAlias(c.alias);
-  if (!alias) return `${google}${idPart}`;
-  return `${alias} — ${google}${idPart}`;
+  if (!alias) return `${google}${idPart}${mccPart}`;
+  return `${alias} — ${google}${idPart}${mccPart}`;
 }
 
 /** Alias first (accounts with no alias sort by the Google name), then Google name. */
