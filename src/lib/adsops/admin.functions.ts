@@ -220,7 +220,7 @@ export const stopViewAs = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// ── sale / head_ads: two-step grant requests ──────────────────────────────────
+// ── sale / head_ads: two-step grant requests ────────────────────────────────────────
 
 export const getRequestDirectory = createServerFn({ method: "GET" })
   .middleware([principalMiddleware])
