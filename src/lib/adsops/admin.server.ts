@@ -91,7 +91,7 @@ async function listRequests(where: string, params: unknown[]): Promise<GrantRequ
   }));
 }
 
-// ── directory ───────────────────────────────────────────────────────────────────────────
+// ── directory ───────────────────────────────────────────────────────────────────────
 
 export async function adminDirectory(ctx: AccessContext): Promise<AdminDirectory> {
   assertRealAdmin(ctx);
@@ -167,7 +167,7 @@ export async function adminDirectory(ctx: AccessContext): Promise<AdminDirectory
   };
 }
 
-// ── staff ───────────────────────────────────────────────────────────────────────────
+// ── staff ─────────────────────────────────────────────────────────────────────────
 
 export async function upsertStaff(
   ctx: AccessContext,
@@ -207,7 +207,7 @@ export async function removeStaff(ctx: AccessContext, id: string): Promise<void>
   });
 }
 
-// ── client users ───────────────────────────────────────────────────────────────────────
+// ── client users ───────────────────────────────────────────────────────────────────
 
 export async function createClientUser(
   ctx: AccessContext,
@@ -322,7 +322,7 @@ export async function deleteClientUser(ctx: AccessContext, id: string): Promise<
   });
 }
 
-// ── grants ─────────────────────────────────────────────────────────────────────────────
+// ── grants ─────────────────────────────────────────────────────────────────────────
 
 async function targetLabel(kind: PrincipalKind, id: string): Promise<string> {
   const sql = await getSql();
@@ -374,7 +374,7 @@ export async function setGrants(
   return { added, removed };
 }
 
-// ── customers & ad accounts ──────────────────────────────────────────────────────────────────
+// ── customers & ad accounts ────────────────────────────────────────────────────────────
 
 export async function upsertCustomer(
   ctx: AccessContext,
@@ -481,7 +481,7 @@ export async function updateAdAccount(
   }
 }
 
-// ── grant requests ─────────────────────────────────────────────────────────────────────
+// ── grant requests ─────────────────────────────────────────────────────────────────
 
 export async function decideRequest(
   ctx: AccessContext,
@@ -582,7 +582,7 @@ export async function cancelGrantRequest(ctx: AccessContext, id: string): Promis
   if (rows.length) await audit(me, "grant.request_cancelled", "grant_request", id, {});
 }
 
-// ── audit view ──────────────────────────────────────────────────────────────────────────
+// ── audit view ────────────────────────────────────────────────────────────────────────
 
 export async function auditLog(ctx: AccessContext, limit = 200, beforeId?: number): Promise<AuditRow[]> {
   assertRealAdmin(ctx);
