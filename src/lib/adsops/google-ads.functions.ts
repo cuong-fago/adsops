@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { principalMiddleware } from "./principal-middleware";
+import { importMccAccounts } from "./mcc-import.server.ts";
+import { listAllMccChildren, managerCustomerIds } from "./mcc-list.server.ts";
 
 /** Admin-only Google Ads connection card (tab "Phân quyền"). Read-only toward Google Ads. */
 
@@ -86,7 +88,7 @@ export const testGoogleAdsConnection = createServerFn({ method: "POST" })
     }
     try {
       const accessible = await g.listAccessibleCustomers(cfg);
-      const listed = await g.listAllMccChildren(cfg);
+      const listed = await listAllMccChildren(cfg);
       const accounts = listed.children.map((c) => ({
         customer_id_dashed: c.customer_id_dashed,
         name: c.name,
@@ -96,7 +98,7 @@ export const testGoogleAdsConnection = createServerFn({ method: "POST" })
         level: c.level,
         mcc_id_dashed: c.mcc_customer_id_dashed,
       }));
-      const summary = summarizeMccs(g.managerCustomerIds(cfg), g.dashedId, listed.children, listed.errors);
+      const summary = summarizeMccs(managerCustomerIds(cfg), g.dashedId, listed.children, listed.errors);
       const ok = listed.children.length > 0 || listed.errors.length === 0;
       const msg = `${ok ? "Kết nối OK" : "Kết nối lỗi"} (API ${g.currentApiVersion() || "?"}): tài khoản Google đăng nhập truy cập trực tiếp ${accessible.length} tài khoản. ${summary}. Bấm “Kéo tài khoản MCC” để đưa vào danh sách trên đầu trang.`;
       await g.recordTestResult(ok, msg);
@@ -125,9 +127,9 @@ export const pullMccAccounts = createServerFn({ method: "POST" })
       return { ok: false, message_vi: `Chưa đủ cấu hình. Thiếu: ${cfg.missing.map((m) => m.label_vi).join(" ")}` };
     }
     try {
-      const listed = await g.listAllMccChildren(cfg);
+      const listed = await listAllMccChildren(cfg);
       const ads = listed.children.filter((c) => !c.manager && c.customer_id !== c.mcc_customer_id);
-      const imported = await p.importMccAccounts(
+      const imported = await importMccAccounts(
         ads.map((c) => ({
           customer_id: c.customer_id,
           display_name: c.name,
@@ -135,8 +137,8 @@ export const pullMccAccounts = createServerFn({ method: "POST" })
           manager_customer_id: c.mcc_customer_id,
         })),
       );
-      const summary = summarizeMccs(g.managerCustomerIds(cfg), g.dashedId, listed.children, listed.errors);
-      const ok = ads.length > 0 || listed.errors.length < g.managerCustomerIds(cfg).length;
+      const summary = summarizeMccs(managerCustomerIds(cfg), g.dashedId, listed.children, listed.errors);
+      const ok = ads.length > 0 || listed.errors.length < managerCustomerIds(cfg).length;
       const msg = `${summary}. Đã thêm ${imported.inserted.length} tài khoản mới (không đổi tên tắt). Tải lại trang để thấy trên danh sách đầu trang.`;
       await g.recordTestResult(ok, msg);
       await p.audit(p.actorLabel(context.access.real), "google_ads.pull_mcc", "google_ads", "mcc", {
