@@ -142,7 +142,12 @@ export const adminDeleteCustomer = createServerFn({ method: "POST" })
 export const adminUpdateAdAccount = createServerFn({ method: "POST" })
   .validator((data: unknown) => {
     const d = obj(data);
-    return { id: str(d, "id"), customer_id: optStr(d, "customer_id"), sale_staff_id: optStr(d, "sale_staff_id") };
+    return {
+      id: str(d, "id"),
+      customer_id: optStr(d, "customer_id"),
+      sale_staff_id: optStr(d, "sale_staff_id"),
+      alias: optStr(d, "alias"),
+    };
   })
   .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {
@@ -215,7 +220,7 @@ export const stopViewAs = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// ── sale / head_ads: two-step grant requests ────────────────────────────────────────
+// ── sale / head_ads: two-step grant requests ──────────────────────────────────
 
 export const getRequestDirectory = createServerFn({ method: "GET" })
   .middleware([principalMiddleware])
