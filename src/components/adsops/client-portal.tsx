@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { LogOut } from "lucide-react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { ClientOverview } from "@/components/adsops/client-overview";
 import { getWorkspacePack, setMyLanguage, type AccessSnap } from "@/lib/adsops/access.functions";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import { isLang, t, type Lang } from "@/lib/adsops/client-i18n";
-import { accountOptionLabel, compareAccountsByAlias } from "@/lib/adsops/account-label";
+import { AccountPicker } from "@/components/adsops/account-picker";
 import { fmtDay } from "@/lib/adsops/client-overview";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
@@ -112,7 +112,6 @@ export function ClientPortal({
   }
 
   const client = clients.find((c) => c.client_id === clientId);
-  const pickerClients = useMemo(() => [...clients].sort(compareAccountsByAlias), [clients]);
   const ready = loaded && loaded.clientId === clientId;
   const snap = ready ? loaded.analytics : null;
   const fresh = ready ? freshnessText(lang, loaded.as_of, loaded.data_through) : "";
@@ -179,20 +178,14 @@ export function ClientPortal({
 
           {clients.length ? (
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-muted md:w-[28rem]">
-                {t(lang, "account")}
-                <select
+              <div className="min-w-0 md:w-[28rem]">
+                <AccountPicker
+                  label={t(lang, "account")}
+                  clients={clients}
                   value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  className="h-11 w-full min-w-0 truncate rounded-md border border-line bg-bg px-3 text-sm text-ink"
-                >
-                  {pickerClients.map((c) => (
-                    <option key={c.client_id} value={c.client_id}>
-                      {accountOptionLabel(c)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onChange={setClientId}
+                />
+              </div>
               <nav className="flex gap-1" aria-label="tabs">
                 {(["overview", "analytics"] as const).map((id) => (
                   <button
