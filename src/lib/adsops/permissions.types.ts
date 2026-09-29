@@ -156,6 +156,8 @@ export type AdAccountRow = {
   platform: string;
   external_id: string | null;
   display_name: string;
+  /** Local short name. Null = show the Google name. */
+  alias: string | null;
   customer_id: string | null;
   sale_staff_id: string | null;
   status: string | null;
@@ -204,7 +206,7 @@ export type AdminDirectory = {
 /** What sale / head_ads see to file a request: only their own granted accounts. */
 export type RequestDirectory = {
   clients: Array<Pick<ClientUserRow, "id" | "username" | "display_name" | "customer_id">>;
-  accounts: Array<Pick<AdAccountRow, "id" | "display_name" | "external_id">>;
+  accounts: Array<Pick<AdAccountRow, "id" | "display_name" | "external_id" | "alias">>;
   my_requests: GrantRequestRow[];
 };
 
