@@ -17,11 +17,12 @@ import {
   type GaqlRow,
 } from "./google-ads.server.ts";
 
-export const EXTRA_MCC_ID = "8776919182";
+/** Extra managers beyond the default login MCC. Same OAuth user must already have access. */
+export const EXTRA_MCC_IDS = ["8776919182", "3859768247", "4626005801", "3789149180"] as const;
 
 export function managerCustomerIds(cfg: { loginCustomerId: string }): string[] {
   const out: string[] = [];
-  for (const raw of [cfg.loginCustomerId, DEFAULT_MCC_ID, EXTRA_MCC_ID]) {
+  for (const raw of [cfg.loginCustomerId, DEFAULT_MCC_ID, ...EXTRA_MCC_IDS]) {
     const id = digits(raw);
     if (id.length === 10 && !out.includes(id)) out.push(id);
   }
@@ -109,7 +110,7 @@ async function searchAs(
   throw last || new AdsApiError("UNKNOWN", "Không tìm được phiên bản Google Ads API còn hoạt động.");
 }
 
-/** customer_client for 532-145-0531 and 877-691-9182. One failure does not drop the other. */
+/** customer_client for every configured MCC. One failure does not drop the others. */
 export async function listAllMccChildren(cfg: AdsConfig): Promise<MccListResult> {
   const children: MccChild[] = [];
   const errors: MccListResult["errors"] = [];
