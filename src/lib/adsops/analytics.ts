@@ -210,6 +210,7 @@ export type LayerRow = {
   campaign_id?: string;
   campaign_name?: string;
   ad_group_id?: string;
+  ad_group_name?: string;
   metrics: MetricMap;
 };
 
@@ -482,6 +483,7 @@ export function aggregateDeepRows(
         name: String(chunk[0]?.ad_group_name || id),
         status: String(chunk[0]?.status || ""),
         campaign_id: String(chunk[0]?.campaign_id || ""),
+        campaign_name: String(chunk.find((r) => r.campaign_name)?.campaign_name || ""),
         pmax: false,
         metrics,
       });
@@ -514,7 +516,9 @@ export function aggregateDeepRows(
         match_type_label: MATCH[code] || code,
         status: String(chunk[0]?.status || ""),
         ad_group_id: String(chunk[0]?.ad_group_id || ""),
+        ad_group_name: String(chunk.find((r) => r.ad_group_name)?.ad_group_name || ""),
         campaign_id: String(chunk[0]?.campaign_id || ""),
+        campaign_name: String(chunk.find((r) => r.campaign_name)?.campaign_name || ""),
         pmax: false,
         metrics,
       });
@@ -548,8 +552,9 @@ export function aggregateDeepRows(
         match_type: code,
         match_type_label: MATCH[code] || code,
         campaign_id: String(rec?.campaign_id || ""),
-        campaign_name: String(rec?.campaign_name || ""),
+        campaign_name: String(chunk.find((r) => r.campaign_name)?.campaign_name || ""),
         ad_group_id: String(rec?.ad_group_id || ""),
+        ad_group_name: String(chunk.find((r) => r.ad_group_name)?.ad_group_name || ""),
         pmax: false,
         metrics,
       });
@@ -563,6 +568,14 @@ export function aggregateDeepRows(
 }
 
 export type CoveredRange = { start: string; end: string };
+
+/** Filter choices for a deep layer: every campaign / ad group with rows in the range (before scope filters). */
+export type DeepFacets = {
+  campaigns: { id: string; name: string; rows: number }[];
+  ad_groups: { id: string; name: string; campaign_id: string; rows: number }[];
+  /** Row count for the whole layer in range (text search / scope not applied). */
+  total_rows: number;
+};
 
 /** Result of the server-side deep layer read (ad group / keyword / search term). */
 export type DeepLayerBlock = LayerBlock & {
@@ -580,4 +593,6 @@ export type DeepLayerBlock = LayerBlock & {
   /** False when Google refused the Gọi/Zalo/Form split for this layer (UI shows "—"). */
   conv_split: boolean;
   note_vi: string | null;
+  /** Campaign / ad group filter choices (absent on older servers). */
+  facets?: DeepFacets | null;
 };
