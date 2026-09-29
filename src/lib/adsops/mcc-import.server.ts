@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { audit } from "./permissions.server.ts";
+import type { WorkspaceDirectory } from "./access.types.ts";
 
 export type DiscoveredMccAccount = {
   customer_id: string;
@@ -93,4 +94,57 @@ export async function importMccAccounts(
     });
   }
   return { inserted, touched };
+}
+
+
+function dashedTen(raw: string): string {
+  const d = raw.replace(/\D/g, "");
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : "";
+}
+
+/** Add pulled MCC accounts to the admin picker and label every known row with its MCC. */
+export async function withPulledMccClients(
+  dir: WorkspaceDirectory,
+  allowed: "all" | Set<string>,
+): Promise<WorkspaceDirectory> {
+  const sql = await getSql();
+  let rows: { id: string; display_name: string; external_id: string | null; status: string | null; manager_customer_id: string | null; alias: string | null }[] = [];
+  try {
+    rows = await sql<{ id: string; display_name: string; external_id: string | null; status: string | null; manager_customer_id: string | null; alias: string | null }>`
+      select id, display_name, external_id, status, manager_customer_id, alias
+      from ad_accounts
+      where manager_customer_id is not null and btrim(manager_customer_id) <> ''
+    `;
+  } catch {
+    return dir;
+  }
+  const clients = dir.clients.map((c) => ({ ...c }));
+  const by = new Map(clients.map((c) => [c.client_id, c]));
+  for (const r of rows) {
+    if (!/^[a-z0-9_]+$/.test(r.id)) continue;
+    const mcc = dashedTen(String(r.manager_customer_id || ""));
+    const ext = dashedTen(String(r.external_id || ""));
+    if (!mcc) continue;
+    const labeledId = ext ? `${ext} · MCC ${mcc}` : `MCC ${mcc}`;
+    const prev = by.get(r.id);
+    if (prev) {
+      prev.customer_id_dashed = labeledId;
+      prev.mcc_id_dashed = mcc;
+      if (!prev.display_name && r.display_name) prev.display_name = r.display_name;
+      continue;
+    }
+    if (allowed !== "all" && !allowed.has(r.id)) continue;
+    const row = {
+      client_id: r.id,
+      display_name: r.display_name || r.id,
+      customer_id_dashed: labeledId,
+      mcc_id_dashed: mcc,
+      status: r.status || undefined,
+      adapter: "live",
+      alias: (r.alias || "").trim() || undefined,
+    };
+    by.set(r.id, row);
+    clients.push(row);
+  }
+  return { ...dir, clients: [...by.values()] };
 }

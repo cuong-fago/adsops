@@ -65,7 +65,9 @@ export const getWorkspaceDirectory = createServerFn({ method: "GET" })
   .middleware([principalMiddleware])
   .handler(async ({ context }) => {
     const { loadWorkspaceDirectory } = await import("./access.server.ts");
-    return loadWorkspaceDirectory(context.access) as Promise<WorkspaceDirectory>;
+    const dir = (await loadWorkspaceDirectory(context.access)) as WorkspaceDirectory;
+    const { withPulledMccClients } = await import("./mcc-import.server.ts");
+    return withPulledMccClients(dir, context.access.allowed);
   });
 
 export const getWorkspacePack = createServerFn({ method: "POST" })
