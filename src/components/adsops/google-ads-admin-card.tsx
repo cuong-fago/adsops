@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   disconnectGoogleAds,
   getGoogleAdsStatus,
+  pullMccAccounts,
   testGoogleAdsConnection,
   type GoogleAdsStatus,
   type GoogleAdsTestResult,
@@ -45,7 +46,7 @@ function errMsg(err: unknown, fallback: string): string {
 export function GoogleAdsAdminCard({ readOnly }: { readOnly?: boolean }) {
   const [status, setStatus] = useState<GoogleAdsStatus | null>(null);
   const [loadErr, setLoadErr] = useState("");
-  const [busy, setBusy] = useState<"" | "test" | "disconnect">("");
+  const [busy, setBusy] = useState<"" | "test" | "pull" | "disconnect">("");
   const [test, setTest] = useState<GoogleAdsTestResult | null>(null);
   const [flash, setFlash] = useState("");
   const [copied, setCopied] = useState(false);
@@ -81,6 +82,19 @@ export function GoogleAdsAdminCard({ readOnly }: { readOnly?: boolean }) {
       await load();
     } catch (err) {
       setTest({ ok: false, message_vi: errMsg(err, "Không thử được kết nối.") });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function runPull() {
+    setBusy("pull");
+    setTest(null);
+    try {
+      setTest((await pullMccAccounts()) as GoogleAdsTestResult);
+      await load();
+    } catch (err) {
+      setTest({ ok: false, message_vi: errMsg(err, "Không kéo được tài khoản MCC.") });
     } finally {
       setBusy("");
     }
@@ -166,7 +180,9 @@ export function GoogleAdsAdminCard({ readOnly }: { readOnly?: boolean }) {
             <dd>{src(status.client_source)}</dd>
             <dt className="text-muted">MCC (login-customer-id)</dt>
             <dd>
-              {status.login_customer_id_dashed} ({status.login_source === "env" ? "GOOGLE_ADS_LOGIN_CUSTOMER_ID" : "mặc định"})
+              {(status.manager_customer_ids_dashed || [status.login_customer_id_dashed]).join(", ")} (login mặc định{" "}
+              {status.login_customer_id_dashed}
+              {status.login_source === "env" ? ", GOOGLE_ADS_LOGIN_CUSTOMER_ID" : ""})
             </dd>
             <dt className="text-muted">Developer token</dt>
             <dd>{status.developer_token_set ? "Đã đặt" : "Chưa đặt (tuỳ chọn từ 10/9/2026)"}</dd>
@@ -198,6 +214,9 @@ export function GoogleAdsAdminCard({ readOnly }: { readOnly?: boolean }) {
             <button type="button" className={btn} disabled={busy !== "" || !ready} onClick={() => void runTest()}>
               {busy === "test" ? "Đang thử…" : "Thử kết nối"}
             </button>
+            <button type="button" className={btn} disabled={busy !== "" || !ready || readOnly} onClick={() => void runPull()}>
+              {busy === "pull" ? "Đang kéo…" : "Kéo tài khoản MCC"}
+            </button>
             {status.google_email && !readOnly ? (
               <button type="button" className={btnDanger} disabled={busy !== ""} onClick={() => void runDisconnect()}>
                 {busy === "disconnect" ? "Đang ngắt…" : "Ngắt kết nối"}
@@ -215,15 +234,17 @@ export function GoogleAdsAdminCard({ readOnly }: { readOnly?: boolean }) {
                       <tr>
                         <th className="px-2 py-1">Customer ID</th>
                         <th className="px-2 py-1">Tên</th>
+                        <th className="px-2 py-1">MCC</th>
                         <th className="px-2 py-1">Trạng thái</th>
                         <th className="px-2 py-1">Loại</th>
                       </tr>
                     </thead>
                     <tbody>
                       {test.accounts.map((a) => (
-                        <tr key={a.customer_id_dashed} className="border-t border-line">
+                        <tr key={`${a.mcc_id_dashed}-${a.customer_id_dashed}`} className="border-t border-line">
                           <td className="px-2 py-1 font-mono">{a.customer_id_dashed}</td>
                           <td className="px-2 py-1">{a.name || "—"}</td>
+                          <td className="px-2 py-1 font-mono">{a.mcc_id_dashed || "—"}</td>
                           <td className="px-2 py-1">{a.status}</td>
                           <td className="px-2 py-1">
                             {a.manager ? "MCC" : "Tài khoản QC"}
