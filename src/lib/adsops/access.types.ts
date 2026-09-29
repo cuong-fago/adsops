@@ -16,6 +16,8 @@ export type AccessClient = {
   customer_id_dashed: string;
   /** Local short name. Empty/absent = show the Google name. Never a Google Ads rename. */
   alias?: string | null;
+  /** Dashed MCC this account was listed from, when known. */
+  mcc_id_dashed?: string | null;
   status?: string;
   adapter?: string;
 };
@@ -51,6 +53,7 @@ export type MccRosterSnap = {
     display_name: string;
     customer_id_dashed?: string;
     alias?: string | null;
+    mcc_id_dashed?: string | null;
     in_system?: boolean;
     is_manager?: boolean;
     status?: string;
