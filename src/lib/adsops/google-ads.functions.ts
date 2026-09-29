@@ -73,7 +73,9 @@ export const getGoogleAdsStatus = createServerFn({ method: "GET" })
     assertRealAdmin(context.access);
     const g = await import("./google-ads.server.ts");
     const cfg = await g.resolveAdsConfig();
-    return g.publicStatus(cfg, g.redirectUriFor(await currentRequest())) as GoogleAdsStatus;
+    const status = g.publicStatus(cfg, g.redirectUriFor(await currentRequest())) as GoogleAdsStatus;
+    status.manager_customer_ids_dashed = managerCustomerIds(cfg).map((id) => g.dashedId(id));
+    return status;
   });
 
 export const testGoogleAdsConnection = createServerFn({ method: "POST" })
@@ -114,7 +116,7 @@ export const testGoogleAdsConnection = createServerFn({ method: "POST" })
     }
   });
 
-/** Read both MCCs and store child ad accounts in Neon. Does not mutate Google Ads. */
+/** Read every configured MCC and store child ad accounts in Neon. Does not mutate Google Ads. */
 export const pullMccAccounts = createServerFn({ method: "POST" })
   .middleware([principalMiddleware])
   .handler(async ({ context }): Promise<GoogleAdsTestResult> => {
