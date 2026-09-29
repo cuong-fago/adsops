@@ -32,3 +32,27 @@ export function compareAccountsByAlias<T extends { alias?: string | null; displa
   if (primary) return primary;
   return (a.display_name || "").localeCompare(b.display_name || "", "vi");
 }
+
+/** Case-insensitive match on alias, Google name, or customer id. Dashes and spaces in a CID are ignored. */
+export function accountMatchesFilter(
+  c: {
+    alias?: string | null;
+    display_name: string;
+    customer_id_dashed?: string | null;
+    mcc_id_dashed?: string | null;
+  },
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const alias = normalizeAccountAlias(c.alias).toLowerCase();
+  const name = (c.display_name || "").toLowerCase();
+  const label = accountOptionLabel(c).toLowerCase();
+  if ((alias && alias.includes(q)) || (name && name.includes(q)) || label.includes(q)) return true;
+  const compact = (s: string) => s.toLowerCase().replace(/[\s-]/g, "");
+  const needle = compact(q);
+  if (!needle) return true;
+  const id = compact(c.customer_id_dashed || "");
+  const mcc = compact(c.mcc_id_dashed || "");
+  return id.includes(needle) || mcc.includes(needle) || compact(label).includes(needle);
+}
