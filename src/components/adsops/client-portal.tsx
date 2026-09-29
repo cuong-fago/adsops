@@ -1,15 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LogOut } from "lucide-react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { ClientOverview } from "@/components/adsops/client-overview";
 import { getWorkspacePack, setMyLanguage, type AccessSnap } from "@/lib/adsops/access.functions";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import { isLang, t, type Lang } from "@/lib/adsops/client-i18n";
+import { accountOptionLabel, compareAccountsByAlias } from "@/lib/adsops/account-label";
 import { fmtDay } from "@/lib/adsops/client-overview";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
 
-type ClientRow = { client_id: string; display_name: string; customer_id_dashed?: string };
+type ClientRow = { client_id: string; display_name: string; customer_id_dashed?: string; alias?: string | null };
 
 type Loaded = {
   clientId: string;
@@ -111,6 +112,7 @@ export function ClientPortal({
   }
 
   const client = clients.find((c) => c.client_id === clientId);
+  const pickerClients = useMemo(() => [...clients].sort(compareAccountsByAlias), [clients]);
   const ready = loaded && loaded.clientId === clientId;
   const snap = ready ? loaded.analytics : null;
   const fresh = ready ? freshnessText(lang, loaded.as_of, loaded.data_through) : "";
@@ -184,10 +186,9 @@ export function ClientPortal({
                   onChange={(e) => setClientId(e.target.value)}
                   className="h-11 w-full min-w-0 truncate rounded-md border border-line bg-bg px-3 text-sm text-ink"
                 >
-                  {clients.map((c) => (
+                  {pickerClients.map((c) => (
                     <option key={c.client_id} value={c.client_id}>
-                      {c.display_name}
-                      {c.customer_id_dashed && c.display_name !== c.customer_id_dashed ? ` · ${c.customer_id_dashed}` : ""}
+                      {accountOptionLabel(c)}
                     </option>
                   ))}
                 </select>
@@ -230,7 +231,7 @@ export function ClientPortal({
         ) : (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted">
-              {client?.display_name} · {t(lang, "analytics_note")}
+              {client?.alias ? `${client.alias} — ${client.display_name}` : client?.display_name} · {t(lang, "analytics_note")}
               {fresh ? <span className="font-medium"> · {fresh}</span> : null}
             </p>
             {(snap.daily?.account || []).length ? (
