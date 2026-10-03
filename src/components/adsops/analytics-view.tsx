@@ -285,21 +285,27 @@ export function AnalyticsView({
   const [deepBlock, setDeepBlock] = useState<DeepLayerBlock | null>(null);
   const [deepLoading, setDeepLoading] = useState(false);
   const [deepError, setDeepError] = useState("");
+  const deepShown = useRef<{ clientId: string; layer: string } | null>(null);
   const pmaxSelected = Boolean(snap.campaigns.find((c) => c.id === campaignId)?.pmax);
 
   useEffect(() => {
     if (!tableLayer || !isDeepLayer(tableLayer) || pmaxSelected) {
+      deepShown.current = null;
       setDeepBlock(null); setDeepError(""); setDeepLoading(false); return;
     }
     let cancelled = false;
-    setDeepLoading(true); setDeepError("");
+    const shown = deepShown.current;
+    const keepRows = shown?.clientId === snap.client_id && shown.layer === tableLayer;
+    if (!keepRows) setDeepLoading(true);
+    setDeepError("");
     readDeepLayerFn({ data: { clientId: snap.client_id, layer: tableLayer, start, end, campaignId, adGroupId, onlyWithConv: onlyConv } })
       .then((block) => {
         if (cancelled) return;
+        deepShown.current = { clientId: snap.client_id, layer: tableLayer };
         setDeepBlock(block); setDeepLoading(false);
         if (block.facets) setFacetsByLayer((prev) => ({ ...prev, [tableLayer]: block.facets as DeepFacets }));
       })
-      .catch((err) => { if (!cancelled) { setDeepBlock(null); setDeepError(err instanceof Error ? err.message : "Không đọc được lớp nhóm / từ khoá."); setDeepLoading(false); } });
+      .catch((err) => { if (!cancelled) { deepShown.current = null; setDeepBlock(null); setDeepError(err instanceof Error ? err.message : "Không đọc được lớp nhóm / từ khoá."); setDeepLoading(false); } });
     return () => { cancelled = true; };
   }, [snap.client_id, tableLayer, pmaxSelected, start, end, campaignId, adGroupId, onlyConv, deepEpoch]);
 
