@@ -21,7 +21,7 @@ import {
   type AccessSnap,
 } from "@/lib/adsops/access.functions";
 import { adminUpdateAdAccount, stopViewAs } from "@/lib/adsops/admin.functions";
-import { accountOptionLabel, compareAccountsByAlias } from "@/lib/adsops/account-label";
+import { AccountPicker } from "@/components/adsops/account-picker";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
 import { clientSignOut } from "@/lib/adsops/client-auth.functions";
@@ -858,7 +858,7 @@ export function AdsOpsApp() {
                 : "Chỉ đề xuất, không apply Google Ads. CPA Google không phải Qualified Lead. Chỉ thấy tài khoản được cấp."}
             </p>
           </div>
-          <div className="flex min-w-64 flex-col gap-3">
+          <div className="flex w-full min-w-72 max-w-xl flex-col gap-3">
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-xs font-medium text-muted">
                 {roleVi}
@@ -877,30 +877,24 @@ export function AdsOpsApp() {
               )}
             </div>
             {access && access.role !== "pending" && clients.length ? (
-              <label className="flex flex-col gap-1 text-xs font-medium text-muted">
-                {access.all_clients ? `Tài khoản MCC ${mcc?.mcc_id_dashed || "532-145-0531"}` : "Tài khoản được cấp"}
-                <select
+              <div className="flex flex-col gap-1">
+                <AccountPicker
+                  label={access.all_clients ? `Tài khoản MCC ${mcc?.mcc_id_dashed || "532-145-0531"}` : "Tài khoản được cấp"}
+                  clients={clients}
                   value={clientId}
-                  onChange={(e) => {
-                    setClientId(e.target.value);
+                  onChange={(id) => {
+                    setClientId(id);
                     setAliasDraft(null);
                     setAliasMsg("");
                   }}
-                  className="h-11 rounded-md border border-line bg-bg px-3 text-base text-ink"
-                >
-                  {[...clients].sort(compareAccountsByAlias).map((c) => (
-                    <option key={c.client_id} value={c.client_id}>
-                      {accountOptionLabel(c)}
-                    </option>
-                  ))}
-                </select>
+                />
                 {mcc && access.all_clients ? (
                   <span className="text-xs font-normal text-subtle">
                     {mcc.mcc_display_name} · {adsCount}/{accessible} tài khoản
                     {mcc.roster_complete ? " đã kéo từ MCC" : " — chưa kéo đủ danh sách MCC"}
                   </span>
                 ) : null}
-              </label>
+              </div>
             ) : null}
             {access && access.real_is_admin && !access.read_only && client ? (
                   <form
