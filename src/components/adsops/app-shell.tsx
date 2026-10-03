@@ -540,6 +540,7 @@ export function AdsOpsApp() {
 
   /** Month-by-month ad group / keyword / search term pull; returns false on error. */
   async function runDeepLoop(targetStart: string | undefined, prefix: string): Promise<boolean> {
+    let done = false;
     for (let i = 0; i < 14; i++) {
       const res = await pullDeepChunkFn({ data: { clientId, targetStart, refreshRecent: i === 0 } });
       if (!res.ok) {
@@ -548,14 +549,18 @@ export function AdsOpsApp() {
         );
         return false;
       }
-      setDeepEpoch((n) => n + 1);
       setWarehouseMsg(
         `${prefix}${res.note_vi || "Đã kéo một tháng."}${res.done ? "" : " Đang kéo tiếp, đừng đóng trang…"}`,
       );
-      if (res.done) return true;
+      if (res.done) {
+        done = true;
+        break;
+      }
     }
-    setWarehouseMsg(`${prefix}Chưa xong — bấm "Kéo nhóm / từ khoá" để kéo tiếp phần còn lại.`);
-    return false;
+    // One refresh after the pull, not between months, so the table does not blank.
+    setDeepEpoch((n) => n + 1);
+    if (!done) setWarehouseMsg(`${prefix}Chưa xong — bấm "Kéo nhóm / từ khoá" để kéo tiếp phần còn lại.`);
+    return done;
   }
 
   async function pullDeepLayers() {
