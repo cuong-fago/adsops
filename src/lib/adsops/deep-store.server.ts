@@ -23,7 +23,7 @@ import {
   type DeepLayerBlock,
   type DeepLayerId,
 } from "./analytics.ts";
-import { AdsApiError, resolveAdsConfig, searchStream, type AdsConfig, type GaqlRow } from "./google-ads.server.ts";
+import { AdsApiError, resolveAdsConfig, type AdsConfig, type GaqlRow } from "./google-ads.server.ts";
 import {
   ANALYTICS_LOOKBACK_DAYS_MAX,
   SEARCH_TERM_LOOKBACK_CAP,
@@ -36,6 +36,7 @@ import {
   numField,
   pullMeta,
   releaseLock,
+  searchLeaf,
   statusCode,
   ymdInTz,
 } from "./warehouse.server.ts";
@@ -157,7 +158,7 @@ function covers(row: StoredMonth | undefined, start: string, end: string): boole
 type Split = Map<string, Record<string, number>>;
 
 async function actionNames(cfg: AdsConfig, customerId: string): Promise<Map<string, string>> {
-  const rows = await searchStream(cfg, customerId, `SELECT conversion_action.id, conversion_action.name FROM conversion_action`);
+  const rows = await searchLeaf(cfg, customerId, `SELECT conversion_action.id, conversion_action.name FROM conversion_action`);
   const names = new Map<string, string>();
   for (const row of rows) {
     const ca = asRec(row.conversionAction);
@@ -201,7 +202,7 @@ async function trySplit(
 ): Promise<Split | null> {
   if (!names) return null;
   try {
-    return buildSplit(await searchStream(cfg, customerId, query), names, keyOf);
+    return buildSplit(await searchLeaf(cfg, customerId, query), names, keyOf);
   } catch (err) {
     if (err instanceof AdsApiError && (err.kind === "QUOTA" || err.kind === "TOKEN_REVOKED")) throw err;
     return null;
@@ -211,7 +212,7 @@ async function trySplit(
 async function pullAdGroups(cfg: AdsConfig, cid: string, start: string, end: string, names: Map<string, string> | null): Promise<MonthPayload> {
   const range = `segments.date BETWEEN '${start}' AND '${end}'`;
   const [rows, split] = await Promise.all([
-    searchStream(
+    searchLeaf(
       cfg,
       cid,
       `SELECT segments.date, campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group.status,
@@ -254,7 +255,7 @@ async function pullAdGroups(cfg: AdsConfig, cid: string, start: string, end: str
 async function pullKeywords(cfg: AdsConfig, cid: string, start: string, end: string, names: Map<string, string> | null): Promise<MonthPayload> {
   const range = `segments.date BETWEEN '${start}' AND '${end}'`;
   const [rows, split] = await Promise.all([
-    searchStream(
+    searchLeaf(
       cfg,
       cid,
       `SELECT segments.date, campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group_criterion.criterion_id,
@@ -303,7 +304,7 @@ async function pullKeywords(cfg: AdsConfig, cid: string, start: string, end: str
 async function pullSearchTerms(cfg: AdsConfig, cid: string, start: string, end: string, names: Map<string, string> | null): Promise<MonthPayload> {
   const range = `segments.date BETWEEN '${start}' AND '${end}'`;
   const [rows, split] = await Promise.all([
-    searchStream(
+    searchLeaf(
       cfg,
       cid,
       `SELECT segments.date, campaign.id, campaign.name, ad_group.id, ad_group.name,

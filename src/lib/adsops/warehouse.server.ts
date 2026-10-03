@@ -19,6 +19,7 @@ import {
   type AdsConfig,
   type GaqlRow,
 } from "./google-ads.server.ts";
+import { loginCustomerFor } from "./mcc-list.server.ts";
 
 export const ANALYTICS_LOOKBACK_DAYS_DEFAULT = 180;
 export const ANALYTICS_LOOKBACK_DAYS_MAX = 365;
@@ -290,8 +291,14 @@ function failureBackoff(): Map<string, { until: number; message: string }> {
 
 export type Meta = { displayName: string; currency: string; timezone: string };
 
+/** Leaf account read. Sends stored manager_customer_id as login-customer-id, else the default MCC. */
+export async function searchLeaf(cfg: AdsConfig, customerId: string, query: string): Promise<GaqlRow[]> {
+  const login = await loginCustomerFor(cfg, customerId);
+  return searchStream(cfg, customerId, query, login);
+}
+
 export async function pullMeta(cfg: AdsConfig, customerId: string, clientId: string): Promise<Meta> {
-  const rows = await searchStream(
+  const rows = await searchLeaf(
     cfg,
     customerId,
     `SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer LIMIT 1`,
@@ -332,31 +339,31 @@ function convSplit(rows: GaqlRow[], names: Map<string, string>, keyOf: (r: GaqlR
 async function pullCore(cfg: AdsConfig, customerId: string, start: string, end: string): Promise<Core> {
   const range = `segments.date BETWEEN '${start}' AND '${end}'`;
   const [actionRows, campRows, accRows, accConvRows, campDailyRows, campConvRows] = await Promise.all([
-    searchStream(cfg, customerId, `SELECT conversion_action.id, conversion_action.name, conversion_action.status FROM conversion_action`),
-    searchStream(
+    searchLeaf(cfg, customerId, `SELECT conversion_action.id, conversion_action.name, conversion_action.status FROM conversion_action`),
+    searchLeaf(
       cfg,
       customerId,
       `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type FROM campaign WHERE campaign.status != 'REMOVED'`,
     ),
-    searchStream(
+    searchLeaf(
       cfg,
       customerId,
       `SELECT segments.date, metrics.impressions, metrics.clicks, metrics.invalid_clicks, metrics.cost_micros, metrics.conversions
        FROM customer WHERE ${range}`,
     ),
-    searchStream(
+    searchLeaf(
       cfg,
       customerId,
       `SELECT segments.date, segments.conversion_action, metrics.conversions FROM customer WHERE ${range} AND metrics.conversions > 0`,
     ),
-    searchStream(
+    searchLeaf(
       cfg,
       customerId,
       `SELECT segments.date, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type,
               metrics.impressions, metrics.clicks, metrics.invalid_clicks, metrics.cost_micros, metrics.conversions
        FROM campaign WHERE ${range}`,
     ),
-    searchStream(
+    searchLeaf(
       cfg,
       customerId,
       `SELECT segments.date, campaign.id, segments.conversion_action, metrics.conversions

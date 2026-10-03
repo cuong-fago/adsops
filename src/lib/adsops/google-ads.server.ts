@@ -328,7 +328,7 @@ type GoogleErrorBody = {
   };
 };
 
-function classifyGoogleError(httpStatus: number, body: GoogleErrorBody, customerId?: string): AdsApiError {
+function classifyGoogleError(httpStatus: number, body: GoogleErrorBody, customerId?: string, loginCustomerId?: string): AdsApiError {
   const e = body.error || {};
   const details = Array.isArray(e.details) ? e.details : [];
   const codes: string[] = [];
@@ -343,6 +343,8 @@ function classifyGoogleError(httpStatus: number, body: GoogleErrorBody, customer
   const status = String(e.status || "");
   const has = (...names: string[]) => names.some((n) => codes.includes(n));
   const acct = customerId ? ` (tài khoản ${dashedId(customerId)})` : "";
+  const loginLabel =
+    loginCustomerId && digits(loginCustomerId).length === 10 ? dashedId(loginCustomerId) : "GOOGLE_ADS_LOGIN_CUSTOMER_ID";
 
   if (has("CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION", "ACTION_NOT_PERMITTED")) {
     return new AdsApiError(
@@ -395,7 +397,7 @@ function classifyGoogleError(httpStatus: number, body: GoogleErrorBody, customer
   if (has("USER_PERMISSION_DENIED", "CUSTOMER_NOT_FOUND", "INVALID_LOGIN_CUSTOMER_ID")) {
     return new AdsApiError(
       "PERMISSION_DENIED",
-      `Google đã kết nối không có quyền đọc tài khoản này qua MCC${acct}. Kiểm tra tài khoản có nằm dưới MCC đang dùng (GOOGLE_ADS_LOGIN_CUSTOMER_ID) và Google đã kết nối có quyền trên MCC đó.`,
+      `Google đã kết nối không có quyền đọc tài khoản này qua MCC${acct}. Kiểm tra tài khoản có nằm dưới MCC đang dùng (${loginLabel}) và Google đã kết nối có quyền trên MCC đó.`,
       httpStatus,
       requestId,
     );
@@ -495,12 +497,15 @@ function versionRef(): { v: string | null } {
   return g.__adsopsAdsVersion__;
 }
 
-function headers(cfg: AdsConfig, token: string, withLogin = true): Record<string, string> {
+function headers(cfg: AdsConfig, token: string, withLogin = true, loginCustomerId?: string): Record<string, string> {
   const h: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-  if (withLogin) h["login-customer-id"] = cfg.loginCustomerId;
+  if (withLogin) {
+    const login = digits(loginCustomerId || "");
+    h["login-customer-id"] = login.length === 10 ? login : cfg.loginCustomerId;
+  }
   if (cfg.developerToken) h["developer-token"] = cfg.developerToken;
   return h;
 }
@@ -519,7 +524,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
 async function adsCall(
   cfg: AdsConfig,
   path: string,
-  init: { method: "GET" | "POST"; body?: string; withLogin?: boolean },
+  init: { method: "GET" | "POST"; body?: string; withLogin?: boolean; loginCustomerId?: string },
   where: string,
   customerId?: string,
   timeoutMs = 60_000,
@@ -533,7 +538,7 @@ async function adsCall(
     try {
       res = await fetchWithTimeout(
         `https://googleads.googleapis.com/${version}${path}`,
-        { method: init.method, body: init.body, headers: headers(cfg, token, init.withLogin !== false) },
+        { method: init.method, body: init.body, headers: headers(cfg, token, init.withLogin !== false, init.loginCustomerId) },
         timeoutMs,
       );
     } catch {
@@ -560,7 +565,13 @@ async function adsCall(
         ? (json as GoogleErrorBody)
         : null;
     if (!res.ok || errBody) {
-      const err = classifyGoogleError(res.status, errBody || {}, customerId);
+      const sentLogin =
+        init.withLogin === false
+          ? undefined
+          : digits(init.loginCustomerId || "").length === 10
+            ? digits(init.loginCustomerId || "")
+            : cfg.loginCustomerId;
+      const err = classifyGoogleError(res.status, errBody || {}, customerId, sentLogin);
       logAdsError(where, err, text);
       throw err;
     }
@@ -579,14 +590,24 @@ export function currentApiVersion(): string | null {
 export type GaqlRow = Record<string, unknown>;
 
 /** GAQL via searchStream. Only SELECT statements are accepted. */
-export async function searchStream(cfg: AdsConfig, customerId: string, query: string): Promise<GaqlRow[]> {
+export async function searchStream(
+  cfg: AdsConfig,
+  customerId: string,
+  query: string,
+  loginCustomerId?: string,
+): Promise<GaqlRow[]> {
   const cid = digits(customerId);
   if (cid.length !== 10) throw new AdsApiError("BAD_QUERY", "Customer ID không hợp lệ.");
   if (!/^\s*select\s/i.test(query)) throw new AdsApiError("BAD_QUERY", "Chỉ cho phép truy vấn SELECT (đọc).");
+  const login = digits(loginCustomerId || "");
   const json = await adsCall(
     cfg,
     `/customers/${cid}/googleAds:searchStream`,
-    { method: "POST", body: JSON.stringify({ query: query.replace(/\s+/g, " ").trim() }) },
+    {
+      method: "POST",
+      body: JSON.stringify({ query: query.replace(/\s+/g, " ").trim() }),
+      loginCustomerId: login.length === 10 ? login : undefined,
+    },
     "searchStream",
     cid,
     120_000,
