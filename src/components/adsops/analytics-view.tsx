@@ -1104,11 +1104,8 @@ function DataTable({
     return [...rows].sort((a, b) => {
       if (sort.key === "name") return a.name.localeCompare(b.name, "vi") * sort.dir;
       if (sort.key === "status") return String(a.status || "").localeCompare(String(b.status || "")) * sort.dir;
-      if (sort.key === "campaign") {
-        const byCamp = campName(a).localeCompare(campName(b), "vi");
-        if (byCamp) return byCamp * sort.dir;
-        return (a.ad_group_name || "").localeCompare(b.ad_group_name || "", "vi") * sort.dir;
-      }
+      if (sort.key === "campaign") return campName(a).localeCompare(campName(b), "vi") * sort.dir;
+      if (sort.key === "adgroup") return (a.ad_group_name || "").localeCompare(b.ad_group_name || "", "vi") * sort.dir;
       return ((col?.sortVal(a) || 0) - (col?.sortVal(b) || 0)) * sort.dir;
     });
   }, [block.rows, query, sort, cols, campaignNames]);
@@ -1159,19 +1156,16 @@ function DataTable({
   const safePage = Math.min(page, pages - 1);
   const visible = !showAll && !query ? filtered.slice(0, TOP) : paginate ? filtered.slice(safePage * PAGE, safePage * PAGE + PAGE) : filtered;
   const firstLabel = layer === "campaign" ? "Chiến dịch" : layer === "ad_group" ? "Nhóm quảng cáo" : layer === "keyword" ? "Từ khoá" : "Search term";
-  const showScope = layer !== "campaign";
-  function scopeLabel(row: LayerRow) {
-    const camp = row.campaign_name || campaignNames[row.campaign_id || ""] || "";
-    if (layer === "ad_group") return camp;
-    return [camp, row.ad_group_name || ""].filter(Boolean).join(" · ");
-  }
+  const showCampaign = layer !== "campaign";
+  const showAdGroup = layer === "keyword" || layer === "search_term";
+  const campOf = (row: LayerRow) => row.campaign_name || campaignNames[row.campaign_id || ""] || "";
 
   function contextLine(row: LayerRow) {
     const camp = row.campaign_name || campaignNames[row.campaign_id || ""] || "";
     return [camp, row.ad_group_name || ""].filter(Boolean).join(" · ");
   }
   function toggleSort(key: string) {
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" || key === "status" || key === "campaign" ? 1 : -1 }));
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" || key === "status" || key === "campaign" || key === "adgroup" ? 1 : -1 }));
     setPage(0);
   }
   const sortIcon = (key: string) => (sort.key === key ? (sort.dir === 1 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />) : null);
@@ -1217,9 +1211,14 @@ function DataTable({
                 </th>
               ) : null}
               {showMatch ? <th className={cn(thBase, "text-left")}>Khớp</th> : null}
-              {showScope ? (
+              {showCampaign ? (
                 <th className={cn(thBase, "text-left")} aria-sort={sort.key === "campaign" ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
-                  <button type="button" onClick={() => toggleSort("campaign")} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === "campaign" && "text-ink")}>Chiến dịch / nhóm {sortIcon("campaign")}</button>
+                  <button type="button" onClick={() => toggleSort("campaign")} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === "campaign" && "text-ink")}>Chiến dịch {sortIcon("campaign")}</button>
+                </th>
+              ) : null}
+              {showAdGroup ? (
+                <th className={cn(thBase, "text-left")} aria-sort={sort.key === "adgroup" ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
+                  <button type="button" onClick={() => toggleSort("adgroup")} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === "adgroup" && "text-ink")}>Nhóm {sortIcon("adgroup")}</button>
                 </th>
               ) : null}
               {cols.map((c) => (
@@ -1248,7 +1247,8 @@ function DataTable({
                 </td>
                 {layer !== "search_term" ? <td className="border-b border-line/60 px-3 py-1.5"><StatusBadge status={row.status} /></td> : null}
                 {showMatch ? <td className="whitespace-nowrap border-b border-line/60 px-3 py-1.5 text-muted">{row.match_type_label || row.match_type || "—"}</td> : null}
-                {showScope ? <td className="max-w-[16rem] truncate border-b border-line/60 px-3 py-1.5 text-muted" title={scopeLabel(row)}>{scopeLabel(row) || "—"}</td> : null}
+                {showCampaign ? <td className="max-w-[14rem] truncate border-b border-line/60 px-3 py-1.5 text-muted" title={campOf(row)}>{campOf(row) || "—"}</td> : null}
+                {showAdGroup ? <td className="max-w-[14rem] truncate border-b border-line/60 px-3 py-1.5 text-muted" title={row.ad_group_name || ""}>{row.ad_group_name || "—"}</td> : null}
                 {cols.map((c) => (
                   <td key={c.key} className={cn("whitespace-nowrap border-b border-line/60 px-3 py-1.5 text-right tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
                     {c.cell(row)}
@@ -1265,7 +1265,8 @@ function DataTable({
                 </td>
                 {layer !== "search_term" ? <td className={stickyFoot} /> : null}
                 {showMatch ? <td className={stickyFoot} /> : null}
-                {showScope ? <td className={stickyFoot} /> : null}
+                {showCampaign ? <td className={stickyFoot} /> : null}
+                {showAdGroup ? <td className={stickyFoot} /> : null}
                 {cols.map((c) => (
                   <td key={c.key} className={cn(stickyFoot, "whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums")}>{c.total ? c.total(totals) : "—"}</td>
                 ))}
