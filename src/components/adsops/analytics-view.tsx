@@ -868,6 +868,104 @@ function coverageNote(block: LayerBlock | DeepLayerBlock, layer: string): { text
 
 type CampaignLite = { id: string; name: string; pmax?: boolean };
 
+const selectBox = "flex h-10 min-w-0 items-center gap-2 rounded-full bg-inset pl-3.5 pr-1.5 text-sm sm:max-w-[20rem]";
+const selectEl = "h-9 min-w-0 flex-1 cursor-pointer truncate rounded-full bg-transparent pr-1 text-base font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-sm";
+
+type ScopeOpt = { id: string; label: string };
+
+/** Type-to-filter over options already in memory. Typing does not fetch. */
+function ScopeCombo({
+  label, placeholder, emptyLabel, options, value, disabled, onPick,
+}: {
+  label: string;
+  placeholder: string;
+  emptyLabel: string;
+  options: ScopeOpt[];
+  value: string | null;
+  disabled?: boolean;
+  onPick: (id: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [hi, setHi] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+  const listId = label === "Chiến dịch" ? "scope-campaign" : "scope-group";
+  const selected = options.find((o) => o.id === value);
+  const closed = selected?.label || emptyLabel;
+  const q = fold(query.trim());
+  const matches = q ? options.filter((o) => fold(o.label).includes(q)) : options;
+  const rows: { id: string | null; label: string }[] = [{ id: null, label: emptyLabel }, ...matches];
+  const active = rows.length ? Math.min(hi, rows.length - 1) : 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  function choose(id: string | null) {
+    onPick(id);
+    setQuery("");
+    setOpen(false);
+  }
+
+  return (
+    <div ref={box} className={cn(selectBox, "relative", disabled && "opacity-60")}>
+      <span className="shrink-0 text-xs font-medium text-muted">{label}</span>
+      <input
+        value={open ? query : closed}
+        disabled={disabled}
+        placeholder={placeholder}
+        aria-label={label === "Chiến dịch" ? "Lọc theo chiến dịch" : "Lọc theo nhóm quảng cáo"}
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={open ? `${listId}-${active}` : undefined}
+        onFocus={() => { if (disabled) return; setOpen(true); setQuery(""); setHi(0); }}
+        onChange={(e) => {
+          const v = e.target.value;
+          setQuery(v);
+          setOpen(true);
+          setHi(v.trim() ? 1 : 0);
+          if (v === "") choose(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { setOpen(false); setQuery(""); return; }
+          if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setHi(active + 1 >= rows.length ? active : active + 1); return; }
+          if (e.key === "ArrowUp") { e.preventDefault(); setOpen(true); setHi(active > 0 ? active - 1 : 0); return; }
+          if (e.key === "Enter") { e.preventDefault(); choose(rows[active]?.id ?? null); }
+        }}
+        className={selectEl + " placeholder:font-normal placeholder:text-subtle"}
+      />
+      {open && !disabled ? (
+        <ul id={listId} role="listbox" className="absolute left-0 top-full z-30 mt-1 max-h-72 min-w-full w-max max-w-[28rem] overflow-auto rounded-lg border border-line bg-paper py-1 shadow-sheet">
+          {rows.map((row, i) => (
+            <li key={row.id ?? "all"} role="presentation">
+              <button
+                type="button"
+                id={`${listId}-${i}`}
+                role="option"
+                aria-selected={row.id === value}
+                className={cn("block w-full truncate px-3 py-2 text-left text-sm text-ink", i === active ? "bg-inset" : "hover:bg-inset", row.id != null && row.id === value && "font-medium")}
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setHi(i)}
+                onClick={() => choose(row.id)}
+              >
+                {row.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function ScopeFilters({
   layer, facets, campaigns, campaignId, adGroupId, adGroupLabel, onCampaign, onAdGroup, onlyConv, onOnlyConv, canClear, onClear,
 }: {
@@ -893,42 +991,38 @@ function ScopeFilters({
   for (const g of groupOpts) nameCount.set(g.name, (nameCount.get(g.name) || 0) + 1);
   if (adGroupId && !groupOpts.some((g) => g.id === adGroupId)) groupOpts = [{ id: adGroupId, name: adGroupLabel || adGroupId, campaign_id: campaignId || "", rows: null }, ...groupOpts];
   const showGroups = layer !== "ad_group";
-  const selectBox = "flex h-10 min-w-0 items-center gap-2 rounded-full bg-inset pl-3.5 pr-1.5 text-sm sm:max-w-[20rem]";
-  const selectEl = "h-9 min-w-0 flex-1 cursor-pointer truncate rounded-full bg-transparent pr-1 text-base font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-sm";
   const countSuffix = (n: number | null) => (n == null ? "" : ` (${n})`);
+  const campEmpty = `Tất cả chiến dịch${facets ? ` (${facets.campaigns.length})` : ""}`;
+  const groupCount = groupOpts.filter((g) => g.rows != null).length;
+  const groupEmpty = `${campaignId ? "Tất cả nhóm trong chiến dịch" : "Tất cả nhóm"}${groupOpts.length ? ` (${groupCount})` : ""}`;
+  const campOptions = campOpts.map((c) => ({ id: c.id, label: `${c.name}${countSuffix(c.rows)}` }));
+  const groupOptions = groupOpts.map((g) => {
+    const extra = !campaignId && (nameCount.get(g.name) || 0) > 1 ? ` — ${snapName(g.campaign_id) || campOpts.find((c) => c.id === g.campaign_id)?.name || g.campaign_id}` : "";
+    return { id: g.id, label: `${g.name || g.id}${extra}${countSuffix(g.rows)}` };
+  });
   return (
     <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center" role="group" aria-label="Lọc theo chiến dịch / nhóm">
-      <label className={selectBox}>
-        <span className="shrink-0 text-xs font-medium text-muted">Chiến dịch</span>
-        <select value={campaignId || ""} onChange={(e) => onCampaign(e.target.value || null)} className={selectEl} aria-label="Lọc theo chiến dịch">
-          <option value="">Tất cả chiến dịch{facets ? ` (${facets.campaigns.length})` : ""}</option>
-          {campOpts.map((c) => <option key={c.id} value={c.id}>{c.name}{countSuffix(c.rows)}</option>)}
-        </select>
-      </label>
+      <ScopeCombo
+        label="Chiến dịch"
+        placeholder="Gõ chiến dịch…"
+        emptyLabel={campEmpty}
+        options={campOptions}
+        value={campaignId}
+        onPick={onCampaign}
+      />
       {showGroups ? (
-        <label className={cn(selectBox, !groupOpts.length && "opacity-60")}>
-          <span className="shrink-0 text-xs font-medium text-muted">Nhóm</span>
-          <select
-            value={adGroupId || ""}
-            disabled={!groupOpts.length}
-            onChange={(e) => {
-              const id = e.target.value || null;
-              const g = groupOpts.find((x) => x.id === id);
-              onAdGroup(id, g?.name || "", g?.campaign_id || null);
-            }}
-            className={selectEl}
-            aria-label="Lọc theo nhóm quảng cáo"
-          >
-            <option value="">{campaignId ? "Tất cả nhóm trong chiến dịch" : "Tất cả nhóm"}{groupOpts.length ? ` (${groupOpts.filter((g) => g.rows != null).length})` : ""}</option>
-            {groupOpts.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name || g.id}
-                {!campaignId && (nameCount.get(g.name) || 0) > 1 ? ` — ${snapName(g.campaign_id) || campOpts.find((c) => c.id === g.campaign_id)?.name || g.campaign_id}` : ""}
-                {countSuffix(g.rows)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <ScopeCombo
+          label="Nhóm"
+          placeholder="Gõ nhóm…"
+          emptyLabel={groupEmpty}
+          options={groupOptions}
+          value={adGroupId}
+          disabled={!groupOpts.length}
+          onPick={(id) => {
+            const g = groupOpts.find((x) => x.id === id);
+            onAdGroup(id, g?.name || "", g?.campaign_id || null);
+          }}
+        />
       ) : null}
       <div className="flex items-center gap-2">
         <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => onOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
@@ -1006,9 +1100,15 @@ function DataTable({
     let rows = block.rows;
     if (q) rows = rows.filter((r) => fold(`${r.name} ${r.campaign_name || campaignNames[r.campaign_id || ""] || ""} ${r.ad_group_name || ""}`).includes(q));
     const col = cols.find((c) => c.key === sort.key);
+    const campName = (r: LayerRow) => r.campaign_name || campaignNames[r.campaign_id || ""] || "";
     return [...rows].sort((a, b) => {
       if (sort.key === "name") return a.name.localeCompare(b.name, "vi") * sort.dir;
       if (sort.key === "status") return String(a.status || "").localeCompare(String(b.status || "")) * sort.dir;
+      if (sort.key === "campaign") {
+        const byCamp = campName(a).localeCompare(campName(b), "vi");
+        if (byCamp) return byCamp * sort.dir;
+        return (a.ad_group_name || "").localeCompare(b.ad_group_name || "", "vi") * sort.dir;
+      }
       return ((col?.sortVal(a) || 0) - (col?.sortVal(b) || 0)) * sort.dir;
     });
   }, [block.rows, query, sort, cols, campaignNames]);
@@ -1059,13 +1159,19 @@ function DataTable({
   const safePage = Math.min(page, pages - 1);
   const visible = !showAll && !query ? filtered.slice(0, TOP) : paginate ? filtered.slice(safePage * PAGE, safePage * PAGE + PAGE) : filtered;
   const firstLabel = layer === "campaign" ? "Chiến dịch" : layer === "ad_group" ? "Nhóm quảng cáo" : layer === "keyword" ? "Từ khoá" : "Search term";
+  const showScope = layer !== "campaign";
+  function scopeLabel(row: LayerRow) {
+    const camp = row.campaign_name || campaignNames[row.campaign_id || ""] || "";
+    if (layer === "ad_group") return camp;
+    return [camp, row.ad_group_name || ""].filter(Boolean).join(" · ");
+  }
 
   function contextLine(row: LayerRow) {
     const camp = row.campaign_name || campaignNames[row.campaign_id || ""] || "";
     return [camp, row.ad_group_name || ""].filter(Boolean).join(" · ");
   }
   function toggleSort(key: string) {
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" || key === "status" ? 1 : -1 }));
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" || key === "status" || key === "campaign" ? 1 : -1 }));
     setPage(0);
   }
   const sortIcon = (key: string) => (sort.key === key ? (sort.dir === 1 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />) : null);
@@ -1111,6 +1217,11 @@ function DataTable({
                 </th>
               ) : null}
               {showMatch ? <th className={cn(thBase, "text-left")}>Khớp</th> : null}
+              {showScope ? (
+                <th className={cn(thBase, "text-left")} aria-sort={sort.key === "campaign" ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
+                  <button type="button" onClick={() => toggleSort("campaign")} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === "campaign" && "text-ink")}>Chiến dịch / nhóm {sortIcon("campaign")}</button>
+                </th>
+              ) : null}
               {cols.map((c) => (
                 <th key={c.key} className={cn(thBase, "text-right")} aria-sort={sort.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
                   <button type="button" onClick={() => toggleSort(c.key)} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === c.key && "text-ink")}>{sortIcon(c.key)}{c.label}</button>
@@ -1137,6 +1248,7 @@ function DataTable({
                 </td>
                 {layer !== "search_term" ? <td className="border-b border-line/60 px-3 py-1.5"><StatusBadge status={row.status} /></td> : null}
                 {showMatch ? <td className="whitespace-nowrap border-b border-line/60 px-3 py-1.5 text-muted">{row.match_type_label || row.match_type || "—"}</td> : null}
+                {showScope ? <td className="max-w-[16rem] truncate border-b border-line/60 px-3 py-1.5 text-muted" title={scopeLabel(row)}>{scopeLabel(row) || "—"}</td> : null}
                 {cols.map((c) => (
                   <td key={c.key} className={cn("whitespace-nowrap border-b border-line/60 px-3 py-1.5 text-right tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
                     {c.cell(row)}
@@ -1153,6 +1265,7 @@ function DataTable({
                 </td>
                 {layer !== "search_term" ? <td className={stickyFoot} /> : null}
                 {showMatch ? <td className={stickyFoot} /> : null}
+                {showScope ? <td className={stickyFoot} /> : null}
                 {cols.map((c) => (
                   <td key={c.key} className={cn(stickyFoot, "whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums")}>{c.total ? c.total(totals) : "—"}</td>
                 ))}
