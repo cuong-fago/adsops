@@ -106,6 +106,22 @@ const ALERT_SCENES = [
   { id: "coverage", label: "Coverage ST" },
 ];
 
+/**
+ * Pack key whose content a Vận hành tab shows. The tab is in the nav only once that key is
+ * loaded AND non-null for the selected account (null = the tab would show only the empty
+ * connection panel / a placeholder). Tabs not listed (Cảnh báo, Phân quyền, Phân tích,
+ * Nhật ký tối ưu) follow their permission rules only.
+ */
+const TAB_DATA_KEY: Partial<Record<TabId, string>> = {
+  final: "final",
+  proposals: "proposals",
+  classify: "classify",
+  guard: "guard",
+  report: "report",
+  hub: "hub",
+  sop: "sop",
+};
+
 /** Pack keys needed before a tab can render (undefined = not loaded yet). */
 const TAB_MODULES: Record<TabId, string[]> = {
   final: ["final", "connect", "guard"],
@@ -627,20 +643,28 @@ export function AdsOpsApp() {
     !loading &&
     fixture &&
     (shownTab === "final" || shownTab === "proposals" || shownTab === "guard" || shownTab === "alerts");
-  // FINAL shows only once this account's final pack is known to exist (never the empty
-  // "Chưa có gói final" card). Unknown (still loading) counts as absent for the nav.
-  const finalKnown = "final" in pack;
-  const finalPresent = Boolean(pack.final);
-  const opsTabs = OPS_TABS.filter((t) => tabAllowed(access, t.id) && (t.id !== "final" || finalPresent));
+  // A data tab shows only once its content is known to exist for this account (never the
+  // empty connection panel / placeholder). Unknown (still loading) counts as absent.
+  const packRec = pack as Record<string, unknown>;
+  const tabHasData = (id: TabId) => {
+    const key = TAB_DATA_KEY[id];
+    return !key || Boolean(packRec[key]);
+  };
+  const shownKey = TAB_DATA_KEY[shownTab];
+  const shownKnown = Boolean(shownKey && shownKey in packRec);
+  const shownPresent = tabHasData(shownTab);
+  const opsTabs = OPS_TABS.filter((t) => tabAllowed(access, t.id) && tabHasData(t.id));
+  const opsTabIds = opsTabs.map((t) => t.id).join(",");
   const roleVi = access ? ROLE_LABEL_VI[access.role] || "" : "";
   const freshText = freshnessLine(fresh);
 
-  // FINAL was the active/default tab but this account has no final pack: open Phân tích
-  // (or Báo cáo when the role has no analytics) instead.
+  // The active tab has no data for this account: open Phân tích, else the first visible tab.
   useEffect(() => {
-    if (shownTab !== "final" || loading || !finalKnown || finalPresent) return;
-    setTab(tabAllowed(access, "analytics") ? "analytics" : "report");
-  }, [shownTab, loading, finalKnown, finalPresent, access]);
+    if (loading || !shownKey || !shownKnown || shownPresent) return;
+    const first = opsTabIds.split(",").filter(Boolean)[0] as TabId | undefined;
+    const next: TabId | undefined = tabAllowed(access, "analytics") ? "analytics" : first;
+    if (next && next !== shownTab) setTab(next);
+  }, [shownTab, loading, shownKey, shownKnown, shownPresent, opsTabIds, access]);
 
   const body = useMemo(() => {
     if (accessError) {
@@ -782,7 +806,10 @@ export function AdsOpsApp() {
     if (shownTab === "alerts") {
       // Staff only (the tab needs optimize; client roles never have it). The server checks again.
       const runway = access.kind === "staff" ? <BudgetRunwayCard canCheck={Boolean(access.caps.pull && !access.read_only)} /> : null;
-      if (!pack.alerts) return <>{runway}{connectFallback(false)}</>;
+      // No alert file: show only the budget runway card, never the empty connection panel.
+      if (!pack.alerts) {
+        return runway ?? <p className="px-1 py-16 text-center text-sm text-muted">Không có cảnh báo cho tài khoản này.</p>;
+      }
       return (
         <>
           {runway}
@@ -933,9 +960,11 @@ export function AdsOpsApp() {
         </div>
         {access && access.role !== "pending" ? (
           <nav aria-label="Điều hướng" className="mx-auto flex max-w-screen-2xl items-end gap-1 overflow-x-auto px-4 md:px-6 [scrollbar-width:none]">
-            <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
-              {viewer ? "Báo cáo" : "Vận hành"}
-            </span>
+            {opsTabs.length ? (
+              <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
+                {viewer ? "Báo cáo" : "Vận hành"}
+              </span>
+            ) : null}
             {opsTabs.map((item) => (
               <NavTab key={item.id} active={shownTab === item.id} onClick={() => goTab(item.id)}>
                 {item.label}
@@ -943,7 +972,7 @@ export function AdsOpsApp() {
             ))}
             {caps?.analytics || caps?.changeLog ? (
               <>
-                <span aria-hidden className="mx-2 h-5 w-px shrink-0 self-center bg-line" />
+                {opsTabs.length ? <span aria-hidden className="mx-2 h-5 w-px shrink-0 self-center bg-line" /> : null}
                 <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
                   Phân tích
                 </span>
