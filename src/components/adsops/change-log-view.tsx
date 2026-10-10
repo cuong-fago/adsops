@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
 import { pullChangeLogFn, readChangeLogFn } from "@/lib/adsops/change-log.functions";
 import {
@@ -6,8 +6,11 @@ import {
   CATEGORY_LABEL_VI,
   LEVEL_LABEL_VI,
   MATCH_LABEL_VI,
+  DRILL_LABEL_VI,
   categoryOf,
   type ChangeAccountSummary,
+  type ChangeDrill,
+  type DrillBucket,
   type ChangeCategory,
   type ChangeLogRead,
   type ChangeRow,
@@ -123,6 +126,19 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
   const [progress, setProgress] = useState("");
   const [results, setResults] = useState<Array<{ client_id: string; ok: boolean; text: string }>>([]);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "at", dir: -1 });
+  /** Summary cell clicked: rows are limited server-side to that account + bucket. */
+  const [drill, setDrill] = useState<ChangeDrill | null>(null);
+  const detailRef = useRef<HTMLElement | null>(null);
+
+  // A drill belongs to the account list it was clicked in.
+  useEffect(() => {
+    setDrill(null);
+  }, [clientId, scope]);
+
+  function toggleDrill(next: ChangeDrill) {
+    setDrill((cur) => (cur && cur.client_id === next.client_id && cur.bucket === next.bucket ? null : next));
+    requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 
   const labelOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -154,7 +170,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
     let cancelled = false;
     setLoading(true);
     setError("");
-    readChangeLogFn({ data: { clientIds: scope === "current" ? [clientId] : null, start, end } })
+    readChangeLogFn({ data: { clientIds: scope === "current" ? [clientId] : null, start, end, drill } })
       .then((res) => {
         if (!cancelled) setData(res);
       })
@@ -170,7 +186,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
     return () => {
       cancelled = true;
     };
-  }, [clientId, scope, start, end, epoch]);
+  }, [clientId, scope, start, end, epoch, drill]);
 
   async function pullOne(id: string): Promise<{ ok: boolean; text: string }> {
     try {
@@ -217,7 +233,11 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
   }
 
   const rows = useMemo(() => {
-    const list = (data?.rows || []).filter((r) => (!user || r.user_email === user) && (!category || categoryOf(r.action) === category));
+    // While drilling, rows are exactly the summary cell (server filter); user / type filters pause.
+    const drilling = Boolean(drill && data?.drill);
+    const list = (data?.rows || []).filter(
+      (r) => drilling || ((!user || r.user_email === user) && (!category || categoryOf(r.action) === category)),
+    );
     const val = (r: ChangeRow): string => {
       switch (sort.key) {
         case "at":
@@ -244,7 +264,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
       const c = sort.key === "at" ? val(a).localeCompare(val(b)) : val(a).localeCompare(val(b), "vi");
       return (c || b.at.localeCompare(a.at)) * (c ? sort.dir : 1);
     });
-  }, [data, user, category, sort, labelOf]);
+  }, [data, user, category, sort, labelOf, drill]);
 
   function toggle(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "at" ? -1 : 1 }));
@@ -259,6 +279,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
   );
 
   const accounts = data?.accounts || [];
+  const drillLoaded = Boolean(drill && data?.drill && data.drill.client_id === drill.client_id && data.drill.bucket === drill.bucket);
   const noOpt = accounts.filter((a) => a.counts && a.counts.optimization_total === 0).length;
   const notPulled = accounts.filter((a) => a.coverage === "not_pulled").length;
 
@@ -329,7 +350,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex h-10 items-center gap-2 rounded-lg border border-line bg-paper pl-3 pr-1 text-sm">
             <span className="text-xs text-muted">Người thay đổi</span>
-            <select value={user} onChange={(e) => setUser(e.target.value)} className="h-9 max-w-[16rem] truncate bg-transparent text-ink outline-none">
+            <select value={user} disabled={Boolean(drill)} title={drill ? "Đang lọc theo ô tóm tắt — bấm “Xem tất cả” để dùng lại" : undefined} onChange={(e) => setUser(e.target.value)} className="h-9 max-w-[16rem] truncate bg-transparent text-ink outline-none disabled:opacity-50">
               <option value="">Tất cả</option>
               {(data?.users || []).map((u) => (
                 <option key={u} value={u}>{u}</option>
@@ -338,7 +359,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
           </label>
           <label className="flex h-10 items-center gap-2 rounded-lg border border-line bg-paper pl-3 pr-1 text-sm">
             <span className="text-xs text-muted">Loại</span>
-            <select value={category} onChange={(e) => setCategory(e.target.value as ChangeCategory | "")} className="h-9 bg-transparent text-ink outline-none">
+            <select value={category} disabled={Boolean(drill)} title={drill ? "Đang lọc theo ô tóm tắt — bấm “Xem tất cả” để dùng lại" : undefined} onChange={(e) => setCategory(e.target.value as ChangeCategory | "")} className="h-9 bg-transparent text-ink outline-none disabled:opacity-50">
               <option value="">Tất cả</option>
               {(Object.keys(CATEGORY_LABEL_VI) as ChangeCategory[]).map((k) => (
                 <option key={k} value={k}>{CATEGORY_LABEL_VI[k]}</option>
@@ -381,18 +402,36 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
               <tbody>
                 {accounts.map((a) => {
                   const c = a.counts;
-                  const cell = (n: number | undefined) => (c ? num(n || 0) : "—");
+                  const cell = (n: number | undefined, bucket: DrillBucket) => {
+                    if (!c) return "—";
+                    if (!n) return num(0);
+                    const active = drill?.client_id === a.client_id && drill.bucket === bucket;
+                    return (
+                      <button
+                        type="button"
+                        aria-pressed={active}
+                        title={active ? "Bấm lần nữa để bỏ lọc" : `Xem ${num(n)} dòng ${DRILL_LABEL_VI[bucket].toLowerCase()}`}
+                        onClick={() => toggleDrill({ client_id: a.client_id, bucket })}
+                        className={cn(
+                          "cursor-pointer rounded px-1.5 py-0.5 font-medium text-accent underline decoration-accent/40 underline-offset-2 transition-colors hover:bg-accent-soft hover:decoration-accent",
+                          active && "bg-accent text-accent-fg no-underline hover:bg-accent",
+                        )}
+                      >
+                        {num(n)}
+                      </button>
+                    );
+                  };
                   return (
                     <tr key={a.client_id}>
                       <td className={td}>
                         <span className="block max-w-[22rem] truncate font-medium text-ink" title={a.label}>{a.label}</span>
                         <span className="text-xs text-subtle tabular-nums">{a.customer_id_dashed}</span>
                       </td>
-                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.add_keyword)}</td>
-                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.add_negative)}</td>
-                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.pause_remove)}</td>
-                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.bid_change)}</td>
-                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.shared)}</td>
+                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.add_keyword, "add_keyword")}</td>
+                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.add_negative, "add_negative")}</td>
+                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.pause_remove, "pause_remove")}</td>
+                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.bid_change, "bid_change")}</td>
+                      <td className={cn(td, "text-right tabular-nums")}>{cell(c?.shared, "shared")}</td>
                       <td className={td}>
                         <CoverageBadge a={a} />
                         {a.coverage === "partial" && a.covered_through ? (
@@ -412,7 +451,22 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
         )}
       </section>
 
-      <section className="flex flex-col gap-2">
+      <section ref={detailRef} className="flex scroll-mt-28 flex-col gap-2">
+        {drill ? (
+          <div className="flex flex-wrap items-center gap-2 px-1">
+            <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full bg-accent-soft px-3 py-1 text-sm text-accent">
+              Đang lọc: <b className="font-semibold">{DRILL_LABEL_VI[drill.bucket]}</b> · {labelOf.get(drill.client_id) || drill.client_id} ·{" "}
+              <span className="tabular-nums">{drillLoaded ? `${num(rows.length)} dòng` : "…"}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setDrill(null)}
+              className="h-8 rounded-lg border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset"
+            >
+              Xem tất cả
+            </button>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
           <h3 className="font-display text-lg font-semibold tracking-tight">Chi tiết thay đổi</h3>
           <span className="text-xs text-muted tabular-nums">

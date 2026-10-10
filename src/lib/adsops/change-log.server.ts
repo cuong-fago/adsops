@@ -12,7 +12,10 @@ import { getSql } from "@/lib/db";
 import { AdsApiError, resolveAdsConfig, type AdsConfig, type GaqlRow } from "./google-ads.server.ts";
 import { asRec, customerIdFor, pullMeta, searchLeaf, ymdInTz, addDaysYmd } from "./warehouse.server.ts";
 import {
+  actionsInBucket,
   isOptimization,
+  summaryBucketOf,
+  type ChangeDrill,
   type AccountCoverage,
   type ChangeAccountSummary,
   type ChangeAction,
@@ -712,8 +715,13 @@ function toNum(v: number | string | null): number | null {
 export type ChangeLogAccount = { client_id: string; label: string; customer_id_dashed: string };
 
 /** Rows + per-account summary for [start, end] (Asia/Saigon days). Caller has checked access. */
-export async function readChangeLog(accounts: ChangeLogAccount[], start: string, end: string): Promise<ChangeLogRead> {
-  const empty: ChangeLogRead = { start, end, rows: [], truncated: false, accounts: [], users: [] };
+export async function readChangeLog(
+  accounts: ChangeLogAccount[],
+  start: string,
+  end: string,
+  drill: ChangeDrill | null = null,
+): Promise<ChangeLogRead> {
+  const empty: ChangeLogRead = { start, end, rows: [], truncated: false, accounts: [], users: [], drill };
   if (!YMD_RE.test(start) || !YMD_RE.test(end) || end < start) return empty;
   const ids = accounts.map((a) => a.client_id).filter((id) => CLIENT_ID_RE.test(id));
   const rangeStart = saigonStart(start);
@@ -733,9 +741,11 @@ export async function readChangeLog(accounts: ChangeLogAccount[], start: string,
                   old_status, new_status, old_bid_micros, new_bid_micros
            from ads_change_events
            where client_id = any($1::text[]) and change_date_time >= $2::timestamptz and change_date_time < $3::timestamptz
+             ${drill ? "and client_id = $4 and action = any($5::text[])" : ""}
            order by change_date_time desc
            limit ${READ_ROW_CAP + 1}`,
-          [ids, rangeStart, rangeEnd],
+          // Drill: exactly the actions the summary counted in that cell (summaryBucketOf).
+          drill ? [ids, rangeStart, rangeEnd, drill.client_id, actionsInBucket(drill.bucket)] : [ids, rangeStart, rangeEnd],
         ),
         sql.query<{ client_id: string; action: string; n: number }>(
           `select client_id, action, count(*)::int as n from ads_change_events
@@ -796,12 +806,7 @@ export async function readChangeLog(accounts: ChangeLogAccount[], start: string,
       for (const c of counts.filter((x) => x.client_id === a.client_id)) {
         const action = c.action as ChangeAction;
         const n = Number(c.n) || 0;
-        if (action === "add_keyword") summary.add_keyword += n;
-        else if (action === "add_negative") summary.add_negative += n;
-        else if (action === "pause" || action === "remove_keyword" || action === "remove_negative") summary.pause_remove += n;
-        else if (action === "bid_change") summary.bid_change += n;
-        else if (action.startsWith("shared_list_")) summary.shared += n;
-        else summary.other += n;
+        summary[summaryBucketOf(action)] += n;
         if (isOptimization(action)) summary.optimization_total += n;
       }
     }
@@ -847,6 +852,7 @@ export async function readChangeLog(accounts: ChangeLogAccount[], start: string,
     truncated: rows.length > READ_ROW_CAP,
     accounts: summaries,
     users: users.map((u) => u.user_email),
+    drill,
   };
 }
 
