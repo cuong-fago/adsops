@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronsUpDown, Search } from "lucide-react";
 import { accountMatchesFilter, accountOptionLabel, compareAccountsByAlias } from "@/lib/adsops/account-label";
 import { cn } from "@/lib/cn";
 
@@ -16,11 +17,14 @@ export function AccountPicker({
   clients,
   value,
   onChange,
+  compact = false,
 }: {
   label: string;
   clients: PickerClient[];
   value: string;
   onChange: (clientId: string) => void;
+  /** Top-bar variant: one row, selected account shown inside the field. */
+  compact?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -43,12 +47,16 @@ export function AccountPicker({
     setOpen(false);
   }
 
+  const selectedLabel = selected ? accountOptionLabel(selected) : "";
   return (
-    <div ref={box} className="relative flex flex-col gap-1">
-      <span className="text-xs font-medium text-muted">{label}</span>
+    <div ref={box} className={cn("relative flex flex-col gap-1", compact && "w-full")}>
+      <span className={compact ? "sr-only" : "text-xs font-medium text-muted"}>{label}</span>
+      {compact ? <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" /> : null}
+      {compact ? <ChevronsUpDown aria-hidden className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-subtle" /> : null}
       <input
         value={query}
-        placeholder="Gõ CID hoặc tên…"
+        title={compact ? selectedLabel || undefined : undefined}
+        placeholder={compact && !open && selectedLabel ? selectedLabel : "Gõ CID hoặc tên…"}
         aria-label="Lọc tài khoản theo CID hoặc tên"
         aria-expanded={open}
         aria-controls="adsops-account-list"
@@ -67,16 +75,28 @@ export function AccountPicker({
             choose(filtered[0].client_id);
           }
         }}
-        className="h-11 w-full rounded-md border border-line bg-bg px-3 text-base text-ink"
+        className={
+          compact
+            ? cn(
+                "h-9 w-full truncate rounded-lg border border-line bg-inset pl-9 pr-9 text-sm text-ink transition-colors hover:border-line-strong focus:bg-paper",
+                !open && selectedLabel ? "placeholder:font-medium placeholder:text-ink" : "placeholder:text-subtle",
+              )
+            : "h-11 w-full rounded-lg border border-line bg-paper px-3 text-base text-ink"
+        }
       />
-      <p className="truncate text-xs font-normal text-ink">
-        {selected ? accountOptionLabel(selected) : "Chưa chọn tài khoản"}
-      </p>
+      {compact ? null : (
+        <p className="truncate text-xs font-normal text-ink">
+          {selected ? accountOptionLabel(selected) : "Chưa chọn tài khoản"}
+        </p>
+      )}
       {open ? (
         <ul
           id="adsops-account-list"
           role="listbox"
-          className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-auto rounded-md border border-line bg-paper shadow-sheet"
+          className={cn(
+            "absolute top-full z-50 mt-1 max-h-80 overflow-auto rounded-lg border border-line bg-paper py-1 shadow-sheet",
+            compact ? "right-0 w-[min(36rem,calc(100vw-2rem))]" : "left-0 right-0",
+          )}
         >
           {filtered.length ? (
             filtered.map((c) => (
@@ -87,7 +107,7 @@ export function AccountPicker({
                   aria-selected={c.client_id === value}
                   className={cn(
                     "block w-full px-3 py-2 text-left text-sm text-ink",
-                    c.client_id === value ? "bg-accent/15" : "hover:bg-inset",
+                    c.client_id === value ? "bg-accent-soft font-medium" : "hover:bg-inset",
                   )}
                   onClick={() => choose(c.client_id)}
                 >

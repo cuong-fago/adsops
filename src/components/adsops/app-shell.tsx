@@ -22,6 +22,7 @@ import {
 } from "@/lib/adsops/access.functions";
 import { adminUpdateAdAccount, stopViewAs } from "@/lib/adsops/admin.functions";
 import { AccountPicker } from "@/components/adsops/account-picker";
+import { BrandMark, NavTab } from "@/components/adsops/brand";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
 import { clientSignOut } from "@/lib/adsops/client-auth.functions";
@@ -850,40 +851,14 @@ export function AdsOpsApp() {
           </div>
         </div>
       ) : null}
-      <header className="border-b border-line bg-paper">
-        <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 md:flex-row md:items-end md:justify-between md:px-6">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-subtle">AdsOps · Fago Group</p>
-            <h1 className="font-display text-2xl font-medium tracking-tight text-balance">
-              {viewer ? "Báo cáo Google Ads" : "Vận hành Google Ads"}
-            </h1>
-            <p className="mt-0.5 max-w-xl text-pretty text-sm text-muted">
-              {viewer
-                ? "Chỉ số của tài khoản được cấp. CPA Google không phải Qualified Lead."
-                : "Chỉ đề xuất, không apply Google Ads. CPA Google không phải Qualified Lead. Chỉ thấy tài khoản được cấp."}
-            </p>
-          </div>
-          <div className="flex w-full min-w-72 max-w-xl flex-col gap-3">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-xs font-medium text-muted">
-                {roleVi}
-                {access?.display_name && access.kind === "client" ? ` · ${access.display_name}` : ""}
-              </span>
-              {isClientKind ? (
-                <button
-                  type="button"
-                  onClick={() => void signOutClient()}
-                  className="h-9 rounded-md border border-line-strong bg-inset px-3 text-sm font-medium text-ink hover:bg-line"
-                >
-                  Đăng xuất
-                </button>
-              ) : (
-                <UserButton />
-              )}
-            </div>
+      <header className="sticky top-0 z-40 border-b border-line bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
+        <div className="mx-auto flex min-h-14 max-w-screen-2xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 md:px-6">
+          <BrandMark product={viewer ? "AdsOps Báo cáo" : "AdsOps"} />
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-3 sm:flex-none">
             {access && access.role !== "pending" && clients.length ? (
-              <div className="flex flex-col gap-1">
+              <div className="min-w-0 flex-1 sm:w-[22rem] sm:flex-none lg:w-[28rem]">
                 <AccountPicker
+                  compact
                   label={access.all_clients ? `Tài khoản MCC ${mcc?.mcc_id_dashed || "532-145-0531"}` : "Tài khoản được cấp"}
                   clients={clients}
                   value={clientId}
@@ -893,124 +868,130 @@ export function AdsOpsApp() {
                     setAliasMsg("");
                   }}
                 />
-                {mcc && access.all_clients ? (
-                  <span className="text-xs font-normal text-subtle">
-                    {mcc.mcc_display_name} · {adsCount}/{accessible} tài khoản
-                    {mcc.roster_complete ? " đã kéo từ MCC" : " — chưa kéo đủ danh sách MCC"}
-                  </span>
-                ) : null}
               </div>
             ) : null}
-            {access && access.real_is_admin && !access.read_only && client ? (
-                  <form
-                    className="mt-1 flex flex-col gap-1"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const next = (aliasDraft ?? client.alias ?? "").trim();
-                      const id = client.client_id;
-                      setAliasMsg("");
-                      void adminUpdateAdAccount({ data: { id, alias: next } })
-                        .then(() => {
-                          setAliasMsg(next ? "Đã lưu tên gọi." : "Đã xoá tên gọi. Danh sách hiện tên Google.");
-                          setAliasDraft(null);
-                          setDirEpoch((n) => n + 1);
-                        })
-                        .catch(() => setAliasMsg("Không lưu được tên gọi."));
-                    }}
-                  >
-                    <span className="text-xs font-normal text-subtle">
-                      Tên gọi của tài khoản đang chọn — chỉ admin, không đổi tên trên Google Ads
-                    </span>
-                    <div className="flex gap-1">
-                      <input
-                        value={aliasDraft ?? client.alias ?? ""}
-                        maxLength={80}
-                        placeholder="Tên gọi ngắn, ví dụ website"
-                        aria-label="Tên gọi tài khoản"
-                        onChange={(e) => {
-                          setAliasDraft(e.target.value);
-                          setAliasMsg("");
-                        }}
-                        className="h-11 min-w-0 flex-1 rounded-md border border-line bg-bg px-3 text-base text-ink"
-                      />
-                      <button type="submit" className="h-11 shrink-0 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg">
-                        Lưu
-                      </button>
-                    </div>
-                    {aliasMsg ? <span className="text-xs font-normal text-muted">{aliasMsg}</span> : null}
-                  </form>
-                ) : null}
+            <span className="hidden whitespace-nowrap rounded-full bg-inset px-2.5 py-1 text-xs font-medium text-muted lg:inline">
+              {roleVi}
+              {access?.display_name && access.kind === "client" ? ` · ${access.display_name}` : ""}
+            </span>
+            {isClientKind ? (
+              <button
+                type="button"
+                onClick={() => void signOutClient()}
+                className="h-9 shrink-0 rounded-lg border border-line px-3 text-sm font-medium text-ink hover:bg-inset"
+              >
+                Đăng xuất
+              </button>
+            ) : (
+              <UserButton />
+            )}
           </div>
         </div>
         {access && access.role !== "pending" ? (
-          <nav className="mx-auto max-w-screen-2xl px-4 pb-3 md:px-6">
-            <p className="mb-1 text-xs font-medium text-subtle">{viewer ? "Báo cáo" : "Vận hành"}</p>
-            <div className="flex flex-wrap gap-1">
-              {opsTabs.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => goTab(item.id)}
-                  className={cn(
-                    "h-10 shrink-0 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
-                    shownTab === item.id ? "bg-accent text-accent-fg" : "text-muted hover:bg-inset",
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+          <nav aria-label="Điều hướng" className="mx-auto flex max-w-screen-2xl items-end gap-1 overflow-x-auto px-4 md:px-6 [scrollbar-width:none]">
+            <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
+              {viewer ? "Báo cáo" : "Vận hành"}
+            </span>
+            {opsTabs.map((item) => (
+              <NavTab key={item.id} active={shownTab === item.id} onClick={() => goTab(item.id)}>
+                {item.label}
+              </NavTab>
+            ))}
             {caps?.analytics ? (
               <>
-                <p className="mb-1 mt-3 text-xs font-medium text-subtle">Phân tích</p>
-                <button
-                  type="button"
-                  onClick={() => goTab("analytics")}
-                  className={cn(
-                    "relative h-10 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
-                    shownTab === "analytics" ? "bg-accent text-accent-fg" : "text-muted hover:bg-inset",
-                  )}
-                >
+                <span aria-hidden className="mx-2 h-5 w-px shrink-0 self-center bg-line" />
+                <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
                   Phân tích
-                  {firing ? (
-                    <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger outline outline-2 outline-paper" />
-                  ) : null}
-                </button>
+                </span>
+                <NavTab active={shownTab === "analytics"} onClick={() => goTab("analytics")}>
+                  Phân tích
+                  {firing ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger" /> : null}
+                </NavTab>
               </>
             ) : null}
           </nav>
         ) : null}
       </header>
 
-      <main className="mx-auto max-w-screen-2xl px-4 py-4 md:px-6">
-        {client && shownTab !== "members" && (
-          <p className="mb-3 text-xs text-subtle">
-            {client.alias ? (
+      <main className="mx-auto max-w-screen-2xl px-4 py-5 md:px-6">
+        <section className="mb-5 flex flex-col gap-3 rounded-xl bg-paper px-4 py-3 shadow-sheet md:flex-row md:items-center md:justify-between md:px-5">
+          <div className="min-w-0">
+            {client && shownTab !== "members" ? (
               <>
-                <span className="font-medium text-ink">{client.alias}</span>
-                <span> — {client.display_name}</span>
+                <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <span className="truncate text-base font-semibold tracking-tight text-ink">{client.alias || client.display_name}</span>
+                  {client.alias ? <span className="truncate text-muted">{client.display_name}</span> : null}
+                </p>
+                <p className="mt-0.5 text-xs text-subtle tabular-nums">
+                  {[
+                    client.customer_id_dashed && client.display_name !== client.customer_id_dashed ? client.customer_id_dashed : "",
+                    access?.all_clients && mcc?.mcc_id_dashed ? `MCC ${mcc.mcc_id_dashed}` : "",
+                    analytics?.timezone || client.timezone || "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                  {freshText ? <span className="font-medium text-ok">{` · ${freshText}`}</span> : null}
+                  {shownTab === "analytics"
+                    ? " · lọc ngày → tầng → loại conv → ST/KW · không apply"
+                    : viewer
+                      ? " · CPA Google không phải Qualified Lead."
+                      : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}
+                </p>
+                {canPull && adsStatus?.message_vi ? <p className="mt-1 text-xs text-danger">{adsStatus.message_vi}</p> : null}
               </>
-            ) : (
-              client.display_name
-            )}
-            {client.customer_id_dashed && client.display_name !== client.customer_id_dashed
-              ? ` · ${client.customer_id_dashed}`
-              : ""}
-            {access?.all_clients && mcc?.mcc_id_dashed ? ` · MCC ${mcc.mcc_id_dashed}` : ""}
-            {analytics?.timezone || client.timezone
-              ? ` · ${analytics?.timezone || client.timezone}`
-              : ""}
-            {freshText ? <span className="font-medium text-muted">{` · ${freshText}`}</span> : null}
-            {canPull && adsStatus?.message_vi ? (
-              <span className="block text-xs text-danger">{adsStatus.message_vi}</span>
             ) : null}
-            {shownTab === "analytics"
-              ? " · lọc ngày → tầng → loại conv → ST/KW · không apply"
-              : viewer
-                ? " · CPA Google không phải Qualified Lead."
-                : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}
-          </p>
-        )}
+            {mcc && access?.all_clients && access.role !== "pending" && clients.length ? (
+              <p className="mt-0.5 text-xs text-subtle">
+                {mcc.mcc_display_name} · {adsCount}/{accessible} tài khoản
+                {mcc.roster_complete ? " đã kéo từ MCC" : " — chưa kéo đủ danh sách MCC"}
+              </p>
+            ) : null}
+            <p className="mt-1 text-xs text-subtle">
+              {viewer
+                ? "Chỉ số của tài khoản được cấp. CPA Google không phải Qualified Lead."
+                : "Chỉ đề xuất, không apply Google Ads. CPA Google không phải Qualified Lead. Chỉ thấy tài khoản được cấp."}
+            </p>
+          </div>
+          {access && access.real_is_admin && !access.read_only && client ? (
+            <form
+              className="flex w-full shrink-0 flex-col gap-1 md:w-80"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const next = (aliasDraft ?? client.alias ?? "").trim();
+                const id = client.client_id;
+                setAliasMsg("");
+                void adminUpdateAdAccount({ data: { id, alias: next } })
+                  .then(() => {
+                    setAliasMsg(next ? "Đã lưu tên gọi." : "Đã xoá tên gọi. Danh sách hiện tên Google.");
+                    setAliasDraft(null);
+                    setDirEpoch((n) => n + 1);
+                  })
+                  .catch(() => setAliasMsg("Không lưu được tên gọi."));
+              }}
+            >
+              <span className="text-[11px] font-medium text-subtle">
+                Tên gọi của tài khoản đang chọn — chỉ admin, không đổi tên trên Google Ads
+              </span>
+              <div className="flex gap-1.5">
+                <input
+                  value={aliasDraft ?? client.alias ?? ""}
+                  maxLength={80}
+                  placeholder="Tên gọi ngắn, ví dụ website"
+                  aria-label="Tên gọi tài khoản"
+                  onChange={(e) => {
+                    setAliasDraft(e.target.value);
+                    setAliasMsg("");
+                  }}
+                  className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-paper px-3 text-sm text-ink"
+                />
+                <button type="submit" className="h-9 shrink-0 rounded-lg bg-brand px-3.5 text-sm font-medium text-accent-fg shadow-sm hover:opacity-95">
+                  Lưu
+                </button>
+              </div>
+              {aliasMsg ? <span className="text-xs font-normal text-muted">{aliasMsg}</span> : null}
+            </form>
+          ) : null}
+        </section>
         {showScenes && (
           <div className="mb-4 flex flex-wrap gap-1.5">
             {scenes.map((item) => (
@@ -1019,8 +1000,8 @@ export function AdsOpsApp() {
                 type="button"
                 onClick={() => setScenario(item.id)}
                 className={cn(
-                  "h-10 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
-                  scenario === item.id ? "bg-accent text-accent-fg" : "bg-inset text-ink hover:bg-line",
+                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors duration-150",
+                  scenario === item.id ? "border-accent bg-accent-soft text-accent" : "border-line bg-paper text-muted hover:text-ink",
                 )}
               >
                 {item.label}
