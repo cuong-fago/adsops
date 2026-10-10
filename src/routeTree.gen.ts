@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ApiAdsopsFileRouteImport } from './routes/api/adsops-file'
 import { Route as ApiAdsopsHealthRouteImport } from './routes/api/adsops-health'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiCronBudgetRunwayRouteImport } from './routes/api/cron/budget-runway'
 import { Route as ApiCronChangeLogRouteImport } from './routes/api/cron/change-log'
 import { Route as ApiGoogleAdsOauthCallbackRouteImport } from './routes/api/google-ads/oauth/callback'
 import { Route as ApiGoogleAdsOauthStartRouteImport } from './routes/api/google-ads/oauth/start'
@@ -43,6 +44,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronBudgetRunwayRoute = ApiCronBudgetRunwayRouteImport.update({
+  id: '/api/cron/budget-runway',
+  path: '/api/cron/budget-runway',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCronChangeLogRoute = ApiCronChangeLogRouteImport.update({
   id: '/api/cron/change-log',
   path: '/api/cron/change-log',
@@ -66,6 +72,7 @@ export interface FileRoutesByFullPath {
   '/api/adsops-file': typeof ApiAdsopsFileRoute
   '/api/adsops-health': typeof ApiAdsopsHealthRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
   '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
   '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
@@ -76,6 +83,7 @@ export interface FileRoutesByTo {
   '/api/adsops-file': typeof ApiAdsopsFileRoute
   '/api/adsops-health': typeof ApiAdsopsHealthRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
   '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
   '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
@@ -87,6 +95,7 @@ export interface FileRoutesById {
   '/api/adsops-file': typeof ApiAdsopsFileRoute
   '/api/adsops-health': typeof ApiAdsopsHealthRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
   '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
   '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
@@ -99,6 +108,7 @@ export interface FileRouteTypes {
     | '/api/adsops-file'
     | '/api/adsops-health'
     | '/api/auth/$'
+    | '/api/cron/budget-runway'
     | '/api/cron/change-log'
     | '/api/google-ads/oauth/callback'
     | '/api/google-ads/oauth/start'
@@ -109,6 +119,7 @@ export interface FileRouteTypes {
     | '/api/adsops-file'
     | '/api/adsops-health'
     | '/api/auth/$'
+    | '/api/cron/budget-runway'
     | '/api/cron/change-log'
     | '/api/google-ads/oauth/callback'
     | '/api/google-ads/oauth/start'
@@ -119,6 +130,7 @@ export interface FileRouteTypes {
     | '/api/adsops-file'
     | '/api/adsops-health'
     | '/api/auth/$'
+    | '/api/cron/budget-runway'
     | '/api/cron/change-log'
     | '/api/google-ads/oauth/callback'
     | '/api/google-ads/oauth/start'
@@ -130,6 +142,7 @@ export interface RootRouteChildren {
   ApiAdsopsFileRoute: typeof ApiAdsopsFileRoute
   ApiAdsopsHealthRoute: typeof ApiAdsopsHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiCronBudgetRunwayRoute: typeof ApiCronBudgetRunwayRoute
   ApiCronChangeLogRoute: typeof ApiCronChangeLogRoute
   ApiGoogleAdsOauthCallbackRoute: typeof ApiGoogleAdsOauthCallbackRoute
   ApiGoogleAdsOauthStartRoute: typeof ApiGoogleAdsOauthStartRoute
@@ -172,6 +185,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/budget-runway': {
+      id: '/api/cron/budget-runway'
+      path: '/api/cron/budget-runway'
+      fullPath: '/api/cron/budget-runway'
+      preLoaderRoute: typeof ApiCronBudgetRunwayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/change-log': {
       id: '/api/cron/change-log'
       path: '/api/cron/change-log'
@@ -202,6 +222,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdsopsFileRoute: ApiAdsopsFileRoute,
   ApiAdsopsHealthRoute: ApiAdsopsHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiCronBudgetRunwayRoute: ApiCronBudgetRunwayRoute,
   ApiCronChangeLogRoute: ApiCronChangeLogRoute,
   ApiGoogleAdsOauthCallbackRoute: ApiGoogleAdsOauthCallbackRoute,
   ApiGoogleAdsOauthStartRoute: ApiGoogleAdsOauthStartRoute,

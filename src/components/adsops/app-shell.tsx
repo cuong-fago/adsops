@@ -24,6 +24,7 @@ import { adminUpdateAdAccount, stopViewAs } from "@/lib/adsops/admin.functions";
 import { AccountPicker } from "@/components/adsops/account-picker";
 import { BrandMark, NavTab } from "@/components/adsops/brand";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
+import { BudgetRunwayCard } from "@/components/adsops/budget-runway-card";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
 import { clientSignOut } from "@/lib/adsops/client-auth.functions";
@@ -756,8 +757,15 @@ export function AdsOpsApp() {
       />
     );
     if (shownTab === "alerts") {
-      if (!pack.alerts) return connectFallback(false);
-      return <AlertsPanel data={pack.alerts as never} />;
+      // Staff only (the tab needs optimize; client roles never have it). The server checks again.
+      const runway = access.kind === "staff" ? <BudgetRunwayCard canCheck={Boolean(access.caps.pull && !access.read_only)} /> : null;
+      if (!pack.alerts) return <>{runway}{connectFallback(false)}</>;
+      return (
+        <>
+          {runway}
+          <AlertsPanel data={pack.alerts as never} />
+        </>
+      );
     }
     if (shownTab === "guard") {
       if (!pack.guard) return connectFallback(false);
