@@ -1,13 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { principalMiddleware } from "./principal-middleware";
-import type { ChangeLogPullResult, ChangeLogRead } from "./change-log.types.ts";
+import { DRILL_BUCKETS, type ChangeDrill, type ChangeLogPullResult, type ChangeLogRead, type DrillBucket } from "./change-log.types.ts";
 
 export type { ChangeLogPullResult, ChangeLogRead } from "./change-log.types.ts";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const DENY = "Chỉ Admin / Trưởng phòng Ads xem được Nhật ký tối ưu.";
 
-function asRead(data: unknown): { clientIds: string[] | null; start: string; end: string } {
+function asRead(data: unknown): { clientIds: string[] | null; start: string; end: string; drill: ChangeDrill | null } {
   if (!data || typeof data !== "object") throw new Error("Thiếu dữ liệu");
   const d = data as Record<string, unknown>;
   const start = typeof d.start === "string" ? d.start : "";
@@ -18,7 +18,12 @@ function asRead(data: unknown): { clientIds: string[] | null; start: string; end
   if (Array.isArray(d.clientIds)) {
     clientIds = d.clientIds.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()).slice(0, 500);
   }
-  return { clientIds, start, end };
+  let drill: ChangeDrill | null = null;
+  const dr = d.drill && typeof d.drill === "object" ? (d.drill as Record<string, unknown>) : null;
+  if (dr && typeof dr.client_id === "string" && DRILL_BUCKETS.includes(dr.bucket as DrillBucket)) {
+    drill = { client_id: dr.client_id.trim(), bucket: dr.bucket as DrillBucket };
+  }
+  return { clientIds, start, end, drill };
 }
 
 function asClient(data: unknown): { clientId: string } {
@@ -48,6 +53,7 @@ export const readChangeLogFn = createServerFn({ method: "POST" })
     const ctx = context.access;
     assertCap(ctx, "changeLog", DENY);
     if (data.clientIds) for (const id of data.clientIds) assertAccount(ctx, id);
+    if (data.drill) assertAccount(ctx, data.drill.client_id);
     const visible = await changeLogAccounts(ctx);
     const wanted = data.clientIds ? new Set(data.clientIds) : null;
     const accounts = visible
@@ -58,7 +64,8 @@ export const readChangeLogFn = createServerFn({ method: "POST" })
         customer_id_dashed: c.customer_id_dashed || "",
       }));
     const { readChangeLog } = await import("./change-log.server");
-    return readChangeLog(accounts, data.start, data.end);
+    // A drill account outside the listed accounts yields no rows (the reader filters by both).
+    return readChangeLog(accounts, data.start, data.end, data.drill);
   });
 
 /** "Kéo nhật ký 30 ngày" for one account (read-only Google Ads pull). Never while viewing-as. */

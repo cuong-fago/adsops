@@ -89,6 +89,38 @@ export function isOptimization(action: ChangeAction): boolean {
   return categoryOf(action) !== "other" || action === "enable";
 }
 
+/** Columns of the per-account summary. The summary counts and the drill-down use this one function. */
+export type SummaryBucket = "add_keyword" | "add_negative" | "pause_remove" | "bid_change" | "shared" | "other";
+
+export const ALL_ACTIONS = Object.keys(ACTION_LABEL_VI) as ChangeAction[];
+
+export function summaryBucketOf(action: string): SummaryBucket {
+  if (action === "add_keyword") return "add_keyword";
+  if (action === "add_negative") return "add_negative";
+  if (action === "pause" || action === "remove_keyword" || action === "remove_negative") return "pause_remove";
+  if (action === "bid_change") return "bid_change";
+  if (action.startsWith("shared_list_")) return "shared";
+  return "other";
+}
+
+/** Clickable summary columns (drill-down). */
+export type DrillBucket = Exclude<SummaryBucket, "other">;
+export const DRILL_BUCKETS: DrillBucket[] = ["add_keyword", "add_negative", "pause_remove", "bid_change", "shared"];
+export const DRILL_LABEL_VI: Record<DrillBucket, string> = {
+  add_keyword: "Từ khoá thêm",
+  add_negative: "Phủ định thêm",
+  pause_remove: "Tạm dừng / Xoá",
+  bid_change: "Đổi giá thầu",
+  shared: "DS phủ định chung",
+};
+
+/** Stored actions that belong to a bucket (same predicate as the summary). */
+export function actionsInBucket(bucket: DrillBucket): ChangeAction[] {
+  return ALL_ACTIONS.filter((a) => summaryBucketOf(a) === bucket);
+}
+
+export type ChangeDrill = { client_id: string; bucket: DrillBucket };
+
 export type ChangeRow = {
   id: number;
   client_id: string;
@@ -145,6 +177,8 @@ export type ChangeLogRead = {
   truncated: boolean;
   accounts: ChangeAccountSummary[];
   users: string[];
+  /** Set when rows were limited to one summary cell (account + bucket). */
+  drill: ChangeDrill | null;
 };
 
 export type ChangeLogPullResult = {
