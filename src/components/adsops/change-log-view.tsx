@@ -25,8 +25,8 @@ const NOTE = "Google chỉ cho đọc lại 30 ngày gần nhất; AdsOps lưu l
 
 const card = "rounded-xl bg-paper shadow-sheet";
 const scrollBox = "relative max-h-[70vh] overflow-auto overscroll-contain rounded-xl border border-line bg-paper shadow-sm";
-const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-xs font-semibold text-muted";
-const td = "border-b border-line/60 px-3 py-2 align-top";
+const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
+const td = "border-b border-line/60 px-3 py-2.5 align-top";
 /** Account name: wraps (long tokens too) up to 3 lines; full name on hover. */
 const nameCol = "min-w-[220px] max-w-[320px]";
 const nameText = "line-clamp-3 [overflow-wrap:anywhere]";

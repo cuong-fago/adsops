@@ -923,7 +923,7 @@ export function AdsOpsApp() {
     <div className="min-h-screen bg-bg text-ink">
       {access?.view_as ? (
         <div className="bg-warn-bg px-4 py-2 text-sm text-warn md:px-6">
-          <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-2">
+          <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-2">
             <span>
               Đang <b>Xem như người dùng này</b>: {access.view_as.label} ({ROLE_LABEL_VI[access.view_as.role] || access.view_as.role}) —
               chỉ đọc, thấy đúng những gì người này thấy. Được ghi nhật ký.
@@ -939,7 +939,7 @@ export function AdsOpsApp() {
         </div>
       ) : null}
       <header className="sticky top-0 z-40 border-b border-line bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
-        <div className="mx-auto flex min-h-14 max-w-screen-2xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 md:px-6">
+        <div className="mx-auto flex min-h-14 max-w-[1800px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 md:px-6 lg:px-8">
           <BrandMark product={viewer ? "AdsOps Báo cáo" : "AdsOps"} />
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-3 sm:flex-none">
             {access && access.role !== "pending" && clients.length ? (
@@ -975,7 +975,7 @@ export function AdsOpsApp() {
           </div>
         </div>
         {access && access.role !== "pending" ? (
-          <nav aria-label="Điều hướng" className="mx-auto flex max-w-screen-2xl items-end gap-1 overflow-x-auto px-4 md:px-6 [scrollbar-width:none]">
+          <nav aria-label="Điều hướng" className="mx-auto flex max-w-[1800px] items-end gap-1 overflow-x-auto px-4 md:px-6 lg:px-8 [scrollbar-width:none]">
             {opsTabs.length ? (
               <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
                 {viewer ? "Báo cáo" : "Vận hành"}
@@ -1009,7 +1009,7 @@ export function AdsOpsApp() {
         ) : null}
       </header>
 
-      <main className="mx-auto max-w-screen-2xl px-4 py-5 md:px-6">
+      <main className="mx-auto max-w-[1800px] px-4 py-5 md:px-6 lg:px-8">
         <section className="mb-5 flex flex-col gap-3 rounded-xl bg-paper px-4 py-3 shadow-sheet md:flex-row md:items-center md:justify-between md:px-5">
           <div className="min-w-0">
             {client && shownTab !== "members" ? (

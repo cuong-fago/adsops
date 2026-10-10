@@ -121,7 +121,7 @@ export function ClientPortal({
     <div className="min-h-screen bg-bg text-ink">
       {access.view_as ? (
         <div className="bg-warn-bg px-4 py-2 text-sm text-warn">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
+          <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-2">
             <span>{t(lang, "view_as_banner", { label: access.view_as.label })}</span>
             <button
               type="button"
@@ -135,7 +135,7 @@ export function ClientPortal({
       ) : null}
 
       <header className="sticky top-0 z-40 border-b border-line bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-2.5 md:px-6">
+        <div className="mx-auto flex max-w-[1800px] flex-col gap-3 px-4 py-2.5 md:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <FagoMark />
@@ -206,7 +206,7 @@ export function ClientPortal({
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-4 md:px-6 md:py-6">
+      <main className="mx-auto max-w-[1800px] px-4 py-4 md:px-6 lg:px-8 md:py-6">
         {!clients.length ? (
           <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
             {t(lang, "no_accounts")}
