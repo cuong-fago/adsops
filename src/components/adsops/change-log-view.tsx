@@ -27,6 +27,9 @@ const card = "rounded-xl bg-paper shadow-sheet";
 const scrollBox = "relative max-h-[70vh] overflow-auto overscroll-contain rounded-xl border border-line bg-paper shadow-sm";
 const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-xs font-semibold text-muted";
 const td = "border-b border-line/60 px-3 py-2 align-top";
+/** Account name: wraps (long tokens too) up to 3 lines; full name on hover. */
+const nameCol = "min-w-[220px] max-w-[320px]";
+const nameText = "line-clamp-3 [overflow-wrap:anywhere]";
 
 function todaySaigon(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Saigon", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -146,6 +149,11 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
     return m;
   }, [clients]);
   // customer_id_dashed can be labelled "836-391-8650 · MCC 385-976-8247": read the CID before "·".
+  const titleOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of clients) m.set(c.client_id, [labelOf.get(c.client_id), c.customer_id_dashed].filter(Boolean).join(" · "));
+    return m;
+  }, [clients, labelOf]);
   const liveClients = useMemo(
     () => clients.filter((c) => (c.adapter || "live") === "live" && cidOf(c).length === 10),
     [clients],
@@ -271,7 +279,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
   }
   const icon = (key: SortKey) => (sort.key === key ? sort.dir === 1 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" /> : null);
   const head = (key: SortKey, label: string) => (
-    <th className={th} aria-sort={sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
+    <th className={cn(th, key === "account" && nameCol)} aria-sort={sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
       <button type="button" onClick={() => toggle(key)} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === key && "text-ink")}>
         {label} {icon(key)}
       </button>
@@ -321,7 +329,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
             {results.map((r) => (
               <li key={r.client_id} className="flex gap-2 py-0.5">
                 <span className={cn("shrink-0 font-semibold", r.ok ? "text-ok" : "text-danger")}>{r.ok ? "OK" : "Lỗi"}</span>
-                <span className="truncate text-ink">{labelOf.get(r.client_id) || r.client_id}</span>
+                <span className="min-w-0 max-w-[22rem] text-ink [overflow-wrap:anywhere]" title={titleOf.get(r.client_id)}>{labelOf.get(r.client_id) || r.client_id}</span>
                 <span className="truncate text-muted">{r.text}</span>
               </li>
             ))}
@@ -389,7 +397,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
             <table className="min-w-full border-separate border-spacing-0 text-sm">
               <thead>
                 <tr>
-                  <th className={th}>Tài khoản</th>
+                  <th className={cn(th, nameCol)}>Tài khoản</th>
                   <th className={cn(th, "text-right")}>Từ khoá thêm</th>
                   <th className={cn(th, "text-right")}>Phủ định thêm</th>
                   <th className={cn(th, "text-right")}>Tạm dừng / Xoá</th>
@@ -423,9 +431,9 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
                   };
                   return (
                     <tr key={a.client_id}>
-                      <td className={td}>
-                        <span className="block max-w-[22rem] truncate font-medium text-ink" title={a.label}>{a.label}</span>
-                        <span className="text-xs text-subtle tabular-nums">{a.customer_id_dashed}</span>
+                      <td className={cn(td, nameCol)}>
+                        <span className={cn(nameText, "font-medium text-ink")} title={[a.label, a.customer_id_dashed].filter(Boolean).join(" · ")}>{a.label}</span>
+                        <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{a.customer_id_dashed}</span>
                       </td>
                       <td className={cn(td, "text-right tabular-nums")}>{cell(c?.add_keyword, "add_keyword")}</td>
                       <td className={cn(td, "text-right tabular-nums")}>{cell(c?.add_negative, "add_negative")}</td>
@@ -493,7 +501,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
               {rows.map((r) => (
                 <tr key={r.id}>
                   <td className={cn(td, "whitespace-nowrap tabular-nums text-muted")}>{formatSaigon(r.at)}</td>
-                  <td className={td}><span className="block max-w-[14rem] truncate" title={labelOf.get(r.client_id) || r.client_id}>{labelOf.get(r.client_id) || r.client_id}</span></td>
+                  <td className={cn(td, nameCol)}><span className={nameText} title={titleOf.get(r.client_id) || r.client_id}>{labelOf.get(r.client_id) || r.client_id}</span></td>
                   <td className={td}>
                     <span className="block max-w-[14rem] truncate" title={r.user_email || ""}>
                       {r.user_email || (r.source === "change_status" ? "Google không ghi người" : "—")}
