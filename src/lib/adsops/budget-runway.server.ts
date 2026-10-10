@@ -7,7 +7,7 @@
  */
 import { getSql } from "@/lib/db";
 import { AdsApiError, resolveAdsConfig, type AdsConfig, type GaqlRow } from "./google-ads.server.ts";
-import { addDaysYmd, asRec, customerIdFor, pullMeta, searchLeaf, ymdInTz } from "./warehouse.server.ts";
+import { acquireLock, addDaysYmd, asRec, customerIdFor, pullMeta, releaseLock, searchLeaf, ymdInTz } from "./warehouse.server.ts";
 import { EXPIRY_WARN_DAYS, runwayStatus, type RunwayCheckResult, type RunwayRow, type RunwayStatus } from "./budget-runway.types.ts";
 
 const CLIENT_ID_RE = /^[a-z0-9_]+$/;
@@ -135,7 +135,11 @@ async function store(row: {
 }
 
 /** Check one account (3 read-only queries) and store the result. */
-export async function checkBudgetRunway(clientId: string, cfgIn?: AdsConfig): Promise<RunwayCheckResult> {
+export async function checkBudgetRunway(
+  clientId: string,
+  cfgIn?: AdsConfig,
+  opts: { keepOnError?: boolean } = {},
+): Promise<RunwayCheckResult> {
   const id = clientId.trim();
   const fail = (msg: string): RunwayCheckResult => ({ ok: false, client_id: id, status: "error", error_vi: msg });
   if (!CLIENT_ID_RE.test(id)) return fail("Tài khoản không hợp lệ.");
@@ -184,6 +188,7 @@ export async function checkBudgetRunway(clientId: string, cfgIn?: AdsConfig): Pr
     return { ok: true, client_id: id, status, error_vi: null };
   } catch (err) {
     const msg = err instanceof AdsApiError ? err.adminMessage : err instanceof Error && err.message ? err.message : "Không kiểm tra được.";
+    if (opts.keepOnError) return fail(msg); // background refresh: keep the last stored result
     await store({
       clientId: id, customerId, ok: false, kind: "error", currency: null, limit: null, served: null, remaining: null,
       infinite: false, avg7: null, avg3: null, days: null, start: null, end: null, status: "error", expiring: false, error: msg, raw: null,
@@ -267,4 +272,79 @@ export async function runwayCronQueue(ids: string[]): Promise<string[]> {
     /* new table */
   }
   return valid.sort((a, b) => (last.get(a) || 0) - (last.get(b) || 0));
+}
+
+// ── background refresh of ONE account (strip pill; read-only cache fill) ──────────
+
+const STALE_MS = 24 * 3600_000;
+const COOLDOWN_S = 30 * 60;
+
+export type RunwayRefreshResult = { state: "fresh" | "busy" | "cooldown" | "refreshed" | "error" };
+
+async function lastChecked(id: string): Promise<{ at: number; ok: boolean } | null> {
+  try {
+    const sql = await getSql();
+    const rows = await sql.query<{ checked_at: Date | string; ok: boolean }>(
+      `select checked_at, ok from ads_budget_runway where client_id = $1`,
+      [id],
+    );
+    if (!rows[0]) return null;
+    const at = rows[0].checked_at;
+    return { at: Date.parse(at instanceof Date ? at.toISOString() : String(at)) || 0, ok: Boolean(rows[0].ok) };
+  } catch {
+    return null;
+  }
+}
+
+async function cooldownActive(key: string): Promise<boolean> {
+  try {
+    const sql = await getSql();
+    const rows = await sql.query<{ on: boolean }>(`select locked_until > now() as on from adsops_ads_refresh_lock where client_id = $1`, [key]);
+    return Boolean(rows[0]?.on);
+  } catch {
+    return false;
+  }
+}
+
+async function startCooldown(key: string): Promise<void> {
+  try {
+    const sql = await getSql();
+    await sql.query(
+      `insert into adsops_ads_refresh_lock (client_id, locked_until) values ($1, now() + ($2 || ' seconds')::interval)
+       on conflict (client_id) do update set locked_until = excluded.locked_until`,
+      [key, String(COOLDOWN_S)],
+    );
+  } catch {
+    /* no lock table: no cooldown */
+  }
+}
+
+/**
+ * Re-check one account when its stored result is stale (never checked, or older than 24 h;
+ * an error row older than 30 min). Guards: Neon lock `<client>:runway` (one in flight per
+ * account), cooldown row `<client>:runway:autofail` for 30 min after a failure, nothing
+ * if checked < 30 min ago. A failure never overwrites the last good stored result.
+ * Caller checks the viewer may see the account.
+ */
+export async function refreshRunwayIfStale(clientId: string): Promise<RunwayRefreshResult> {
+  const id = clientId.trim();
+  if (!CLIENT_ID_RE.test(id) || customerIdFor(id).length !== 10) return { state: "error" };
+  const last = await lastChecked(id);
+  const age = last ? Date.now() - last.at : Infinity;
+  if (age < COOLDOWN_S * 1000) return { state: "fresh" };
+  if (last?.ok && age < STALE_MS) return { state: "fresh" };
+  const failKey = `${id}:runway:autofail`;
+  if (await cooldownActive(failKey)) return { state: "cooldown" };
+  const lockKey = `${id}:runway`;
+  if (!(await acquireLock(lockKey, 90))) return { state: "busy" };
+  try {
+    const r = await checkBudgetRunway(id, undefined, { keepOnError: Boolean(last?.ok) });
+    if (!r.ok) {
+      await startCooldown(failKey);
+      return { state: "error" };
+    }
+    return { state: "refreshed" };
+  } finally {
+    await releaseLock(lockKey);
+  }
 }
