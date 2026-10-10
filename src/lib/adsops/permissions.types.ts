@@ -47,6 +47,8 @@ export type Capabilities = {
   viewAs: boolean;
   /** Submit a grant request for admin approval. */
   requestGrant: boolean;
+  /** "Nhật ký tối ưu": keyword change log (read + read-only Google pull). Admin and head_ads only. */
+  changeLog: boolean;
 };
 
 const NONE: Capabilities = {
@@ -60,6 +62,7 @@ const NONE: Capabilities = {
   grant: false,
   viewAs: false,
   requestGrant: false,
+  changeLog: false,
 };
 
 /** The approved permission matrix. */
@@ -77,9 +80,10 @@ export function capabilitiesFor(role: Role | "pending"): Capabilities {
         grant: true,
         viewAs: true,
         requestGrant: false,
+        changeLog: true,
       };
     case "head_ads":
-      return { ...NONE, overview: true, analytics: true, compare: true, optimize: true, opsTabs: true, pull: true, download: true, requestGrant: true };
+      return { ...NONE, overview: true, analytics: true, compare: true, optimize: true, opsTabs: true, pull: true, download: true, requestGrant: true, changeLog: true };
     case "optimizer":
       return { ...NONE, overview: true, analytics: true, compare: true, optimize: true, opsTabs: true, pull: true, download: true };
     case "sale":

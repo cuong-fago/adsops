@@ -254,7 +254,8 @@ function withAlias<T extends { client_id: string }>(row: T, aliases: Map<string,
   return alias ? { ...row, alias } : row;
 }
 
-async function visibleClients(ctx: AccessContext): Promise<AccessClient[]> {
+/** Ad accounts this principal may see (grants; "all" for the super admin), with aliases. */
+export async function visibleClients(ctx: AccessContext): Promise<AccessClient[]> {
   if (ctx.principal.role === "pending") return [];
   const all = await mergeAllClients();
   const visible = all.filter((c) => canSeeAccount(ctx, c.client_id));

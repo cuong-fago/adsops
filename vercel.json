@@ -1,5 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "rm -rf .vercel/output && npm run build",
-  "framework": null
+  "framework": null,
+  "crons": [
+    {
+      "path": "/api/cron/change-log",
+      "schedule": "30 17 * * *"
+    },
+    {
+      "path": "/api/cron/change-log",
+      "schedule": "30 22 * * *"
+    }
+  ]
 }
