@@ -195,3 +195,35 @@ export const readDeepLayerFn = createServerFn({ method: "POST" })
       onlyWithConv: data.onlyWithConv,
     });
   });
+
+function asAutoFill(data: unknown): { clientId: string; start: string; end: string; retry: boolean } {
+  if (!data || typeof data !== "object") throw new Error("Thiếu dữ liệu");
+  const d = data as Record<string, unknown>;
+  const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+  const start = typeof d.start === "string" ? d.start : "";
+  const end = typeof d.end === "string" ? d.end : "";
+  if (!clientId || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) {
+    throw new Error("Thiếu khách / ngày");
+  }
+  return { clientId, start, end, retry: d.retry === true };
+}
+
+/**
+ * Read-only cache fill of the deep layers for the range being viewed. Any role that may
+ * see Phân tích for THIS account (staff or customer); no pull capability needed and it is
+ * allowed during view-as (it writes only AdsOps' own cache). Explicit pull buttons keep
+ * their own rules (pullDeepChunkFn: pull capability, not in view-as).
+ */
+export const autoFillDeepFn = createServerFn({ method: "POST" })
+  .validator(asAutoFill)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertCap, assertAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertCap(ctx, "analytics", "Không có quyền xem Phân tích.");
+    assertAccount(ctx, data.clientId);
+    const { autoFillDeep } = await import("./deep-store.server.ts");
+    const r = await autoFillDeep(data.clientId, { start: data.start, end: data.end, retry: data.retry });
+    // Customers never see Google Ads error details.
+    return ctx.principal.kind === "client" ? { ...r, error_vi: null } : r;
+  });

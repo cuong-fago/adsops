@@ -17,7 +17,7 @@ import {
   warehouseDates,
   windowCoverage,
 } from "@/lib/adsops/analytics";
-import { readDeepLayerFn } from "@/lib/adsops/connect.functions";
+import { autoFillDeepFn, readDeepLayerFn } from "@/lib/adsops/connect.functions";
 import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
 import { cn } from "@/lib/cn";
 import { BudgetBanner } from "@/components/adsops/budget-banner";
@@ -282,7 +282,11 @@ export function AnalyticsView({
     [snap, tab, start, end, onlyConv],
   );
 
+  /** Bumped after an auto-fill so the table re-reads (rows stay on screen: no flicker). */
+  const [fillEpoch, setFillEpoch] = useState(0);
   const [deepBlock, setDeepBlock] = useState<DeepLayerBlock | null>(null);
+  /** client|layer|start|end the shown deepBlock was read for. */
+  const [deepFor, setDeepFor] = useState("");
   const [deepLoading, setDeepLoading] = useState(false);
   const [deepError, setDeepError] = useState("");
   const deepShown = useRef<{ clientId: string; layer: string } | null>(null);
@@ -302,12 +306,70 @@ export function AnalyticsView({
       .then((block) => {
         if (cancelled) return;
         deepShown.current = { clientId: snap.client_id, layer: tableLayer };
-        setDeepBlock(block); setDeepLoading(false);
+        setDeepBlock(block); setDeepFor(`${snap.client_id}|${tableLayer}|${start}|${end}`); setDeepLoading(false);
         if (block.facets) setFacetsByLayer((prev) => ({ ...prev, [tableLayer]: block.facets as DeepFacets }));
       })
       .catch((err) => { if (!cancelled) { deepShown.current = null; setDeepBlock(null); setDeepError(err instanceof Error ? err.message : "Không đọc được lớp nhóm / từ khoá."); setDeepLoading(false); } });
     return () => { cancelled = true; };
-  }, [snap.client_id, tableLayer, pmaxSelected, start, end, campaignId, adGroupId, onlyConv, deepEpoch]);
+  }, [snap.client_id, tableLayer, pmaxSelected, start, end, campaignId, adGroupId, onlyConv, deepEpoch, fillEpoch]);
+
+  // ── Auto-fill: missing days of the deep layers are pulled (read-only) for every viewer ──
+  const fillLayer = tableLayer && isDeepLayer(tableLayer) && !pmaxSelected ? tableLayer : null;
+  // Google keeps search terms ~90 days: never ask for older days.
+  const fillStart = fillLayer === "search_term" ? maxYmd(start, addDaysYmd(todaySaigon(), -(SEARCH_TERM_DAYS - 1))) : start;
+  const fillKey = fillLayer && fillStart <= end ? `${snap.client_id}|${fillLayer}|${fillStart}|${end}` : "";
+  const [fill, setFill] = useState<{ key: string; state: "filling" | "error" | "done"; x: number; y: number }>({ key: "", state: "done", x: 0, y: 0 });
+  const fillTried = useRef(new Set<string>());
+  const fillRun = useRef(0);
+  async function runFill(key: string, retry: boolean) {
+    const run = ++fillRun.current;
+    const [clientId, , s, e] = key.split("|");
+    setFill({ key, state: "filling", x: 0, y: 0 });
+    let pulled = 0;
+    let total = 0;
+    let shownEarly = false;
+    for (let i = 0, waits = 0; i < 30; i++) {
+      let r: Awaited<ReturnType<typeof autoFillDeepFn>>;
+      try {
+        r = await autoFillDeepFn({ data: { clientId, start: s, end: e, retry: retry && i === 0 } });
+      } catch {
+        r = { state: "error", remaining_months: 0, pulled: null, error_vi: null, retry_after_s: null };
+      }
+      if (run !== fillRun.current) return; // range / layer / account changed
+      if (r.state === "busy") {
+        // Someone else is filling this account: wait, then look again.
+        if (++waits > 12) { setFill({ key, state: "error", x: pulled, y: total }); return; }
+        await new Promise((res) => setTimeout(res, 5000));
+        if (run !== fillRun.current) return;
+        setFillEpoch((n) => n + 1);
+        continue;
+      }
+      if (r.state === "error" || r.state === "cooldown") { setFill({ key, state: "error", x: pulled, y: total }); setFillEpoch((n) => n + 1); return; }
+      if (r.pulled) pulled += 1;
+      total = Math.max(total, pulled + r.remaining_months);
+      if (r.state === "done") break;
+      setFill({ key, state: "filling", x: Math.min(pulled + 1, total), y: total });
+      // First month in: show it now (rows stay; later refreshes do not blank the table).
+      if (!shownEarly) { shownEarly = true; setFillEpoch((n) => n + 1); }
+    }
+    if (run !== fillRun.current) return;
+    setFill({ key, state: "done", x: pulled, y: total });
+    setFillEpoch((n) => n + 1);
+  }
+  useEffect(() => {
+    if (!fillKey || !deepBlock || deepLoading || deepBlock.complete || fillTried.current.has(fillKey)) return;
+    if (deepFor !== `${snap.client_id}|${fillLayer}|${start}|${end}`) return; // block still from the previous range
+    if (fill.key === fillKey && fill.state === "filling") return;
+    fillTried.current.add(fillKey);
+    void runFill(fillKey, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fillKey, deepBlock, deepLoading, deepFor]);
+  useEffect(() => () => { fillRun.current += 1; }, []);
+  // About to start (effect not run yet) counts as filling: no one-frame "empty" flash.
+  const fillPending = Boolean(fillKey && deepBlock && !deepLoading && !deepBlock.complete && !fillTried.current.has(fillKey) && deepFor === `${snap.client_id}|${fillLayer}|${start}|${end}`);
+  const filling = fillPending || (Boolean(fillKey) && fill.key === fillKey && fill.state === "filling");
+  const fillFailed = Boolean(fillKey) && fill.key === fillKey && fill.state === "error";
+  const fillLabel = `Đang tải số liệu từ Google Ads…${fill.y > 1 ? ` (tháng ${Math.max(1, fill.x)}/${fill.y})` : ""}`;
 
   const current: LayerBlock | DeepLayerBlock | null =
     tableLayer === "campaign" ? campaignBlock :
@@ -480,10 +542,44 @@ export function AnalyticsView({
               <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => setOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
             </div>
           )}
-          {isDeepLayer(tableLayer) && deepLoading && !pmaxSelected ? <Skeleton rows={8} /> :
-           deepError && isDeepLayer(tableLayer) ? <p className="rounded-md bg-warn-bg px-4 py-6 text-sm text-warn">{deepError}</p> :
-           current ? <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={current} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} /> :
-           <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">Chưa kéo lớp này. Dùng nút &quot;Kéo nhóm / từ khoá&quot; phía trên (admin / trưởng phòng Ads / người tối ưu).</p>}
+          {(() => {
+            const deepRows = fillLayer ? deepBlock?.rows.length || 0 : 0;
+            const retryBtn = (
+              <button type="button" onClick={() => fillKey && void runFill(fillKey, true)} className="h-8 shrink-0 rounded-lg border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset">
+                Thử lại
+              </button>
+            );
+            if (fillLayer && (deepLoading || (filling && !deepRows))) {
+              return (
+                <div className="space-y-2">
+                  {filling ? <FillProgress label={fillLabel} x={fill.x} y={fill.y} /> : null}
+                  <Skeleton rows={8} />
+                </div>
+              );
+            }
+            if (deepError && fillLayer) return <p className="rounded-md bg-warn-bg px-4 py-6 text-sm text-warn">{deepError}</p>;
+            if (fillLayer && fillFailed && !deepRows) {
+              return (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-inset px-4 py-5 text-sm text-muted">
+                  <span>Chưa lấy được số liệu từ Google Ads. Thử lại sau ít phút.</span>
+                  {retryBtn}
+                </div>
+              );
+            }
+            if (!current) return <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">Chưa có số liệu cho khoảng ngày này.</p>;
+            return (
+              <div className="space-y-2">
+                {fillLayer && filling ? <p className="text-xs text-subtle">Đang bổ sung các ngày còn thiếu…{fill.y > 1 ? ` (tháng ${Math.max(1, fill.x)}/${fill.y})` : ""}</p> : null}
+                {fillLayer && fillFailed ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-subtle">
+                    <span>Chưa lấy được các ngày còn thiếu từ Google Ads. Thử lại sau ít phút.</span>
+                    {retryBtn}
+                  </div>
+                ) : null}
+                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={current} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} />
+              </div>
+            );
+          })()}
         </section>
       ) : null}
     </div>
@@ -854,16 +950,52 @@ function coverageNote(block: LayerBlock | DeepLayerBlock, layer: string): { text
   const cap = deep.search_term_cap_days ?? 90;
   if (!ranges.length) {
     return {
-      text: layer === "search_term" ? `Search terms: kho tối đa ${cap} ngày gần nhất; chưa kéo phần này trong khoảng đã chọn. Không đoán số.` : "Chưa kéo lớp này trong khoảng đã chọn. Không đoán số.",
+      text: layer === "search_term" ? `Google chỉ lưu cụm từ tìm kiếm khoảng ${cap} ngày gần nhất; khoảng đã chọn chưa có số.` : "Chưa có số liệu cho khoảng ngày này.",
       warn: true,
     };
   }
   const rangeText = ranges.map((r) => `${dmy(r.start)} → ${dmy(r.end)}`).join("; ");
   const name = layer === "ad_group" ? "Nhóm quảng cáo" : layer === "keyword" ? "Từ khoá" : "Search terms";
   const bits = [`${name} có số từ ${rangeText}`];
-  if (!deep.complete) bits.push("ngoài khoảng này chưa kéo — tổng chỉ gồm ngày đã kéo, không điền 0");
+  if (!deep.complete) bits.push("các ngày khác chưa có số — tổng chỉ gồm ngày đã có, không điền 0");
   if (layer === "search_term") bits.push(`search term tối đa ${cap} ngày gần nhất`);
   return { text: bits.join(" · "), warn: !deep.complete };
+}
+
+const SEARCH_TERM_DAYS = 90;
+
+function todaySaigon(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Saigon", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function maxYmd(a: string, b: string): string {
+  return a > b ? a : b;
+}
+
+/** One message for an empty deep table (never two). */
+function deepEmptyText(layer: DeepLayerId, block: DeepLayerBlock): string {
+  const noun = layer === "ad_group" ? "nhóm quảng cáo" : layer === "keyword" ? "từ khoá" : "cụm từ tìm kiếm";
+  const cap = block.search_term_cap_days ?? SEARCH_TERM_DAYS;
+  const stNote = layer === "search_term" ? ` Google chỉ lưu cụm từ tìm kiếm khoảng ${cap} ngày gần nhất.` : "";
+  if (block.complete) return `Không có ${noun} nào có hiển thị trong khoảng này.`;
+  if (block.covered_days > 0) return `Không có ${noun} nào có hiển thị trong các ngày đã có số.${stNote}`;
+  return layer === "search_term" ? `Google chỉ lưu cụm từ tìm kiếm khoảng ${cap} ngày gần nhất; khoảng đã chọn chưa có số.` : "Chưa có số liệu cho khoảng ngày này.";
+}
+
+function FillProgress({ label, x, y }: { label: string; x: number; y: number }) {
+  const pctDone = y > 0 ? Math.min(100, Math.round((Math.max(0, x - 1) / y) * 100)) : 0;
+  return (
+    <div className="rounded-md bg-inset px-4 py-3 text-sm text-muted" role="status" aria-live="polite">
+      <p>{label}</p>
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-line">
+        <div className={cn("h-full rounded-full bg-accent transition-all", y > 0 ? "" : "w-1/3 animate-pulse")} style={y > 0 ? { width: `${Math.max(8, pctDone)}%` } : undefined} />
+      </div>
+    </div>
+  );
 }
 
 type CampaignLite = { id: string; name: string; pmax?: boolean };
@@ -1045,7 +1177,7 @@ type ColDef = {
 };
 
 function DataTable({
-  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll,
+  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText,
 }: {
   layer: TableLayer;
   block: LayerBlock | DeepLayerBlock;
@@ -1060,6 +1192,8 @@ function DataTable({
   scoped?: boolean;
   /** Rows in the whole layer for the range, before campaign / ad group / text filters. */
   totalAll?: number;
+  /** Message when there are no rows (deep layers: layer-specific wording). */
+  emptyText?: string;
 }) {
   const [queryLocal, setQueryLocal] = useState("");
   const query = queryProp ?? queryLocal;
@@ -1140,12 +1274,11 @@ function DataTable({
   }
   if (block.rows.length === 0) {
     return (
-      <div className="space-y-2">
-        {note ? <p className={cn("rounded-md px-3 py-2 text-sm", note.warn ? "bg-warn-bg text-warn" : "bg-inset text-muted")}>{note.text}</p> : null}
-        <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">
-          {scoped ? "Không có dòng khớp bộ lọc chiến dịch / nhóm trong khoảng ngày này." : block.complete ? "Không có dòng trong khoảng ngày này." : note?.text || "Thiếu dữ liệu — mốc chưa đủ ngày; API không trả hết cửa sổ. Không đoán số."}
-        </p>
-      </div>
+      <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">
+        {scoped
+          ? "Không có dòng khớp bộ lọc chiến dịch / nhóm trong khoảng ngày này."
+          : emptyText || (block.complete ? "Không có dòng trong khoảng ngày này." : note?.text || "Thiếu dữ liệu — mốc chưa đủ ngày; API không trả hết cửa sổ. Không đoán số.")}
+      </p>
     );
   }
 
