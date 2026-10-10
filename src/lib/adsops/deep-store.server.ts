@@ -61,6 +61,8 @@ export type DeepChunkResult = {
   counts?: { ad_group: number; keyword: number; search_term: number };
   note_vi?: string | null;
   error_vi?: string | null;
+  /** Another pull holds this account's deep lock (not an error). */
+  busy?: boolean;
 };
 
 type StoredMonth = {
@@ -366,7 +368,7 @@ function staffError(err: unknown): string {
  */
 export async function pullDeepChunk(
   clientId: string,
-  opts: { targetStart?: string | null; refreshRecent?: boolean } = {},
+  opts: { targetStart?: string | null; targetEnd?: string | null; refreshRecent?: boolean } = {},
 ): Promise<DeepChunkResult> {
   const id = clientId.trim();
   if (!CLIENT_ID_RE.test(id)) return { ok: false, error_vi: "Khách không hợp lệ." };
@@ -378,7 +380,7 @@ export async function pullDeepChunk(
   if (customerId.length !== 10) return { ok: false, client_id: id, error_vi: "Không suy ra Customer ID từ khách." };
   const lockKey = `${id}:deep`;
   if (!(await acquireLock(lockKey, 120))) {
-    return { ok: false, client_id: id, error_vi: "Đang có một lượt kéo nhóm / từ khoá khác cho tài khoản này — đợi 1–2 phút rồi bấm lại." };
+    return { ok: false, busy: true, client_id: id, error_vi: "Đang có một lượt kéo nhóm / từ khoá khác cho tài khoản này — đợi 1–2 phút rồi bấm lại." };
   }
   try {
     const meta = await pullMeta(cfg, customerId, id);
@@ -387,7 +389,9 @@ export async function pullDeepChunk(
     const wanted = opts.targetStart && /^\d{4}-\d{2}-\d{2}$/.test(opts.targetStart) ? opts.targetStart : addDaysYmd(today, -179);
     const targetStart = maxYmd(minYmd(wanted, today), floor);
     const stFloor = addDaysYmd(today, -(SEARCH_TERM_LOOKBACK_CAP - 1));
-    const windows = monthWindows(targetStart, today);
+    // Optional end (auto-fill of the viewed range): never past today.
+    const endCap = opts.targetEnd && /^\d{4}-\d{2}-\d{2}$/.test(opts.targetEnd) ? minYmd(opts.targetEnd, today) : today;
+    const windows = endCap >= targetStart ? monthWindows(targetStart, endCap) : [];
 
     const [agCov, kwCov] = await Promise.all([readCoverage(id, "ad_group"), readCoverage(id, "keyword")]);
     const pending = windows.filter((w) => !covers(agCov.get(w.month), w.start, w.end) || !covers(kwCov.get(w.month), w.start, w.end));
@@ -411,7 +415,9 @@ export async function pullDeepChunk(
     // Re-pulling a month replaces it whole: keep any earlier start already stored.
     const prevStart = agCov.get(next.month)?.covered_start;
     const start = prevStart && prevStart < next.start && prevStart >= monthStart(next.month) ? prevStart : next.start;
-    const end = next.end;
+    // …and any later end already stored in that month (a range ending mid-month must not drop days).
+    const prevEnd = agCov.get(next.month)?.covered_end;
+    const end = prevEnd && prevEnd > next.end && prevEnd <= minYmd(monthEnd(next.month), today) ? prevEnd : next.end;
 
     let names: Map<string, string> | null = null;
     try {
@@ -619,4 +625,80 @@ function buildFacets(
   }
   const byName = (a: { name: string; id: string }, b: { name: string; id: string }) => (a.name || a.id).localeCompare(b.name || b.id, "vi");
   return { campaigns: [...camps.values()].sort(byName), ad_groups: [...groups.values()].sort(byName), total_rows: block.rows.length };
+}
+
+// ── auto-fill on view (read-only cache fill for any viewer of the account) ─────────
+
+/** After an error, on-view auto-fill waits this long; "Thử lại" may retry after RETRY_FLOOR_S. */
+const AUTOFILL_COOLDOWN_S = 30 * 60;
+const AUTOFILL_RETRY_FLOOR_S = 60;
+
+export type AutoFillState = "progress" | "done" | "busy" | "cooldown" | "error";
+export type AutoFillResult = {
+  state: AutoFillState;
+  remaining_months: number;
+  pulled: { start: string; end: string } | null;
+  /** Staff-readable reason; the UI shows a neutral message to everyone. */
+  error_vi: string | null;
+  retry_after_s: number | null;
+};
+
+async function cooldownLeft(key: string): Promise<number> {
+  try {
+    const sql = await getSql();
+    const rows = await sql.query<{ left_s: number | string }>(
+      `select extract(epoch from (locked_until - now())) as left_s from adsops_ads_refresh_lock where client_id = $1`,
+      [key],
+    );
+    const left = Number(rows[0]?.left_s ?? 0);
+    return Number.isFinite(left) && left > 0 ? left : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function setCooldown(key: string, seconds: number): Promise<void> {
+  try {
+    const sql = await getSql();
+    await sql.query(
+      `insert into adsops_ads_refresh_lock (client_id, locked_until) values ($1, now() + ($2 || ' seconds')::interval)
+       on conflict (client_id) do update set locked_until = excluded.locked_until`,
+      [key, String(seconds)],
+    );
+  } catch {
+    /* lock table missing: no cooldown */
+  }
+}
+
+/**
+ * One guarded chunk of the read-only deep pull for [start, end] (newest missing month first).
+ * - In-flight dedupe: pullDeepChunk's Neon lock `<client>:deep` (one pull per account; a chunk
+ *   fills ad groups, keywords and search terms of one month together). Held → state "busy".
+ * - Error cooldown: `<client>:deep:autofail` row; on-view auto-fill skips for 30 min,
+ *   an explicit retry is allowed after 60 s.
+ * Caller checks the viewer may see the account.
+ */
+export async function autoFillDeep(clientId: string, opts: { start: string; end: string; retry?: boolean }): Promise<AutoFillResult> {
+  const id = clientId.trim();
+  const out = (state: AutoFillState, extra: Partial<AutoFillResult> = {}): AutoFillResult => ({
+    state,
+    remaining_months: 0,
+    pulled: null,
+    error_vi: null,
+    retry_after_s: null,
+    ...extra,
+  });
+  if (!CLIENT_ID_RE.test(id)) return out("error", { error_vi: "Khách không hợp lệ." });
+  const failKey = `${id}:deep:autofail`;
+  const left = await cooldownLeft(failKey);
+  const minLeft = opts.retry ? AUTOFILL_COOLDOWN_S - AUTOFILL_RETRY_FLOOR_S : 0;
+  if (left > minLeft) return out("cooldown", { retry_after_s: Math.ceil(left - minLeft) });
+  const r = await pullDeepChunk(id, { targetStart: opts.start, targetEnd: opts.end });
+  if (r.busy) return out("busy");
+  if (!r.ok) {
+    await setCooldown(failKey, AUTOFILL_COOLDOWN_S);
+    return out("error", { error_vi: r.error_vi || null, retry_after_s: AUTOFILL_RETRY_FLOOR_S });
+  }
+  if (left > 0) await releaseLock(failKey);
+  return out(r.done ? "done" : "progress", { remaining_months: r.remaining_months ?? 0, pulled: r.pulled ?? null });
 }
