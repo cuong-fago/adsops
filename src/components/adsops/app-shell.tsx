@@ -615,9 +615,20 @@ export function AdsOpsApp() {
     !loading &&
     fixture &&
     (shownTab === "final" || shownTab === "proposals" || shownTab === "guard" || shownTab === "alerts");
-  const opsTabs = OPS_TABS.filter((t) => tabAllowed(access, t.id));
+  // FINAL shows only once this account's final pack is known to exist (never the empty
+  // "Chưa có gói final" card). Unknown (still loading) counts as absent for the nav.
+  const finalKnown = "final" in pack;
+  const finalPresent = Boolean(pack.final);
+  const opsTabs = OPS_TABS.filter((t) => tabAllowed(access, t.id) && (t.id !== "final" || finalPresent));
   const roleVi = access ? ROLE_LABEL_VI[access.role] || "" : "";
   const freshText = freshnessLine(fresh);
+
+  // FINAL was the active/default tab but this account has no final pack: open Phân tích
+  // (or Báo cáo when the role has no analytics) instead.
+  useEffect(() => {
+    if (shownTab !== "final" || loading || !finalKnown || finalPresent) return;
+    setTab(tabAllowed(access, "analytics") ? "analytics" : "report");
+  }, [shownTab, loading, finalKnown, finalPresent, access]);
 
   const body = useMemo(() => {
     if (accessError) {
@@ -803,6 +814,8 @@ export function AdsOpsApp() {
       return <ProposalsPanel data={pack.proposals as never} />;
     }
     if (shownTab === "final") {
+      // No final pack: an effect moves to Phân tích / Báo cáo; never render the empty card.
+      if (!pack.final) return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở…</p>;
       return (
         <FinalPanel
           data={pack.final as never}
