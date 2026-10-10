@@ -60,9 +60,9 @@ export const saveYamlAndProbe = createServerFn({ method: "POST" })
   .validator(asIntake)
   .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {
-    const { assertRealAdmin, assertWritable, assertAccount } = await import("./permissions.server");
+    const { assertEffectiveAdmin, assertWritable, assertAccount } = await import("./permissions.server");
     const ctx = context.access;
-    assertRealAdmin(ctx);
+    assertEffectiveAdmin(ctx);
     assertWritable(ctx);
     assertAccount(ctx, data.clientId);
     const { installAndProbe } = await import("./connect.server.ts");

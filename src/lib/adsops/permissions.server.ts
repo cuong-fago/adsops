@@ -437,9 +437,20 @@ export function assertWritable(ctx: AccessContext): void {
   if (ctx.readOnly) throw new ForbiddenError("Đang ở chế độ Xem như người dùng (chỉ đọc).");
 }
 
-/** Admin actions use the REAL signed-in person (works while viewing-as). */
+/** The REAL signed-in person is admin (true even while viewing-as). Prefer assertEffectiveAdmin. */
 export function assertRealAdmin(ctx: AccessContext): void {
   if (!ctx.real.isSuperAdmin) throw new ForbiddenError("Chỉ admin làm được việc này.");
+}
+
+/**
+ * Admin-only screens and actions (Phân quyền, Google Ads API card): the EFFECTIVE role must
+ * be admin. Admin viewing-as someone else is that person here, so it is rejected; the
+ * "Thoát chế độ xem" banner (stopViewAs) is the way back.
+ */
+export function assertEffectiveAdmin(ctx: AccessContext): void {
+  if (!ctx.real.isSuperAdmin || ctx.readOnly || ctx.viewAs || !ctx.caps.grant) {
+    throw new ForbiddenError(ctx.viewAs ? "Đang Xem như người dùng — thoát chế độ xem để quản trị." : "Chỉ admin làm được việc này.");
+  }
 }
 
 // ── client sessions ────────────────────────────────────────────────────────────────

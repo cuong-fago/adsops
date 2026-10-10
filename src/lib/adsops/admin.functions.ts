@@ -186,7 +186,7 @@ export const adminStartViewAs = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const p = await import("./permissions.server.ts");
     const ctx = context.access;
-    p.assertRealAdmin(ctx);
+    p.assertEffectiveAdmin(ctx);
     if (!ctx.real.userId) throw new p.ForbiddenError("Thiếu phiên admin.");
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();

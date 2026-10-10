@@ -154,7 +154,9 @@ const PACK_SLICE_KEYS = [
 function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
   if (!access || access.role === "pending") return false;
   const caps = access.caps;
-  if (id === "members") return Boolean(caps.grant || caps.requestGrant);
+  // Phân quyền: effective admin (never while viewing-as), or Trưởng phòng Ads for its grant
+  // request form. Sale / người tối ưu / customers: hidden.
+  if (id === "members") return Boolean((caps.grant && !access.read_only) || (access.role === "head_ads" && caps.requestGrant));
   if (id === "analytics") return caps.analytics;
   // Server functions enforce the same capability (admin / head_ads only).
   if (id === "changelog") return Boolean(caps.changeLog);
@@ -261,7 +263,7 @@ export function AdsOpsApp() {
         setClients(rows);
         if (dir.mcc) setMcc(dir.mcc);
         if (!dir.access.caps.opsTabs) setTab("report");
-        else if (dir.access.real_is_admin && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("gads")) {
+        else if (dir.access.caps.grant && !dir.access.read_only && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("gads")) {
           setTab("members");
         }
         setClientId((cur) => {
@@ -689,7 +691,7 @@ export function AdsOpsApp() {
       );
     }
     if (shownTab === "members")
-      return <PermissionsPanel caps={access.caps} realAdmin={access.real_is_admin} readOnly={access.read_only} />;
+      return <PermissionsPanel caps={access.caps} readOnly={access.read_only} />;
     if (!clients.length) {
       return (
         <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
