@@ -51,6 +51,13 @@ const PRESETS = [
   { id: "30", label: "30 ngày", days: 30 },
 ] as const;
 
+function cidOf(c: ShellClient): string {
+  const fromLabel = (c.customer_id_dashed || "").split("·")[0].replace(/\D/g, "");
+  if (fromLabel.length === 10) return fromLabel;
+  const m = /^tkqc_(\d{10})$/.exec(c.client_id);
+  return m ? m[1] : "";
+}
+
 function bid(micros: number | null): string {
   return micros == null ? "" : `${moneyPlain(micros / 1_000_000)} đ`;
 }
@@ -122,8 +129,9 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
     for (const c of clients) m.set(c.client_id, c.alias ? `${c.alias} — ${c.display_name}` : c.display_name);
     return m;
   }, [clients]);
+  // customer_id_dashed can be labelled "836-391-8650 · MCC 385-976-8247": read the CID before "·".
   const liveClients = useMemo(
-    () => clients.filter((c) => (c.adapter || "live") === "live" && (c.customer_id_dashed || "").replace(/\D/g, "").length === 10),
+    () => clients.filter((c) => (c.adapter || "live") === "live" && cidOf(c).length === 10),
     [clients],
   );
 
@@ -167,9 +175,12 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
   async function pullOne(id: string): Promise<{ ok: boolean; text: string }> {
     try {
       const r = await pullChangeLogFn({ data: { clientId: id } });
-      return r.ok
-        ? { ok: true, text: `${num(r.row_count)} thay đổi${r.note_vi ? ` · ${r.note_vi}` : ""}` }
-        : { ok: false, text: r.error_vi || "Lỗi" };
+      if (!r.ok) return { ok: false, text: r.error_vi || "Lỗi" };
+      const shared = r.shared_rows ? `, ${num(r.shared_rows)} dòng DS phủ định chung` : "";
+      return {
+        ok: true,
+        text: `Đọc được ${num(r.read_count)} thay đổi, lưu ${num(r.keyword_rows)} dòng từ khoá${shared}${r.note_vi ? ` · ${r.note_vi}` : ""}`,
+      };
     } catch (err) {
       return { ok: false, text: err instanceof Error && err.message ? err.message : "Lỗi" };
     }

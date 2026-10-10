@@ -150,7 +150,14 @@ export type ChangeLogRead = {
 export type ChangeLogPullResult = {
   ok: boolean;
   client_id: string;
+  /** Rows written to Neon (keyword rows + shared-list rows). */
   row_count: number;
+  /** change_event rows Google returned (all criterion types). */
+  read_count: number;
+  /** Keyword / negative rows stored (location, audience… criteria are skipped). */
+  keyword_rows: number;
+  /** Shared negative list rows stored (change_status). */
+  shared_rows: number;
   truncated: boolean;
   covered_start: string | null;
   covered_end: string | null;
