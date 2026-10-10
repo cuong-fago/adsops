@@ -7,6 +7,13 @@ import { cn } from "@/lib/cn";
 
 const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-xs font-semibold text-muted";
 const td = "border-b border-line/60 px-3 py-2 align-top";
+/** Numeric columns: tighter padding so the table fits. */
+const tdNum = "border-b border-line/60 px-2 py-2 align-top whitespace-nowrap text-right tabular-nums";
+const thNum = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-2 py-2.5 text-right text-xs font-semibold text-muted";
+/** Account column: wraps (long tokens too), stays visible while scrolling right. */
+const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-inset px-3 py-2.5 text-left text-xs font-semibold text-muted";
+const nameTd = "sticky left-0 z-[5] min-w-[220px] max-w-[320px] border-b border-r border-line/60 px-3 py-2 align-top";
+const nameText = "line-clamp-3 font-medium text-ink [overflow-wrap:anywhere]";
 
 type SortKey = "runway" | "account" | "remaining" | "avg";
 
@@ -126,8 +133,8 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
 
   const redCount = (rows || []).filter((r) => r.status === "red" || r.expiring).length;
   const toggle = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
-  const head = (key: SortKey, label: string, right = false) => (
-    <th className={cn(th, right && "text-right")} aria-sort={sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
+  const head = (key: SortKey, label: string, right = false, cls?: string) => (
+    <th className={cls || cn(right ? thNum : th)} aria-sort={sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
       <button type="button" onClick={() => toggle(key)} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === key && "text-ink")}>
         {label} {sort.key === key ? sort.dir === 1 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" /> : null}
       </button>
@@ -172,10 +179,10 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
           <table className="min-w-full border-separate border-spacing-0 text-sm">
             <thead>
               <tr>
-                {head("account", "Tài khoản")}
+                {head("account", "Tài khoản", false, nameTh)}
                 <th className={th}>Hình thức</th>
-                <th className={cn(th, "text-right")}>Hạn mức</th>
-                <th className={cn(th, "text-right")}>Đã tiêu</th>
+                <th className={thNum}>Hạn mức</th>
+                <th className={thNum}>Đã tiêu</th>
                 {head("remaining", "Còn lại", true)}
                 {head("avg", "Tiêu TB/ngày (7 ngày)", true)}
                 {head("runway", "Số ngày còn chạy", true)}
@@ -187,21 +194,21 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
             <tbody>
               {shown.map((r) => (
                 <tr key={r.client_id} className={cn(r.status === "red" && "bg-danger-bg/40")}>
-                  <td className={td}>
-                    <span className="block max-w-[20rem] truncate font-medium text-ink" title={r.label}>{r.label}</span>
-                    <span className="text-xs text-subtle tabular-nums">{r.customer_id_dashed}</span>
+                  <td className={cn(nameTd, r.status === "red" ? "bg-[color-mix(in_srgb,var(--color-danger-bg)_40%,var(--color-paper))]" : "bg-paper")}>
+                    <span className={nameText} title={[r.label, r.customer_id_dashed].filter(Boolean).join(" · ")}>{r.label}</span>
+                    <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{r.customer_id_dashed}</span>
                   </td>
-                  <td className={cn(td, "whitespace-nowrap text-muted")}>
+                  <td className={cn(td, "min-w-[8rem] max-w-[10rem] text-muted")}>
                     {r.kind === "account_budget" ? "Có ngân sách tài khoản" : r.kind === "no_budget" ? "Không có số dư từ Google" : r.kind === "error" ? "—" : "Chưa kiểm tra"}
                   </td>
-                  <td className={cn(td, "whitespace-nowrap text-right tabular-nums")}>{r.infinite ? "Không giới hạn" : cur(r, r.limit)}</td>
-                  <td className={cn(td, "whitespace-nowrap text-right tabular-nums")}>{cur(r, r.served)}</td>
-                  <td className={cn(td, "whitespace-nowrap text-right font-medium tabular-nums")}>{r.infinite ? "Không giới hạn" : cur(r, r.remaining)}</td>
-                  <td className={cn(td, "whitespace-nowrap text-right tabular-nums")}>
+                  <td className={tdNum}>{r.infinite ? "Không giới hạn" : cur(r, r.limit)}</td>
+                  <td className={tdNum}>{cur(r, r.served)}</td>
+                  <td className={cn(tdNum, "font-medium")}>{r.infinite ? "Không giới hạn" : cur(r, r.remaining)}</td>
+                  <td className={tdNum}>
                     {cur(r, r.avg7)}
                     {r.avg3 != null ? <span className="block text-xs text-subtle">3 ngày: {money(r.avg3, r.currency || "VND")}</span> : null}
                   </td>
-                  <td className={cn(td, "whitespace-nowrap text-right font-semibold tabular-nums", r.status === "red" && "text-danger", r.status === "amber" && "text-warn")}>
+                  <td className={cn(tdNum, "font-semibold", r.status === "red" && "text-danger", r.status === "amber" && "text-warn")}>
                     {r.runway_days != null ? num(r.runway_days, 1) : r.status === "infinite" ? "Không giới hạn" : r.status === "no_spend" ? "không tiêu" : "—"}
                   </td>
                   <td className={cn(td, "whitespace-nowrap text-muted")}>{r.budget_end ? dateVi(r.budget_end) : r.kind === "account_budget" ? "Không hết hạn" : "—"}</td>
