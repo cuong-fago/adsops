@@ -49,12 +49,13 @@ function statusVi(s: GrantRequestRow["status"]): string {
   return { pending: "Chờ duyệt", approved: "Đã duyệt", rejected: "Từ chối", cancelled: "Đã huỷ" }[s] || s;
 }
 
-export function PermissionsPanel({ caps, realAdmin, readOnly }: { caps: Caps; realAdmin?: boolean; readOnly?: boolean }) {
-  if (caps.grant || realAdmin) {
+/** Uses the EFFECTIVE role (view-as shows exactly what the viewed person sees). */
+export function PermissionsPanel({ caps, readOnly }: { caps: Caps; readOnly?: boolean }) {
+  if (caps.grant && !readOnly) {
     return (
       <div className="flex flex-col gap-4">
-        {realAdmin ? <GoogleAdsAdminCard readOnly={readOnly} /> : null}
-        {caps.grant ? <AdminPermissions /> : null}
+        <GoogleAdsAdminCard readOnly={false} />
+        <AdminPermissions />
       </div>
     );
   }

@@ -69,8 +69,8 @@ function summarizeMccs(
 export const getGoogleAdsStatus = createServerFn({ method: "GET" })
   .middleware([principalMiddleware])
   .handler(async ({ context }): Promise<GoogleAdsStatus> => {
-    const { assertRealAdmin } = await import("./permissions.server");
-    assertRealAdmin(context.access);
+    const { assertEffectiveAdmin } = await import("./permissions.server");
+    assertEffectiveAdmin(context.access);
     const g = await import("./google-ads.server.ts");
     const cfg = await g.resolveAdsConfig();
     const status = g.publicStatus(cfg, g.redirectUriFor(await currentRequest())) as GoogleAdsStatus;
@@ -81,8 +81,8 @@ export const getGoogleAdsStatus = createServerFn({ method: "GET" })
 export const testGoogleAdsConnection = createServerFn({ method: "POST" })
   .middleware([principalMiddleware])
   .handler(async ({ context }): Promise<GoogleAdsTestResult> => {
-    const { assertRealAdmin } = await import("./permissions.server");
-    assertRealAdmin(context.access);
+    const { assertEffectiveAdmin } = await import("./permissions.server");
+    assertEffectiveAdmin(context.access);
     const g = await import("./google-ads.server.ts");
     const cfg = await g.resolveAdsConfig();
     if (!cfg.ready) {
@@ -121,7 +121,7 @@ export const pullMccAccounts = createServerFn({ method: "POST" })
   .middleware([principalMiddleware])
   .handler(async ({ context }): Promise<GoogleAdsTestResult> => {
     const p = await import("./permissions.server");
-    p.assertRealAdmin(context.access);
+    p.assertEffectiveAdmin(context.access);
     p.assertWritable(context.access);
     const g = await import("./google-ads.server.ts");
     const cfg = await g.resolveAdsConfig();
@@ -178,7 +178,7 @@ export const disconnectGoogleAds = createServerFn({ method: "POST" })
   .middleware([principalMiddleware])
   .handler(async ({ context }) => {
     const p = await import("./permissions.server");
-    p.assertRealAdmin(context.access);
+    p.assertEffectiveAdmin(context.access);
     p.assertWritable(context.access);
     const g = await import("./google-ads.server.ts");
     await g.deleteStoredCredential();

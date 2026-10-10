@@ -1,13 +1,13 @@
 /**
  * Permission administration (server-only). Every mutation writes
- * `permission_audit_log`. Admin actions check the REAL signed-in person
- * (`assertRealAdmin`) so they keep working during "Xem như người dùng này".
+ * `permission_audit_log`. Admin actions require the EFFECTIVE role to be admin
+ * (`assertEffectiveAdmin`): rejected while "Xem như người dùng này" is on.
  */
 import { getSql } from "@/lib/db";
 import {
   actorLabel,
   assertCap,
-  assertRealAdmin,
+  assertEffectiveAdmin,
   assertWritable,
   audit,
   canSeeAccount,
@@ -94,7 +94,7 @@ async function listRequests(where: string, params: unknown[]): Promise<GrantRequ
 // ── directory ───────────────────────────────────────────────────────────────────────
 
 export async function adminDirectory(ctx: AccessContext): Promise<AdminDirectory> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const sql = await getSql();
   const [staffRows, clientRows, customers, accounts, staffGrants, clientGrants, loginRows] = await Promise.all([
     sql<{ id: string; email: string; role: StaffRole; display_name: string | null; logged_in: boolean }>`
@@ -173,7 +173,7 @@ export async function upsertStaff(
   ctx: AccessContext,
   input: { email: string; role: string; display_name?: string | null },
 ): Promise<void> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const email = input.email.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Email không hợp lệ.");
   if (email === SUPER_ADMIN_EMAIL) throw new Error("Admin là cố định, không đổi vai trò.");
@@ -192,7 +192,7 @@ export async function upsertStaff(
 }
 
 export async function removeStaff(ctx: AccessContext, id: string): Promise<void> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const sql = await getSql();
   const row = (await sql<{ id: string; email: string; role: string }>`select id, email, role from staff_users where id = ${id} limit 1`)[0];
   if (!row) return;
@@ -220,7 +220,7 @@ export async function createClientUser(
     customer_id?: string | null;
   },
 ): Promise<{ id: string }> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const username = input.username.trim().toLowerCase();
   if (!USERNAME_RE.test(username)) {
     throw new Error("Tên đăng nhập 3–60 ký tự: chữ thường, số, . _ - @");
@@ -252,7 +252,7 @@ export async function updateClientUser(
   ctx: AccessContext,
   input: { id: string; role?: string; display_name?: string | null; email?: string | null; customer_id?: string | null },
 ): Promise<void> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const sql = await getSql();
   const prev = (
     await sql<{ id: string; username: string; role: string; display_name: string | null; email: string | null; customer_id: string | null }>`
@@ -277,7 +277,7 @@ export async function updateClientUser(
 }
 
 export async function resetClientPassword(ctx: AccessContext, id: string, password: string): Promise<void> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   validatePassword(password);
   const sql = await getSql();
   const row = (await sql<{ username: string }>`select username from client_users where id = ${id} limit 1`)[0];
@@ -289,7 +289,7 @@ export async function resetClientPassword(ctx: AccessContext, id: string, passwo
 }
 
 export async function revokeClientSessions(ctx: AccessContext, id: string): Promise<number> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const sql = await getSql();
   const row = (await sql<{ username: string }>`select username from client_users where id = ${id} limit 1`)[0];
   if (!row) throw new Error("Không tìm thấy người dùng.");
@@ -300,7 +300,7 @@ export async function revokeClientSessions(ctx: AccessContext, id: string): Prom
 
 /** Contract end: removes the login, its sessions and every grant immediately. */
 export async function deleteClientUser(ctx: AccessContext, id: string): Promise<void> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const sql = await getSql();
   const row = (await sql<{ username: string; customer_id: string | null }>`select username, customer_id from client_users where id = ${id} limit 1`)[0];
   if (!row) return;
@@ -356,7 +356,7 @@ export async function setGrants(
   ctx: AccessContext,
   input: { kind: PrincipalKind; id: string; accountIds: string[] },
 ): Promise<{ added: string[]; removed: string[] }> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const label = await targetLabel(input.kind, input.id);
   const wanted = await existingAccountIds(uniq(input.accountIds));
   const sql = await getSql();
@@ -380,7 +380,7 @@ export async function upsertCustomer(
   ctx: AccessContext,
   input: { id?: string | null; name: string; note?: string | null },
 ): Promise<{ id: string }> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const name = input.name.trim();
   if (!name) throw new Error("Thiếu tên khách hàng.");
   const sql = await getSql();
@@ -398,7 +398,7 @@ export async function upsertCustomer(
 }
 
 export async function deleteCustomer(ctx: AccessContext, id: string): Promise<void> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const sql = await getSql();
   const prev = (await sql<{ name: string }>`select name from customers where id = ${id} limit 1`)[0];
   if (!prev) return;
@@ -417,7 +417,7 @@ export async function updateAdAccount(
   ctx: AccessContext,
   input: { id: string; customer_id?: string | null; sale_staff_id?: string | null; alias?: string | null },
 ): Promise<void> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const sql = await getSql();
   const prev = (
     await sql<{ id: string; customer_id: string | null; sale_staff_id: string | null; display_name: string; alias: string | null; external_id: string | null }>`
@@ -487,7 +487,7 @@ export async function decideRequest(
   ctx: AccessContext,
   input: { id: string; approve: boolean; note?: string | null },
 ): Promise<void> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const sql = await getSql();
   const req = (
     await sql<{ id: string; target_kind: PrincipalKind; target_id: string; ad_account_ids: unknown; status: string; requested_by: string }>`
@@ -585,7 +585,7 @@ export async function cancelGrantRequest(ctx: AccessContext, id: string): Promis
 // ── audit view ────────────────────────────────────────────────────────────────────────
 
 export async function auditLog(ctx: AccessContext, limit = 200, beforeId?: number): Promise<AuditRow[]> {
-  assertRealAdmin(ctx);
+  assertEffectiveAdmin(ctx);
   const sql = await getSql();
   const lim = Math.max(1, Math.min(500, Math.floor(limit)));
   const rows = await sql.query<AuditRow>(
