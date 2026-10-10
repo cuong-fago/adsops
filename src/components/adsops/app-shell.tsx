@@ -84,7 +84,8 @@ const OPS_TABS: { id: TabId; label: string }[] = [
   { id: "alerts", label: "Cảnh báo" },
   { id: "report", label: "Báo cáo" },
   { id: "hub", label: "Data Hub" },
-  { id: "connect", label: "Kết nối" },
+  // "Kết nối" (yaml / OAuth-field panel) is hidden: it does not work on Vercel.
+  // Google Ads is connected from Phân quyền → Google Ads API.
   { id: "sop", label: "SOP" },
   { id: "members", label: "Phân quyền" },
 ];
@@ -140,6 +141,8 @@ function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
   if (id === "analytics") return caps.analytics;
   // Server functions enforce the same capability (admin / head_ads only).
   if (id === "changelog") return Boolean(caps.changeLog);
+  // Old connect panel: never shown, so a stale "connect" tab falls back like any disallowed tab.
+  if (id === "connect") return false;
   const cap = MODULE_CAPABILITY[id];
   return cap ? Boolean(caps[cap]) : false;
 }
