@@ -202,6 +202,16 @@ export default defineConfig(({ command, isPreview }) => ({
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
             serverDir: "./server",
+            // Daily keyword change-log pull (read-only). Also listed in vercel.json;
+            // the prebuilt output reads crons from .vercel/output/config.json.
+            vercel: {
+              config: {
+                crons: [
+                  { path: "/api/cron/change-log", schedule: "30 17 * * *" },
+                  { path: "/api/cron/change-log", schedule: "30 22 * * *" },
+                ],
+              },
+            },
             // AdsOps data lives in server-data/adsops and is copied into the
             // function by scripts/bundle-adsops-data.mjs (never public/).
           }),

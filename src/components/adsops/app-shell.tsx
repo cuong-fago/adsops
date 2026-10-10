@@ -23,6 +23,7 @@ import {
 import { adminUpdateAdAccount, stopViewAs } from "@/lib/adsops/admin.functions";
 import { AccountPicker } from "@/components/adsops/account-picker";
 import { BrandMark, NavTab } from "@/components/adsops/brand";
+import { ChangeLogView } from "@/components/adsops/change-log-view";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
 import { clientSignOut } from "@/lib/adsops/client-auth.functions";
@@ -72,6 +73,7 @@ type TabId =
   | "connect"
   | "sop"
   | "analytics"
+  | "changelog"
   | "members";
 
 const OPS_TABS: { id: TabId; label: string }[] = [
@@ -114,6 +116,7 @@ const TAB_MODULES: Record<TabId, string[]> = {
   connect: ["connect"],
   sop: ["sop"],
   analytics: ["analytics", "pace"],
+  changelog: [],
   members: [],
 };
 
@@ -135,6 +138,8 @@ function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
   const caps = access.caps;
   if (id === "members") return Boolean(caps.grant || caps.requestGrant);
   if (id === "analytics") return caps.analytics;
+  // Server functions enforce the same capability (admin / head_ads only).
+  if (id === "changelog") return Boolean(caps.changeLog);
   const cap = MODULE_CAPABILITY[id];
   return cap ? Boolean(caps[cap]) : false;
 }
@@ -641,6 +646,9 @@ export function AdsOpsApp() {
         </section>
       );
     }
+    if (shownTab === "changelog") {
+      return <ChangeLogView clients={clients} clientId={clientId} canPull={Boolean(access.caps.changeLog && !access.read_only)} />;
+    }
     if (loading) {
       return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở khách…</p>;
     }
@@ -897,16 +905,23 @@ export function AdsOpsApp() {
                 {item.label}
               </NavTab>
             ))}
-            {caps?.analytics ? (
+            {caps?.analytics || caps?.changeLog ? (
               <>
                 <span aria-hidden className="mx-2 h-5 w-px shrink-0 self-center bg-line" />
                 <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
                   Phân tích
                 </span>
-                <NavTab active={shownTab === "analytics"} onClick={() => goTab("analytics")}>
-                  Phân tích
-                  {firing ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger" /> : null}
-                </NavTab>
+                {caps?.analytics ? (
+                  <NavTab active={shownTab === "analytics"} onClick={() => goTab("analytics")}>
+                    Phân tích
+                    {firing ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger" /> : null}
+                  </NavTab>
+                ) : null}
+                {caps?.changeLog ? (
+                  <NavTab active={shownTab === "changelog"} onClick={() => goTab("changelog")}>
+                    Nhật ký tối ưu
+                  </NavTab>
+                ) : null}
               </>
             ) : null}
           </nav>

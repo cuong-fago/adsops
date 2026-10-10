@@ -11,7 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ApiAdsopsFileRouteImport } from './routes/api/adsops-file'
+import { Route as ApiAdsopsHealthRouteImport } from './routes/api/adsops-health'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiCronChangeLogRouteImport } from './routes/api/cron/change-log'
+import { Route as ApiGoogleAdsOauthCallbackRouteImport } from './routes/api/google-ads/oauth/callback'
+import { Route as ApiGoogleAdsOauthStartRouteImport } from './routes/api/google-ads/oauth/start'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,40 +28,111 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdsopsFileRoute = ApiAdsopsFileRouteImport.update({
+  id: '/api/adsops-file',
+  path: '/api/adsops-file',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdsopsHealthRoute = ApiAdsopsHealthRouteImport.update({
+  id: '/api/adsops-health',
+  path: '/api/adsops-health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCronChangeLogRoute = ApiCronChangeLogRouteImport.update({
+  id: '/api/cron/change-log',
+  path: '/api/cron/change-log',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGoogleAdsOauthCallbackRoute =
+  ApiGoogleAdsOauthCallbackRouteImport.update({
+    id: '/api/google-ads/oauth/callback',
+    path: '/api/google-ads/oauth/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleAdsOauthStartRoute = ApiGoogleAdsOauthStartRouteImport.update({
+  id: '/api/google-ads/oauth/start',
+  path: '/api/google-ads/oauth/start',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/api/adsops-file': typeof ApiAdsopsFileRoute
+  '/api/adsops-health': typeof ApiAdsopsHealthRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/cron/change-log': typeof ApiCronChangeLogRoute
+  '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
+  '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/api/adsops-file': typeof ApiAdsopsFileRoute
+  '/api/adsops-health': typeof ApiAdsopsHealthRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/cron/change-log': typeof ApiCronChangeLogRoute
+  '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
+  '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/api/adsops-file': typeof ApiAdsopsFileRoute
+  '/api/adsops-health': typeof ApiAdsopsHealthRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/cron/change-log': typeof ApiCronChangeLogRoute
+  '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
+  '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/api/adsops-file'
+    | '/api/adsops-health'
+    | '/api/auth/$'
+    | '/api/cron/change-log'
+    | '/api/google-ads/oauth/callback'
+    | '/api/google-ads/oauth/start'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/api/auth/$'
-  id: '__root__' | '/' | '/login' | '/api/auth/$'
+  to:
+    | '/'
+    | '/login'
+    | '/api/adsops-file'
+    | '/api/adsops-health'
+    | '/api/auth/$'
+    | '/api/cron/change-log'
+    | '/api/google-ads/oauth/callback'
+    | '/api/google-ads/oauth/start'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/api/adsops-file'
+    | '/api/adsops-health'
+    | '/api/auth/$'
+    | '/api/cron/change-log'
+    | '/api/google-ads/oauth/callback'
+    | '/api/google-ads/oauth/start'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  ApiAdsopsFileRoute: typeof ApiAdsopsFileRoute
+  ApiAdsopsHealthRoute: typeof ApiAdsopsHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiCronChangeLogRoute: typeof ApiCronChangeLogRoute
+  ApiGoogleAdsOauthCallbackRoute: typeof ApiGoogleAdsOauthCallbackRoute
+  ApiGoogleAdsOauthStartRoute: typeof ApiGoogleAdsOauthStartRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -75,11 +151,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/adsops-file': {
+      id: '/api/adsops-file'
+      path: '/api/adsops-file'
+      fullPath: '/api/adsops-file'
+      preLoaderRoute: typeof ApiAdsopsFileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/adsops-health': {
+      id: '/api/adsops-health'
+      path: '/api/adsops-health'
+      fullPath: '/api/adsops-health'
+      preLoaderRoute: typeof ApiAdsopsHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/change-log': {
+      id: '/api/cron/change-log'
+      path: '/api/cron/change-log'
+      fullPath: '/api/cron/change-log'
+      preLoaderRoute: typeof ApiCronChangeLogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-ads/oauth/callback': {
+      id: '/api/google-ads/oauth/callback'
+      path: '/api/google-ads/oauth/callback'
+      fullPath: '/api/google-ads/oauth/callback'
+      preLoaderRoute: typeof ApiGoogleAdsOauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-ads/oauth/start': {
+      id: '/api/google-ads/oauth/start'
+      path: '/api/google-ads/oauth/start'
+      fullPath: '/api/google-ads/oauth/start'
+      preLoaderRoute: typeof ApiGoogleAdsOauthStartRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -88,7 +199,12 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  ApiAdsopsFileRoute: ApiAdsopsFileRoute,
+  ApiAdsopsHealthRoute: ApiAdsopsHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiCronChangeLogRoute: ApiCronChangeLogRoute,
+  ApiGoogleAdsOauthCallbackRoute: ApiGoogleAdsOauthCallbackRoute,
+  ApiGoogleAdsOauthStartRoute: ApiGoogleAdsOauthStartRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
