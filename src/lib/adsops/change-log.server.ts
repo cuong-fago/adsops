@@ -47,13 +47,15 @@ export function changeEventQuery(start: string, end: string, withNames = true): 
 }
 
 /** Shared negative lists: change_event has no SHARED_SET type, so change_status is used (no user / no keyword text). */
-export function sharedSetStatusQuery(start: string, end: string): string {
+// Only change_status fields (as in Google's examples); list / campaign names are read
+// in separate queries. Upper bound is today 23:59:59 (never a future date).
+export function sharedSetStatusQuery(start: string, today: string): string {
   return `SELECT change_status.resource_name, change_status.last_change_date_time, change_status.resource_type,
-    change_status.resource_status, change_status.shared_set, change_status.campaign_shared_set, change_status.campaign,
-    shared_set.name, shared_set.type, campaign.name
+    change_status.resource_status, change_status.shared_set, change_status.campaign_shared_set, change_status.campaign
   FROM change_status
-  WHERE change_status.resource_type IN ('SHARED_SET', 'CAMPAIGN_SHARED_SET')
-    AND change_status.last_change_date_time >= '${start}' AND change_status.last_change_date_time <= '${end}'
+  WHERE change_status.last_change_date_time >= '${start} 00:00:00'
+    AND change_status.last_change_date_time <= '${today} 23:59:59'
+    AND change_status.resource_type IN ('SHARED_SET', 'CAMPAIGN_SHARED_SET')
   ORDER BY change_status.last_change_date_time DESC
   LIMIT ${PAGE_LIMIT}`;
 }
@@ -217,7 +219,8 @@ function classify(p: Pending, extra: Criterion | undefined): EventRow | "skip" {
   const level: ChangeLevel = p.resourceType === "CAMPAIGN_CRITERION" ? "campaign" : "ad_group";
   const negative = p.newC.negative ?? p.oldC.negative ?? extra?.negative ?? level === "campaign";
   const kind: ChangeKind = !type ? "other" : negative ? "negative" : "keyword";
-  const paths = p.paths.map((s) => s.toLowerCase());
+  // REST returns lowerCamelCase paths ("cpcBidMicros"); compare without case / underscores.
+  const paths = p.paths.map((s) => s.toLowerCase().replace(/_/g, ""));
   const has = (k: string) => paths.some((x) => x === k || x.endsWith(`.${k}`));
   let action: ChangeAction = "other";
   if (kind !== "other") {
@@ -363,20 +366,22 @@ async function fillNames(cfg: AdsConfig, customerId: string, rows: EventRow[]): 
   }
 }
 
-async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string, end: string): Promise<EventRow[]> {
-  const rows = await searchLeaf(cfg, customerId, sharedSetStatusQuery(start, end));
+const SHARED_SET_RE = /^customers\/\d{10}\/sharedSets\/\d+$/;
+
+async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string, today: string): Promise<EventRow[]> {
+  const rows = await searchLeaf(cfg, customerId, sharedSetStatusQuery(start, today));
   const out: EventRow[] = [];
-  const cssNames: string[] = [];
+  const setNames = new Set<string>();
+  const cssNames = new Set<string>();
   for (const r of rows) {
     const cs = asRec(r.changeStatus);
     const type = String(cs.resourceType || "");
     const status = String(cs.resourceStatus || "");
     const local = String(cs.lastChangeDateTime || "");
-    const ss = asRec(r.sharedSet);
-    if (ss.type && String(ss.type) !== "NEGATIVE_KEYWORDS") continue;
     const name = type === "SHARED_SET" ? String(cs.sharedSet || "") : String(cs.campaignSharedSet || "");
-    if (!name || !local) continue;
-    if (type === "CAMPAIGN_SHARED_SET" && CSS_RE.test(name)) cssNames.push(name);
+    if (!name || !local || (type !== "SHARED_SET" && type !== "CAMPAIGN_SHARED_SET")) continue;
+    if (type === "SHARED_SET" && SHARED_SET_RE.test(name)) setNames.add(name);
+    if (type === "CAMPAIGN_SHARED_SET" && CSS_RE.test(name)) cssNames.add(name);
     const action: ChangeAction =
       type === "SHARED_SET"
         ? status === "ADDED"
@@ -401,10 +406,10 @@ async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string
       keyword_text: null,
       match_type: null,
       campaign_id: idFrom(cs.campaign, "campaigns"),
-      campaign_name: asRec(r.campaign).name ? String(asRec(r.campaign).name) : null,
+      campaign_name: null,
       ad_group_id: null,
       ad_group_name: null,
-      shared_set_name: ss.name ? String(ss.name) : null,
+      shared_set_name: null,
       user_email: null,
       client_type: null,
       changed_fields: null,
@@ -415,27 +420,52 @@ async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string
       raw: cs,
     });
   }
-  // Campaign ↔ list links: read the list name / type (non-fatal).
-  for (let i = 0; i < cssNames.length; i += 100) {
-    const chunk = cssNames.slice(i, i + 100);
+  // Names / types in separate read-only queries (non-fatal). Removed lists may not resolve.
+  const setInfo = new Map<string, { name: string; type: string }>();
+  const sets = [...setNames];
+  for (let i = 0; i < sets.length; i += 100) {
+    const res = await searchLeaf(
+      cfg,
+      customerId,
+      `SELECT shared_set.resource_name, shared_set.name, shared_set.type FROM shared_set WHERE shared_set.resource_name IN (${sqlList(sets.slice(i, i + 100))})`,
+    ).catch(() => [] as GaqlRow[]);
+    for (const r of res) {
+      const ss = asRec(r.sharedSet);
+      if (ss.resourceName) setInfo.set(String(ss.resourceName), { name: String(ss.name || ""), type: String(ss.type || "") });
+    }
+  }
+  const cssInfo = new Map<string, { name: string; type: string; campaignId: string | null; campaignName: string | null }>();
+  const links = [...cssNames];
+  for (let i = 0; i < links.length; i += 100) {
     const res = await searchLeaf(
       cfg,
       customerId,
       `SELECT campaign_shared_set.resource_name, shared_set.name, shared_set.type, campaign.id, campaign.name
-       FROM campaign_shared_set WHERE campaign_shared_set.resource_name IN (${sqlList(chunk)})`,
+       FROM campaign_shared_set WHERE campaign_shared_set.resource_name IN (${sqlList(links.slice(i, i + 100))})`,
     ).catch(() => [] as GaqlRow[]);
-    const by = new Map<string, GaqlRow>();
-    for (const r of res) by.set(String(asRec(r.campaignSharedSet).resourceName || ""), r);
-    for (const ev of out) {
-      const r = by.get(ev.change_resource_name);
-      if (!r) continue;
+    for (const r of res) {
       const ss = asRec(r.sharedSet);
-      if (ss.type && String(ss.type) !== "NEGATIVE_KEYWORDS") ev.criterion_kind = "other";
-      ev.shared_set_name = ev.shared_set_name || (ss.name ? String(ss.name) : null);
-      ev.campaign_id = ev.campaign_id || (asRec(r.campaign).id ? String(asRec(r.campaign).id) : null);
-      ev.campaign_name = ev.campaign_name || (asRec(r.campaign).name ? String(asRec(r.campaign).name) : null);
+      const c = asRec(r.campaign);
+      cssInfo.set(String(asRec(r.campaignSharedSet).resourceName || ""), {
+        name: String(ss.name || ""),
+        type: String(ss.type || ""),
+        campaignId: c.id ? String(c.id) : null,
+        campaignName: c.name ? String(c.name) : null,
+      });
     }
   }
+  for (const ev of out) {
+    const link = ev.resource_type === "CAMPAIGN_SHARED_SET" ? cssInfo.get(ev.change_resource_name) : undefined;
+    const info = link || setInfo.get(ev.change_resource_name);
+    if (!info) continue;
+    if (info.type && info.type !== "NEGATIVE_KEYWORDS") ev.criterion_kind = "other";
+    ev.shared_set_name = info.name || null;
+    if (link) {
+      ev.campaign_id = ev.campaign_id || link.campaignId;
+      ev.campaign_name = link.campaignName;
+    }
+  }
+  await fillNames(cfg, customerId, out);
   return out.filter((e) => e.criterion_kind === "shared_negative");
 }
 
@@ -524,7 +554,7 @@ export async function pullChangeLog(
   opts: { trigger: "manual" | "cron"; actor: string | null; cfg?: AdsConfig },
 ): Promise<ChangeLogPullResult> {
   const id = clientId.trim();
-  const base: ChangeLogPullResult = { ok: false, client_id: id, row_count: 0, truncated: false, covered_start: null, covered_end: null, error_vi: null, note_vi: null };
+  const base: ChangeLogPullResult = { ok: false, client_id: id, row_count: 0, read_count: 0, keyword_rows: 0, shared_rows: 0, truncated: false, covered_start: null, covered_end: null, error_vi: null, note_vi: null };
   if (!CLIENT_ID_RE.test(id)) return { ...base, error_vi: "Tài khoản không hợp lệ." };
   const customerId = customerIdFor(id);
   if (customerId.length !== 10) return { ...base, error_vi: "Không suy ra Customer ID từ tài khoản." };
@@ -591,9 +621,13 @@ export async function pullChangeLog(
     }
     await fillNames(cfg, customerId, events);
 
+    const keywordRows = events.length;
+    let sharedRows = 0;
     let note: string | null = null;
     try {
-      events.push(...(await pullSharedLists(cfg, customerId, startYmd, endYmd)));
+      const shared = await pullSharedLists(cfg, customerId, startYmd, today);
+      sharedRows = shared.length;
+      events.push(...shared);
     } catch (err) {
       note = `Không đọc được danh sách phủ định chung: ${errorVi(err)}`;
     }
@@ -612,7 +646,14 @@ export async function pullChangeLog(
       error: null,
       note,
     });
-    return { ...base, ok: true, row_count: written, truncated, covered_start: coveredStart, covered_end: coveredEnd, note_vi: note };
+    return {
+      ...base,
+      ok: true,
+      row_count: written,
+      read_count: pending.length,
+      keyword_rows: keywordRows,
+      shared_rows: sharedRows,
+      truncated, covered_start: coveredStart, covered_end: coveredEnd, note_vi: note };
   } catch (err) {
     const msg = errorVi(err);
     await recordPull({
@@ -757,9 +798,9 @@ export async function readChangeLog(accounts: ChangeLogAccount[], start: string,
         const n = Number(c.n) || 0;
         if (action === "add_keyword") summary.add_keyword += n;
         else if (action === "add_negative") summary.add_negative += n;
-        else if (action === "pause" || action === "remove_keyword") summary.pause_remove += n;
+        else if (action === "pause" || action === "remove_keyword" || action === "remove_negative") summary.pause_remove += n;
         else if (action === "bid_change") summary.bid_change += n;
-        else if (action.startsWith("shared_list_") || action === "remove_negative") summary.shared += n;
+        else if (action.startsWith("shared_list_")) summary.shared += n;
         else summary.other += n;
         if (isOptimization(action)) summary.optimization_total += n;
       }
@@ -811,8 +852,21 @@ export async function readChangeLog(accounts: ChangeLogAccount[], start: string,
 
 /** Accounts for the daily cron: every roster account with a Google CID, least recently pulled first. */
 export async function cronAccounts(all: Array<{ client_id: string; customer_id_dashed?: string }>): Promise<string[]> {
-  const ids = all.map((c) => c.client_id).filter((id) => CLIENT_ID_RE.test(id) && customerIdFor(id).length === 10);
+  const ids = all.map((c) => c.client_id);
   let lastBy = new Map<string, number>();
+  try {
+    const sql = await getSql();
+    // Accounts pulled from every MCC live in Neon ad_accounts, not in the file roster.
+    const pulled = await sql.query<{ id: string }>(
+      `select id from ad_accounts where platform = 'google' and manager_customer_id is not null and btrim(manager_customer_id) <> ''`,
+    );
+    ids.push(...pulled.map((r) => r.id));
+  } catch {
+    /* column appears on the first MCC pull */
+  }
+  const valid = ids.filter((id) => CLIENT_ID_RE.test(id) && customerIdFor(id).length === 10);
+  ids.length = 0;
+  ids.push(...valid);
   try {
     const sql = await getSql();
     const rows = await sql.query<{ client_id: string; pulled_at: Date | string }>(

@@ -27,6 +27,18 @@ function asClient(data: unknown): { clientId: string } {
   return { clientId: id.trim() };
 }
 
+/**
+ * Accounts the viewer can see, from the SAME source as the shell picker
+ * (getWorkspaceDirectory): file roster + accounts pulled from every MCC into
+ * Neon ad_accounts. The file roster alone misses MCC-pulled accounts.
+ */
+async function changeLogAccounts(ctx: import("./permissions.server").AccessContext) {
+  const { loadWorkspaceDirectory } = await import("./access.server");
+  const { withPulledMccClients } = await import("./mcc-import.server");
+  const dir = await withPulledMccClients(await loadWorkspaceDirectory(ctx), ctx.allowed);
+  return dir.clients;
+}
+
 /** Read the stored change log. Admin / head_ads only; only accounts the viewer can see. */
 export const readChangeLogFn = createServerFn({ method: "POST" })
   .validator(asRead)
@@ -36,8 +48,7 @@ export const readChangeLogFn = createServerFn({ method: "POST" })
     const ctx = context.access;
     assertCap(ctx, "changeLog", DENY);
     if (data.clientIds) for (const id of data.clientIds) assertAccount(ctx, id);
-    const { visibleClients } = await import("./access.server");
-    const visible = await visibleClients(ctx);
+    const visible = await changeLogAccounts(ctx);
     const wanted = data.clientIds ? new Set(data.clientIds) : null;
     const accounts = visible
       .filter((c) => !wanted || wanted.has(c.client_id))
