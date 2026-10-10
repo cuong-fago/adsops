@@ -24,7 +24,7 @@ import { adminUpdateAdAccount, stopViewAs } from "@/lib/adsops/admin.functions";
 import { AccountPicker } from "@/components/adsops/account-picker";
 import { BrandMark, NavTab } from "@/components/adsops/brand";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
-import { BudgetRunwayCard } from "@/components/adsops/budget-runway-card";
+import { BUDGET_CARD_ID, BudgetRunwayCard, BudgetStrip } from "@/components/adsops/budget-runway-card";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
 import { clientSignOut } from "@/lib/adsops/client-auth.functions";
@@ -457,6 +457,18 @@ export function AdsOpsApp() {
     const ops = next === "final" || next === "proposals" || next === "guard" || next === "alerts";
     const list = next === "alerts" ? ALERT_SCENES : GATE_SCENES;
     if (!ops || !list.some((s) => s.id === scenario)) setScenario("");
+  }
+
+  /** Strip pill → Cảnh báo, then scroll to "Ngân sách còn lại" once it renders. */
+  function openBudgetCard() {
+    goTab("alerts");
+    let tries = 0;
+    const seek = () => {
+      const el = document.getElementById(BUDGET_CARD_ID);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      else if (++tries < 25) window.setTimeout(seek, 120);
+    };
+    window.setTimeout(seek, 0);
   }
 
   function applyConnectResult(snap: Record<string, unknown>) {
@@ -976,6 +988,12 @@ export function AdsOpsApp() {
                       ? " · CPA Google không phải Qualified Lead."
                       : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}
                 </p>
+                {access?.kind === "staff" ? (
+                  <BudgetStrip
+                    clientId={client.client_id}
+                    onOpen={tabAllowed(access, "alerts") ? openBudgetCard : undefined}
+                  />
+                ) : null}
                 {canPull && adsStatus?.message_vi ? <p className="mt-1 text-xs text-danger">{adsStatus.message_vi}</p> : null}
               </>
             ) : null}

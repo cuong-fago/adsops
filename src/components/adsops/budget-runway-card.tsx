@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
-import { checkBudgetRunwayFn, readBudgetRunwayFn, type RunwayRow } from "@/lib/adsops/budget-runway.functions";
+import {
+  checkBudgetRunwayFn,
+  readAccountRunwayFn,
+  readBudgetRunwayFn,
+  refreshAccountRunwayFn,
+  type RunwayRow,
+} from "@/lib/adsops/budget-runway.functions";
 import { money, num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
@@ -64,6 +70,104 @@ function StatusCell({ r }: { r: RunwayRow }) {
       {r.expiring && r.budget_end ? pill("bg-danger-bg text-danger", `Ngân sách hết hạn ${dateVi(r.budget_end)}`) : null}
       {r.status === "error" && r.error_vi ? <span className="max-w-[16rem] truncate text-xs text-danger" title={r.error_vi}>{r.error_vi}</span> : null}
     </div>
+  );
+}
+
+/** DOM id of the card (the account-strip pill scrolls here). */
+export const BUDGET_CARD_ID = "budget-runway";
+
+const STRIP_STALE_MS = 24 * 3600_000;
+const STRIP_ERROR_RETRY_MS = 30 * 60_000;
+
+/** "HH:mm dd/mm" in Asia/Saigon. */
+function shortSaigon(iso: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Saigon", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", hour12: false }).formatToParts(new Date(iso));
+  const get = (k: string) => parts.find((x) => x.type === k)?.value ?? "";
+  return `${get("hour")}:${get("minute")} ${get("day")}/${get("month")}`;
+}
+
+/** Pill text + tone from a stored row (same statuses / thresholds as the card). */
+function stripText(r: RunwayRow | null): { text: string; tone: "red" | "amber" | "neutral" | "muted" } {
+  if (!r || !r.checked_at || !r.status) return { text: "Ngân sách: chưa kiểm tra", tone: "muted" };
+  const cur = r.currency || "VND";
+  const exp = r.expiring && r.budget_end ? ` · hết hạn ${dateVi(r.budget_end).slice(0, 5)}` : "";
+  switch (r.status) {
+    case "red":
+    case "amber":
+      return {
+        text: `Ngân sách: còn ${num(r.runway_days, 1)} ngày · còn ${money(r.remaining, cur)} · tiêu TB ${money(r.avg7, cur)}/ngày${exp}`,
+        tone: r.status,
+      };
+    case "ok":
+      return { text: `Ngân sách: còn ~${num(r.runway_days, 0)} ngày · còn ${money(r.remaining, cur)}${exp}`, tone: r.expiring ? "amber" : "neutral" };
+    case "infinite":
+      return { text: `Ngân sách không giới hạn${exp}`, tone: r.expiring ? "amber" : "neutral" };
+    case "no_spend":
+      return { text: `Ngân sách: còn ${money(r.remaining, cur)} · không tiêu 7 ngày qua${exp}`, tone: r.expiring ? "amber" : "neutral" };
+    case "no_budget":
+      return { text: "Ngân sách: Google không cung cấp số dư (tài khoản trả trước)", tone: "muted" };
+    default:
+      return { text: "Ngân sách: chưa kiểm tra được", tone: "muted" };
+  }
+}
+
+/**
+ * Account-strip line for staff: stored result for the selected account, refreshed in the
+ * background (one account, server-guarded) when older than 24 h.
+ */
+export function BudgetStrip({ clientId, onOpen }: { clientId: string; onOpen?: () => void }) {
+  const [row, setRow] = useState<RunwayRow | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [epoch, setEpoch] = useState(0);
+  const tried = useRef(new Set<string>());
+  const shownFor = useRef("");
+
+  useEffect(() => {
+    let cancelled = false;
+    // Another account: never show the previous account's pill while reading.
+    if (shownFor.current !== clientId) { shownFor.current = clientId; setRow(null); setLoaded(false); }
+    readAccountRunwayFn({ data: { clientId } })
+      .then((r) => {
+        if (cancelled) return;
+        setRow(r);
+        setLoaded(true);
+        const age = r.checked_at ? Date.now() - Date.parse(r.checked_at) : Infinity;
+        const stale = r.status === "error" ? age > STRIP_ERROR_RETRY_MS : age > STRIP_STALE_MS;
+        if (!stale || tried.current.has(clientId)) return;
+        tried.current.add(clientId);
+        setRefreshing(true);
+        refreshAccountRunwayFn({ data: { clientId } })
+          .then((res) => { if (!cancelled && res.state === "refreshed") setEpoch((n) => n + 1); })
+          .catch(() => null)
+          .finally(() => { if (!cancelled) setRefreshing(false); });
+      })
+      .catch(() => { if (!cancelled) { setRow(null); setLoaded(true); } });
+    return () => { cancelled = true; };
+  }, [clientId, epoch]);
+
+  if (!loaded) return null;
+  const { text, tone } = stripText(row);
+  const when = row?.checked_at ? ` · kiểm tra lúc ${shortSaigon(row.checked_at)}` : "";
+  const cls = cn(
+    "inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-left text-xs tabular-nums [overflow-wrap:anywhere]",
+    tone === "red" ? "bg-danger-bg font-semibold text-danger" : tone === "amber" ? "bg-warn-bg font-medium text-warn" : tone === "neutral" ? "bg-inset text-ink" : "bg-inset text-subtle",
+    onOpen ? "cursor-pointer hover:ring-1 hover:ring-line" : "",
+  );
+  const body = (
+    <>
+      <span>{text}</span>
+      <span className="font-normal text-subtle">{when}{refreshing ? " · đang kiểm tra lại…" : ""}</span>
+    </>
+  );
+  return (
+    <p className="mt-1.5">
+      {onOpen ? (
+        <button type="button" onClick={onOpen} className={cls} title="Mở Cảnh báo → Ngân sách còn lại">{body}</button>
+      ) : (
+        <span className={cls}>{body}</span>
+      )}
+    </p>
   );
 }
 
@@ -143,7 +247,7 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
   const cur = (r: RunwayRow, v: number | null) => (v == null ? "—" : money(v, r.currency || "VND"));
 
   return (
-    <section className="mb-4 flex flex-col gap-3 rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5">
+    <section id={BUDGET_CARD_ID} className="mb-4 flex scroll-mt-24 flex-col gap-3 rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold tracking-tight">Ngân sách còn lại</h2>

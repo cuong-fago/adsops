@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { principalMiddleware } from "./principal-middleware";
-import type { RunwayCheckResult, RunwayRead } from "./budget-runway.types.ts";
+import type { RunwayCheckResult, RunwayRead, RunwayRow } from "./budget-runway.types.ts";
 
 export type { RunwayCheckResult, RunwayRead, RunwayRow } from "./budget-runway.types.ts";
 
@@ -52,4 +52,37 @@ export const checkBudgetRunwayFn = createServerFn({ method: "POST" })
     assertAccount(ctx, data.clientId);
     const { checkBudgetRunway } = await import("./budget-runway.server");
     return checkBudgetRunway(data.clientId);
+  });
+
+const STAFF_ONLY = "Chỉ nhân sự xem được ngân sách tài khoản.";
+
+/** Stored result for ONE account (account strip). Any staff role with this account; no Google call. */
+export const readAccountRunwayFn = createServerFn({ method: "POST" })
+  .validator(asClient)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }): Promise<RunwayRow> => {
+    const { assertAccount, ForbiddenError } = await import("./permissions.server");
+    const ctx = context.access;
+    if (ctx.principal.kind !== "staff") throw new ForbiddenError(STAFF_ONLY);
+    assertAccount(ctx, data.clientId);
+    const { readBudgetRunway } = await import("./budget-runway.server");
+    const [row] = await readBudgetRunway([{ client_id: data.clientId, label: "", customer_id_dashed: "" }]);
+    return row;
+  });
+
+/**
+ * Background re-check of ONE stale account (read-only cache fill). Any staff role with this
+ * account, including Sale and admin view-as; no pull capability needed. Guards live in
+ * refreshRunwayIfStale. The "Kiểm tra tất cả tài khoản" button keeps checkBudgetRunwayFn's rules.
+ */
+export const refreshAccountRunwayFn = createServerFn({ method: "POST" })
+  .validator(asClient)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertAccount, ForbiddenError } = await import("./permissions.server");
+    const ctx = context.access;
+    if (ctx.principal.kind !== "staff") throw new ForbiddenError(STAFF_ONLY);
+    assertAccount(ctx, data.clientId);
+    const { refreshRunwayIfStale } = await import("./budget-runway.server");
+    return refreshRunwayIfStale(data.clientId);
   });
