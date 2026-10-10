@@ -227,3 +227,29 @@ export const autoFillDeepFn = createServerFn({ method: "POST" })
     // Customers never see Google Ads error details.
     return ctx.principal.kind === "client" ? { ...r, error_vi: null } : r;
   });
+
+function asWarehouseFill(data: unknown): { clientId: string; start: string } {
+  const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+  const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+  const start = typeof d.start === "string" ? d.start : "";
+  if (!clientId || !/^\d{4}-\d{2}-\d{2}$/.test(start)) throw new Error("Thiếu khách / ngày");
+  return { clientId, start };
+}
+
+/**
+ * "So kỳ trước" (staff only: client roles never get previous-period data): extend the
+ * account + campaign warehouse back to the previous period's start. Read-only cache fill;
+ * any staff role with this account, view-as included; no pull capability needed.
+ */
+export const autoFillWarehouseFn = createServerFn({ method: "POST" })
+  .validator(asWarehouseFill)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertCap, assertAccount, ForbiddenError } = await import("./permissions.server");
+    const ctx = context.access;
+    if (ctx.principal.kind !== "staff") throw new ForbiddenError("Không có so sánh kỳ trước cho vai trò này.");
+    assertCap(ctx, "compare", "Không có so sánh kỳ trước cho vai trò này.");
+    assertAccount(ctx, data.clientId);
+    const { autoFillWarehouseRange } = await import("./warehouse.server.ts");
+    return autoFillWarehouseRange(data.clientId, data.start);
+  });

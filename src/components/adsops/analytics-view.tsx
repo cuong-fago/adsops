@@ -17,7 +17,7 @@ import {
   warehouseDates,
   windowCoverage,
 } from "@/lib/adsops/analytics";
-import { autoFillDeepFn, readDeepLayerFn } from "@/lib/adsops/connect.functions";
+import { autoFillDeepFn, autoFillWarehouseFn, readDeepLayerFn } from "@/lib/adsops/connect.functions";
 import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
 import { cn } from "@/lib/cn";
 import { BudgetBanner } from "@/components/adsops/budget-banner";
@@ -187,11 +187,14 @@ export function AnalyticsView({
   allowCompare = true,
   deepEpoch = 0,
   userKey,
+  onReloadAnalytics,
 }: {
   snap: AnalyticsSnap;
   allowCompare?: boolean;
   deepEpoch?: number;
   userKey?: string | null;
+  /** Staff shell: re-read the analytics snapshot after the warehouse was extended. */
+  onReloadAnalytics?: () => Promise<void> | void;
 }) {
   const range0 = defaultRange(snap);
   const warehouseEnd = snap.warehouse_end || snap.data_through;
@@ -376,6 +379,7 @@ export function AnalyticsView({
     pmaxSelected ? { complete: true, rows: [], pmax_note: snap.pmax_note || "PMax không có search term / keyword chuẩn" } :
     deepBlock;
 
+  const deepLayer = tableLayer && isDeepLayer(tableLayer) ? tableLayer : null;
   const prevRange = allowCompare && prevEqual ? previousEqualRange(start, end) : null;
   const prevStart = prevRange?.start || "";
   const prevEnd = prevRange?.end || "";
@@ -383,6 +387,121 @@ export function AnalyticsView({
     () => (prevStart && prevEnd ? layerRows(snap, { layer: "account", start: prevStart, end: prevEnd }) : null),
     [snap, prevStart, prevEnd],
   );
+  // ── "So kỳ trước" (staff only: allowCompare is false for client roles) ─────────────
+  const prevCov = prevRange ? windowCoverage(dates, prevStart, prevEnd) : null;
+  const prevTotalDays = prevCov ? prevCov.present + prevCov.missing : 0;
+  // Top level: extend the warehouse back to the previous start (read-only), once per start.
+  const whStartNow = snap.warehouse_start || dates[0] || "";
+  const [whFill, setWhFill] = useState<{ key: string; state: "filling" | "error" | "done" }>({ key: "", state: "done" });
+  const whTried = useRef(new Set<string>());
+  const whKey = prevRange && onReloadAnalytics && whStartNow && prevStart < whStartNow ? `${snap.client_id}|${prevStart}` : "";
+  useEffect(() => {
+    if (!whKey || whTried.current.has(whKey)) return;
+    whTried.current.add(whKey);
+    let cancelled = false;
+    setWhFill({ key: whKey, state: "filling" });
+    (async () => {
+      for (let i = 0; i < 6; i++) {
+        let r: Awaited<ReturnType<typeof autoFillWarehouseFn>>;
+        try {
+          r = await autoFillWarehouseFn({ data: { clientId: snap.client_id, start: prevStart } });
+        } catch {
+          r = { state: "error", error_vi: null };
+        }
+        if (cancelled) return;
+        if (r.state === "busy") { await new Promise((res) => setTimeout(res, 5000)); continue; }
+        if (r.state === "filled") await onReloadAnalytics?.();
+        if (!cancelled) setWhFill({ key: whKey, state: r.state === "filled" || r.state === "done" ? "done" : "error" });
+        return;
+      }
+      if (!cancelled) setWhFill({ key: whKey, state: "error" });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whKey]);
+  const whFilling = Boolean(whKey) && whFill.key === whKey && whFill.state === "filling";
+  const prevNoteTop: CompareNote | null = !prevRange
+    ? null
+    : whFilling
+      ? { text: "Đang tải kỳ trước…", warn: false }
+      : !prevCov?.present
+        ? { text: `Kỳ trước (${formatRangeVi(prevStart, prevEnd)}) chưa có số — không so`, warn: true }
+        : !prevCov.complete
+          ? { text: `Kỳ trước thiếu dữ liệu (${prevCov.present}/${prevTotalDays} ngày) — so sánh chỉ tham khảo`, warn: true }
+          : { text: `So với ${formatRangeVi(prevStart, prevEnd)}`, warn: false };
+  const prevCampaignMap = useMemo(() => {
+    if (!prevStart || !prevEnd || tableLayer !== "campaign") return null;
+    const b = layerRows(snap, { layer: "campaign", start: prevStart, end: prevEnd });
+    return b.rows.length || b.complete ? new Map(b.rows.map((r) => [r.id, r.metrics])) : null;
+  }, [snap, prevStart, prevEnd, tableLayer]);
+
+  // Deep layers: the same table for the previous range (server read), auto-filled when missing.
+  const stTooOld = deepLayer === "search_term" && Boolean(prevStart) && prevStart < addDaysYmd(todaySaigon(), -(SEARCH_TERM_DAYS - 1));
+  const prevDeepKey = prevRange && fillLayer && !stTooOld ? `${snap.client_id}|${fillLayer}|${prevStart}|${prevEnd}|${campaignId || ""}|${adGroupId || ""}` : "";
+  const [prevDeep, setPrevDeep] = useState<{ key: string; block: DeepLayerBlock | null; state: "loading" | "filling" | "ready" | "error" }>({ key: "", block: null, state: "ready" });
+  const prevDeepFilled = useRef(new Set<string>());
+  const [prevDeepEpoch, setPrevDeepEpoch] = useState(0);
+  useEffect(() => {
+    if (!prevDeepKey || !fillLayer) return;
+    let cancelled = false;
+    setPrevDeep((cur) => (cur.key === prevDeepKey ? { ...cur, state: cur.block ? cur.state : "loading" } : { key: prevDeepKey, block: null, state: "loading" }));
+    readDeepLayerFn({ data: { clientId: snap.client_id, layer: fillLayer, start: prevStart, end: prevEnd, campaignId, adGroupId, onlyWithConv: false } })
+      .then((block) => { if (!cancelled) setPrevDeep({ key: prevDeepKey, block, state: "ready" }); })
+      .catch(() => { if (!cancelled) setPrevDeep({ key: prevDeepKey, block: null, state: "error" }); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prevDeepKey, prevDeepEpoch, deepEpoch]);
+  // Missing previous days: same guarded read-only fill as the table (after the main fill).
+  const prevFillRange = prevRange && fillLayer && !stTooOld ? `${snap.client_id}|${prevStart}|${prevEnd}` : "";
+  useEffect(() => {
+    const blk = prevDeep.key === prevDeepKey ? prevDeep.block : null;
+    if (!prevFillRange || !blk || blk.complete || filling || prevDeepFilled.current.has(prevFillRange)) return;
+    prevDeepFilled.current.add(prevFillRange);
+    let cancelled = false;
+    setPrevDeep((cur) => ({ ...cur, state: "filling" }));
+    (async () => {
+      let failed = false;
+      for (let i = 0, waits = 0; i < 20; i++) {
+        let r: Awaited<ReturnType<typeof autoFillDeepFn>>;
+        try {
+          r = await autoFillDeepFn({ data: { clientId: snap.client_id, start: prevStart, end: prevEnd, retry: false } });
+        } catch {
+          failed = true; break;
+        }
+        if (cancelled) return;
+        if (r.state === "busy") { if (++waits > 12) { failed = true; break; } await new Promise((res) => setTimeout(res, 5000)); continue; }
+        if (r.state === "error" || r.state === "cooldown") { failed = true; break; }
+        if (r.state === "done") break;
+      }
+      if (cancelled) return;
+      setPrevDeep((cur) => ({ ...cur, state: failed ? "error" : "ready" }));
+      setPrevDeepEpoch((n) => n + 1);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prevFillRange, prevDeep, prevDeepKey, filling]);
+  const prevDeepBlock = prevDeep.key === prevDeepKey ? prevDeep.block : null;
+  const prevNoteDeep: CompareNote | null = !prevRange || !fillLayer
+    ? null
+    : stTooOld
+      ? { text: `Google chỉ giữ cụm từ tìm kiếm khoảng ${SEARCH_TERM_DAYS} ngày — kỳ trước (${formatRangeVi(prevStart, prevEnd)}) quá cũ, không so`, warn: true }
+      : prevDeep.key !== prevDeepKey || prevDeep.state === "loading" || prevDeep.state === "filling"
+        ? { text: "Đang tải kỳ trước…", warn: false }
+        : !prevDeepBlock || !prevDeepBlock.covered_days
+          ? { text: `Kỳ trước (${formatRangeVi(prevStart, prevEnd)}) chưa có số — không so`, warn: true }
+          : !prevDeepBlock.complete
+            ? { text: `Kỳ trước thiếu dữ liệu (${prevDeepBlock.covered_days}/${prevDeepBlock.total_days} ngày) — so sánh chỉ tham khảo`, warn: true }
+            : { text: `So với ${formatRangeVi(prevStart, prevEnd)}`, warn: false };
+  const tableCompare: TableCompare | null = !prevRange
+    ? null
+    : tableLayer === "campaign"
+      ? prevCampaignMap && prevCov?.present ? { map: prevCampaignMap, partial: false } : null
+      : prevDeepBlock && prevDeepBlock.covered_days && !stTooOld
+        ? { map: new Map(prevDeepBlock.rows.map((r) => [r.id, r.metrics])), partial: prevDeepBlock.truncated }
+        : null;
+  // Campaign table: the header pill already carries the top-level note.
+  const tableNote = fillLayer ? prevNoteDeep : null;
+
   const weeks = allowCompare && weekN ? previousWeeks(end, weekN) : [];
   const prevMonths = allowCompare && monthN ? previousMonths(end, monthN) : [];
   const inMonths = monthsOverlapping(start, end);
@@ -410,8 +529,8 @@ export function AnalyticsView({
   );
 
   const metrics = account.rows[0]?.metrics || {};
-  const prevMetrics = prevAccount?.complete ? prevAccount.rows[0]?.metrics : undefined;
-  const deepLayer = tableLayer && isDeepLayer(tableLayer) ? tableLayer : null;
+  // Partial previous periods still compare (labelled "chỉ tham khảo"); none at all → no compare.
+  const prevMetrics = prevAccount?.rows.length ? prevAccount.rows[0]?.metrics : undefined;
   const facets = deepLayer ? facetsByLayer[deepLayer] : undefined;
   const scoped = Boolean(deepLayer && (campaignId || (adGroupId && deepLayer !== "ad_group")));
   useEffect(() => { setTableQuery(""); }, [tableLayer]);
@@ -479,7 +598,7 @@ export function AnalyticsView({
                 <button type="button" onClick={() => draftStart && draftEnd && draftStart <= draftEnd && applyRange(draftStart, draftEnd)} className="h-10 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg">Xem số</button>
                 {allowCompare ? (
                   <>
-                    <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={prevEqual} onChange={(e) => setPrevEqual(e.target.checked)} className="size-4 accent-accent" />So kỳ trước cùng độ dài</label>
+                    <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={prevEqual} onChange={(e) => setPrevEqual(e.target.checked)} className="size-4 accent-accent" />So kỳ trước cùng độ dài{prevRange ? <span className="text-xs text-muted">({formatRangeShort(prevStart, prevEnd)})</span> : null}</label>
                     {snap.week_choices.length ? (
                       <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm">Tuần
                         <select value={weekN} onChange={(e) => { setWeekN(Number(e.target.value)); setMonthN(0); if (Number(e.target.value)) setTab("monthly"); }} className="h-8 bg-transparent text-sm">
@@ -502,8 +621,8 @@ export function AnalyticsView({
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Segmented items={SUBTABS} value={tab} onChange={setTab} />
-            {prevRange && prevAccount && !prevAccount.complete ? (
-              <span className="inline-flex items-center rounded-full bg-inset px-3 py-1 text-xs font-medium text-muted">Kỳ trước ({formatRangeVi(prevRange.start, prevRange.end)}) thiếu dữ liệu — không so</span>
+            {prevNoteTop && (tab === "overview" || tableLayer === "campaign") ? (
+              <span className={cn("inline-flex items-center rounded-full px-3 py-1 text-xs font-medium", prevNoteTop.warn ? "bg-warn-bg text-warn" : "bg-inset text-muted")}>{prevNoteTop.text}</span>
             ) : null}
             {!cov.complete ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-warn-bg px-3 py-1 text-xs font-medium text-warn">Kho có số {cov.present}/{cov.present + cov.missing} ngày trong khoảng · ngày thiếu để trống</span>
@@ -513,7 +632,7 @@ export function AnalyticsView({
       </div>
 
       {tab === "overview" ? (
-        <Overview snap={snap} start={start} end={end} metrics={metrics} prevMetrics={prevRange ? prevMetrics : undefined} prevIncomplete={Boolean(prevRange && prevAccount && !prevAccount.complete)} hasRows={account.rows.length > 0} campaigns={campaignBlock?.rows || []} groups={groups} onOpenCampaigns={() => setTab("campaign")} onPickCampaign={(row) => { setCampaignId(row.id); setAdGroupId(null); setTab(row.pmax ? "search_term" : "ad_group"); }} />
+        <Overview snap={snap} start={start} end={end} metrics={metrics} prevMetrics={prevRange ? prevMetrics : undefined} prevIncomplete={Boolean(prevRange && prevAccount && !prevAccount.complete)} prevLoading={whFilling} hasRows={account.rows.length > 0} campaigns={campaignBlock?.rows || []} groups={groups} onOpenCampaigns={() => setTab("campaign")} onPickCampaign={(row) => { setCampaignId(row.id); setAdGroupId(null); setTab(row.pmax ? "search_term" : "ad_group"); }} />
       ) : null}
 
       {tab === "monthly" ? (
@@ -569,6 +688,7 @@ export function AnalyticsView({
             if (!current) return <p className="rounded-md bg-inset px-4 py-6 text-sm text-muted">Chưa có số liệu cho khoảng ngày này.</p>;
             return (
               <div className="space-y-2">
+                {tableNote ? <p className={cn("text-xs", tableNote.warn ? "text-warn" : "text-subtle")}>{tableNote.text}</p> : null}
                 {fillLayer && filling ? <p className="text-xs text-subtle">Đang bổ sung các ngày còn thiếu…{fill.y > 1 ? ` (tháng ${Math.max(1, fill.x)}/${fill.y})` : ""}</p> : null}
                 {fillLayer && fillFailed ? (
                   <div className="flex flex-wrap items-center gap-2 text-xs text-subtle">
@@ -576,7 +696,7 @@ export function AnalyticsView({
                     {retryBtn}
                   </div>
                 ) : null}
-                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={current} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} />
+                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={current} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} compare={tableCompare} />
               </div>
             );
           })()}
@@ -607,20 +727,52 @@ const KPIS: KpiDef[] = [
   { id: "invalid_clicks", label: "Click không hợp lệ", value: (m) => invalidLabel(m), daily: (r) => r.invalid_clicks || 0, tone: "warm" },
 ];
 
-function deltaWord(now: number | undefined, prev: number | undefined): { word: string; dir: 0 | 1 | -1 } {
-  if (prev == null || now == null) return { word: "—", dir: 0 };
-  if (prev === 0 && now === 0) return { word: "—", dir: 0 };
-  if (prev === 0) return { word: "tăng", dir: 1 };
-  const d = (now - prev) / Math.abs(prev);
-  if (Math.abs(d) < 0.005) return { word: "—", dir: 0 };
-  return d > 0 ? { word: "tăng", dir: 1 } : { word: "giảm", dir: -1 };
+type CompareNote = { text: string; warn: boolean };
+/** Previous-period rows by id. `partial` = the server capped the list (missing ≠ new). */
+type TableCompare = { map: Map<string, Record<string, number>>; partial: boolean };
+
+/** Which direction is good for a metric (colour of the delta). */
+const METRIC_BETTER: Record<string, "up" | "down" | "neutral"> = {
+  cost: "neutral",
+  impressions: "up",
+  clicks: "up",
+  conversions: "up",
+  ctr: "up",
+  cpc: "down",
+  cost_per_conversion: "down",
+};
+/** Table columns that get a delta line. */
+const DELTA_COLS = new Set(["cost", "clicks", "conversions", "cost_per_conversion", "ctr", "cpc"]);
+
+/**
+ * Change vs the previous period, or null when there is nothing honest to say
+ * (ratios need a non-zero base in both periods; 0 → 0 says nothing).
+ */
+function metricDelta(key: string, now: Record<string, number>, prev: Record<string, number>): { text: string; tone: "good" | "bad" | "flat" } | null {
+  const base = key === "cost_per_conversion" ? "conversions" : key === "cpc" ? "clicks" : key === "ctr" ? "impressions" : null;
+  if (base && (!(now[base] > 0) || !(prev[base] > 0))) return null;
+  const n = Number(now[key] || 0);
+  const p = Number(prev[key] || 0);
+  if (n === 0 && p === 0) return null;
+  const better = METRIC_BETTER[key] || "neutral";
+  const toneOf = (up: boolean) => (better === "neutral" ? "flat" : (better === "up") === up ? "good" : "bad");
+  if (p === 0) return { text: "▲ từ 0", tone: toneOf(true) };
+  const d = (n - p) / Math.abs(p);
+  if (Math.abs(d) < 0.005) return { text: "= 0%", tone: "flat" };
+  const pctTxt = Math.abs(d) >= 10 ? ">999%" : `${Math.round(Math.abs(d) * 100)}%`;
+  return { text: `${d > 0 ? "▲" : "▼"} ${pctTxt}`, tone: toneOf(d > 0) };
+}
+
+function DeltaText({ d, className }: { d: { text: string; tone: "good" | "bad" | "flat" } | null; className?: string }) {
+  if (!d) return null;
+  return <span className={cn("text-[11px] font-normal tabular-nums", d.tone === "good" ? "text-ok" : d.tone === "bad" ? "text-danger" : "text-subtle", className)}>{d.text}</span>;
 }
 
 function Overview({
-  snap, start, end, metrics, prevMetrics, prevIncomplete, hasRows, campaigns, groups, onOpenCampaigns, onPickCampaign,
+  snap, start, end, metrics, prevMetrics, prevIncomplete, prevLoading = false, hasRows, campaigns, groups, onOpenCampaigns, onPickCampaign,
 }: {
   snap: AnalyticsSnap; start: string; end: string; metrics: Record<string, number>; prevMetrics?: Record<string, number>;
-  prevIncomplete: boolean; hasRows: boolean; campaigns: LayerRow[];
+  prevIncomplete: boolean; prevLoading?: boolean; hasRows: boolean; campaigns: LayerRow[];
   groups: { id: string; label: string; metric: string; actions?: string[] }[];
   onOpenCampaigns: () => void; onPickCampaign: (row: LayerRow) => void;
 }) {
@@ -641,12 +793,12 @@ function Overview({
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {KPIS.filter((k) => k.primary).map((k) => (
-          <KpiCard key={k.id} def={k} metrics={metrics} prev={prevMetrics} prevIncomplete={prevIncomplete} values={series.map((d) => (d ? k.daily(d) : null))} big />
+          <KpiCard key={k.id} def={k} metrics={metrics} prev={prevMetrics} prevIncomplete={prevIncomplete} prevLoading={prevLoading} values={series.map((d) => (d ? k.daily(d) : null))} big />
         ))}
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {KPIS.filter((k) => !k.primary).map((k) => (
-          <KpiCard key={k.id} def={k} metrics={metrics} prev={prevMetrics} prevIncomplete={prevIncomplete} values={series.map((d) => (d ? k.daily(d) : null))} />
+          <KpiCard key={k.id} def={k} metrics={metrics} prev={prevMetrics} prevIncomplete={prevIncomplete} prevLoading={prevLoading} values={series.map((d) => (d ? k.daily(d) : null))} />
         ))}
       </div>
       <div className="grid gap-4 lg:grid-cols-5">
@@ -706,15 +858,20 @@ function Overview({
   );
 }
 
-function KpiCard({ def, metrics, prev, values, big }: { def: KpiDef; metrics: Record<string, number>; prev?: Record<string, number>; prevIncomplete?: boolean; values: (number | null)[]; big?: boolean }) {
-  const d = prev ? deltaWord(metrics[def.id], prev[def.id]) : null;
+function KpiCard({ def, metrics, prev, prevIncomplete, prevLoading, values, big }: { def: KpiDef; metrics: Record<string, number>; prev?: Record<string, number>; prevIncomplete?: boolean; prevLoading?: boolean; values: (number | null)[]; big?: boolean }) {
+  const d = prev ? metricDelta(def.id, metrics, prev) : null;
   return (
     <div className={cn(card, "flex min-w-0 flex-col gap-1 p-3 md:p-4", big && "ring-1 ring-accent/10")}>
       <p className="truncate text-xs font-medium uppercase tracking-wider text-subtle" title={def.hint || def.label}>{def.label}</p>
       <p className={cn("truncate font-display font-semibold tracking-tight tabular-nums", big ? "text-2xl md:text-[1.75rem]" : "text-lg md:text-xl")}>{def.value(metrics)}</p>
       <Sparkline values={values} tone={def.tone} />
-      {d ? (
-        <p className="flex items-center gap-1 text-xs text-muted">{d.dir > 0 ? <ArrowUp className="size-3" /> : d.dir < 0 ? <ArrowDown className="size-3" /> : null}{d.word} vs kỳ trước</p>
+      {prevLoading ? (
+        <p className="text-xs text-subtle">Đang tải kỳ trước…</p>
+      ) : prev ? (
+        <p className="flex flex-wrap items-baseline gap-x-1.5 text-xs text-muted" title={prevIncomplete ? "Kỳ trước thiếu ngày — chỉ tham khảo" : undefined}>
+          <span className="tabular-nums">Kỳ trước {def.value(prev)}{prevIncomplete ? "*" : ""}</span>
+          <DeltaText d={d} className="text-xs font-medium" />
+        </p>
       ) : null}
     </div>
   );
@@ -1177,7 +1334,7 @@ type ColDef = {
 };
 
 function DataTable({
-  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText,
+  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText, compare = null,
 }: {
   layer: TableLayer;
   block: LayerBlock | DeepLayerBlock;
@@ -1194,6 +1351,8 @@ function DataTable({
   totalAll?: number;
   /** Message when there are no rows (deep layers: layer-specific wording). */
   emptyText?: string;
+  /** Staff "So kỳ trước": previous-period metrics by row id (sorting stays on current values). */
+  compare?: TableCompare | null;
 }) {
   const [queryLocal, setQueryLocal] = useState("");
   const query = queryProp ?? queryLocal;
@@ -1368,12 +1527,16 @@ function DataTable({
                   {canDrill ? (
                     <button type="button" onClick={() => onDrill(row)} className="flex min-h-9 w-full max-w-[10rem] items-center gap-2 text-left font-medium text-ink hover:text-accent hover:underline md:max-w-[24rem]" title={row.name}>
                       <span className="truncate">{row.name}</span>
+                      {compare && !compare.partial && !compare.map.has(row.id) ? <span className="shrink-0 rounded-full bg-ok-bg px-1.5 text-[11px] font-medium text-ok">mới</span> : null}
                       {row.pmax ? <span className="shrink-0 rounded-full bg-inset px-1.5 text-[11px] font-medium text-muted">PMax</span> : null}
                       <ChevronRight className="size-3.5 shrink-0 text-subtle" />
                     </button>
                   ) : (
                     <div className="flex min-h-9 max-w-[10rem] flex-col justify-center md:max-w-[24rem]" title={row.name}>
-                      <span className="truncate font-medium">{row.name}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate font-medium">{row.name}</span>
+                        {compare && !compare.partial && !compare.map.has(row.id) ? <span className="shrink-0 rounded-full bg-ok-bg px-1.5 text-[11px] font-medium text-ok">mới</span> : null}
+                      </span>
                       {(layer === "search_term" || layer === "keyword") && contextLine(row) ? <span className="truncate text-xs text-subtle" title={contextLine(row)}>{contextLine(row)}</span> : null}
                     </div>
                   )}
@@ -1385,6 +1548,9 @@ function DataTable({
                 {cols.map((c) => (
                   <td key={c.key} className={cn("whitespace-nowrap border-b border-line/60 px-3 py-1.5 text-right tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
                     {c.cell(row)}
+                    {compare && DELTA_COLS.has(c.key) && compare.map.has(row.id) ? (
+                      <DeltaText d={metricDelta(c.key, row.metrics, compare.map.get(row.id) || {})} className="block leading-tight" />
+                    ) : null}
                   </td>
                 ))}
               </tr>
