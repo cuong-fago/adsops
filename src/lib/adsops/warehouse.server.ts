@@ -53,6 +53,8 @@ export type PullAnalyticsWarehouseResult = {
   persisted_fs?: boolean;
   error_vi?: string | null;
   note_vi?: string | null;
+  /** Another pull held this account's lock (not a Google error). */
+  busy?: boolean;
 };
 
 export type RefreshState = "fresh" | "refreshed" | "not_configured" | "busy" | "error";
@@ -592,7 +594,7 @@ export async function pullAnalyticsWarehouse(
     locked = await acquireLock(id, 300);
   }
   if (!locked) {
-    return { ok: false, client_id: id, error_vi: "Đang có một lượt kéo khác cho tài khoản này — thử lại sau ít phút." };
+    return { ok: false, busy: true, client_id: id, error_vi: "Đang có một lượt kéo khác cho tài khoản này — thử lại sau ít phút." };
   }
   try {
     const meta = await pullMeta(cfg, customerId, id);
@@ -734,4 +736,52 @@ export async function refreshWarehouseOnView(
     setTimeout(() => resolve({ state: "busy", message_vi: "Google Ads phản hồi chậm — đang hiện số đã lưu, lượt sau sẽ có số mới.", pulled_at: lastPull }), timeoutMs),
   );
   return Promise.race([work, timeout]);
+}
+
+// ── staff compare: extend the warehouse back to a previous-period start ──────────
+
+export type WarehouseFillResult = { state: "done" | "filled" | "busy" | "cooldown" | "too_old" | "error"; error_vi: string | null };
+
+const WH_FILL_COOLDOWN_S = 30 * 60;
+
+/**
+ * Read-only cache fill for "So kỳ trước": when `start` is older than the stored
+ * warehouse_start, re-pull account + campaign back to `start` (pullAnalyticsWarehouse,
+ * same per-account lock). Never shrinks the warehouse (only called when it must grow).
+ * After a failure, waits 30 min (row `<client>:wh:autofail`). Caller checks access.
+ */
+export async function autoFillWarehouseRange(clientId: string, start: string): Promise<WarehouseFillResult> {
+  const id = clientId.trim();
+  if (!CLIENT_ID_RE.test(id) || !/^\d{4}-\d{2}-\d{2}$/.test(start)) return { state: "error", error_vi: "Khách / ngày không hợp lệ." };
+  const stored = await readStored(id);
+  const whStart = typeof stored?.payload?.warehouse_start === "string" ? stored.payload.warehouse_start : null;
+  if (whStart && whStart <= start) return { state: "done", error_vi: null };
+  // Calendar days from start to today (+1 margin for the account timezone), capped at 365.
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const days = Math.round((Date.parse(`${todayUtc}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 2;
+  if (days > ANALYTICS_LOOKBACK_DAYS_MAX) return { state: "too_old", error_vi: null };
+  const failKey = `${id}:wh:autofail`;
+  try {
+    const sql = await getSql();
+    const rows = await sql.query<{ on: boolean }>(`select locked_until > now() as on from adsops_ads_refresh_lock where client_id = $1`, [failKey]);
+    if (rows[0]?.on) return { state: "cooldown", error_vi: null };
+  } catch {
+    /* no lock table: no cooldown */
+  }
+  const r = await pullAnalyticsWarehouse(id, days);
+  if (r.busy) return { state: "busy", error_vi: null };
+  if (!r.ok) {
+    try {
+      const sql = await getSql();
+      await sql.query(
+        `insert into adsops_ads_refresh_lock (client_id, locked_until) values ($1, now() + ($2 || ' seconds')::interval)
+         on conflict (client_id) do update set locked_until = excluded.locked_until`,
+        [failKey, String(WH_FILL_COOLDOWN_S)],
+      );
+    } catch {
+      /* ignore */
+    }
+    return { state: "error", error_vi: r.error_vi || null };
+  }
+  return { state: "filled", error_vi: null };
 }

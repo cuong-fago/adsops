@@ -213,6 +213,9 @@ export function AdsOpsApp() {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [mcc, setMcc] = useState<MccRoster | null>(null);
   const [clientId, setClientId] = useState("");
+  /** Latest selected account, for async callbacks (ignore results for a previous account). */
+  const clientIdRef = useRef("");
+  clientIdRef.current = clientId;
   const [tab, setTab] = useState<TabId>("final");
   const [access, setAccess] = useState<AccessSnap | null>(null);
   const [accessError, setAccessError] = useState("");
@@ -761,7 +764,18 @@ export function AdsOpsApp() {
       return (
         <>
           {pullBar}
-          <AnalyticsView key={analytics.client_id} snap={analytics} allowCompare={Boolean(access.caps.compare)} deepEpoch={deepEpoch} userKey={access.real_email || access.email} />
+          <AnalyticsView
+            key={analytics.client_id}
+            snap={analytics}
+            allowCompare={Boolean(access.caps.compare && access.kind === "staff")}
+            deepEpoch={deepEpoch}
+            userKey={access.real_email || access.email}
+            onReloadAnalytics={async () => {
+              const id = clientId;
+              const next = await getWorkspacePack({ data: { clientId: id, modules: ["analytics"] } });
+              if (id === clientIdRef.current) applyAnalyticsPace(next, ["analytics"]);
+            }}
+          />
         </>
       );
     }
