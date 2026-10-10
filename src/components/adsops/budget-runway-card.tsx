@@ -11,13 +11,13 @@ import { money, num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
 
-const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-xs font-semibold text-muted";
-const td = "border-b border-line/60 px-3 py-2 align-top";
+const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
+const td = "border-b border-line/60 px-3 py-2.5 align-top";
 /** Numeric columns: tighter padding so the table fits. */
 const tdNum = "border-b border-line/60 px-2 py-2 align-top whitespace-nowrap text-right tabular-nums";
-const thNum = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-2 py-2.5 text-right text-xs font-semibold text-muted";
+const thNum = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-2 py-2.5 text-right text-[13px] font-medium text-muted";
 /** Account column: wraps (long tokens too), stays visible while scrolling right. */
-const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-inset px-3 py-2.5 text-left text-xs font-semibold text-muted";
+const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
 const nameTd = "sticky left-0 z-[5] min-w-[220px] max-w-[320px] border-b border-r border-line/60 px-3 py-2 align-top";
 const nameText = "line-clamp-3 font-medium text-ink [overflow-wrap:anywhere]";
 

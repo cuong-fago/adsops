@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, Info, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, Columns3, Info, Search, SlidersHorizontal, X } from "lucide-react";
 import {
   type AnalyticsSnap,
   type DeepFacets,
@@ -696,7 +696,7 @@ export function AnalyticsView({
                     {retryBtn}
                   </div>
                 ) : null}
-                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={current} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} compare={tableCompare} />
+                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={current} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} compare={tableCompare} storeKey={userKey} />
               </div>
             );
           })()}
@@ -765,7 +765,7 @@ function metricDelta(key: string, now: Record<string, number>, prev: Record<stri
 
 function DeltaText({ d, className }: { d: { text: string; tone: "good" | "bad" | "flat" } | null; className?: string }) {
   if (!d) return null;
-  return <span className={cn("text-[11px] font-normal tabular-nums", d.tone === "good" ? "text-ok" : d.tone === "bad" ? "text-danger" : "text-subtle", className)}>{d.text}</span>;
+  return <span className={cn("text-xs font-normal tabular-nums", d.tone === "good" ? "text-ok" : d.tone === "bad" ? "text-danger" : "text-subtle", className)}>{d.text}</span>;
 }
 
 function Overview({
@@ -910,7 +910,10 @@ function entityUnion(blocks: LayerBlock[]) {
 }
 
 const scrollBox = "relative max-h-[70vh] overflow-auto overscroll-contain rounded-xl border border-line bg-paper shadow-sm";
-const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-xs font-semibold text-muted";
+/** Metric columns shown by default (the rest: "Cột" → thêm). */
+const DEFAULT_METRIC_COLS = new Set(["cost", "impressions", "clicks", "ctr", "conversions", "cpc", "cost_per_conversion"]);
+const COLS_KEY = "adsops:analytics:cols:v1:";
+const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-2.5 py-2.5 text-[13px] font-medium text-muted";
 const stickyCol = "sticky left-0 z-[5] bg-paper shadow-[1px_0_0_var(--color-line)]";
 const cornerCell = "sticky left-0 top-0 z-20 bg-inset shadow-[1px_0_0_var(--color-line)]";
 
@@ -1334,7 +1337,7 @@ type ColDef = {
 };
 
 function DataTable({
-  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText, compare = null,
+  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText, compare = null, storeKey,
 }: {
   layer: TableLayer;
   block: LayerBlock | DeepLayerBlock;
@@ -1353,6 +1356,8 @@ function DataTable({
   emptyText?: string;
   /** Staff "So kỳ trước": previous-period metrics by row id (sorting stays on current values). */
   compare?: TableCompare | null;
+  /** Per-user key for the remembered column choice. */
+  storeKey?: string | null;
 }) {
   const [queryLocal, setQueryLocal] = useState("");
   const query = queryProp ?? queryLocal;
@@ -1387,6 +1392,49 @@ function DataTable({
     ],
     [groups, isDeep, showConvSplit],
   );
+
+  // ── "Cột": which columns are shown (remembered per user + layer) ──────────────────
+  const optCols = useMemo(() => {
+    const out: { key: string; label: string; def: boolean }[] = [];
+    if (layer !== "search_term") out.push({ key: "status", label: "Trạng thái", def: true });
+    if (layer === "keyword" || layer === "search_term") out.push({ key: "match", label: "Khớp", def: true });
+    if (layer !== "campaign") out.push({ key: "campaign", label: "Chiến dịch", def: true });
+    if (layer === "keyword" || layer === "search_term") out.push({ key: "adgroup", label: "Nhóm", def: true });
+    for (const c of cols) out.push({ key: c.key, label: c.label, def: DEFAULT_METRIC_COLS.has(c.key) });
+    return out;
+  }, [layer, cols]);
+  const colStore = `${COLS_KEY}${storeKey || "anon"}:${layer}`;
+  const [colPref, setColPref] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(colStore);
+      setColPref(raw ? (JSON.parse(raw) as Record<string, boolean>) : {});
+    } catch { setColPref({}); }
+  }, [colStore]);
+  function saveColPref(next: Record<string, boolean>) {
+    setColPref(next);
+    try {
+      if (Object.keys(next).length) window.localStorage.setItem(colStore, JSON.stringify(next));
+      else window.localStorage.removeItem(colStore);
+    } catch { /* storage blocked */ }
+  }
+  const isOn = (key: string) => {
+    const o = optCols.find((c) => c.key === key);
+    if (!o) return false;
+    return key in colPref ? colPref[key] : o.def;
+  };
+  const [colsOpen, setColsOpen] = useState(false);
+  const colsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!colsOpen) return;
+    const close = (e: MouseEvent) => { if (colsRef.current && !colsRef.current.contains(e.target as Node)) setColsOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setColsOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [colsOpen]);
+  const shownCols = cols.filter((c) => isOn(c.key));
+  const onCount = optCols.filter((c) => isOn(c.key)).length;
 
   const filtered = useMemo(() => {
     const q = fold(query.trim());
@@ -1448,8 +1496,10 @@ function DataTable({
   const safePage = Math.min(page, pages - 1);
   const visible = !showAll && !query ? filtered.slice(0, TOP) : paginate ? filtered.slice(safePage * PAGE, safePage * PAGE + PAGE) : filtered;
   const firstLabel = layer === "campaign" ? "Chiến dịch" : layer === "ad_group" ? "Nhóm quảng cáo" : layer === "keyword" ? "Từ khoá" : "Search term";
-  const showCampaign = layer !== "campaign";
-  const showAdGroup = layer === "keyword" || layer === "search_term";
+  const showStatus = layer !== "search_term" && isOn("status");
+  const showMatchCol = showMatch && isOn("match");
+  const showCampaign = layer !== "campaign" && isOn("campaign");
+  const showAdGroup = (layer === "keyword" || layer === "search_term") && isOn("adgroup");
   const campOf = (row: LayerRow) => row.campaign_name || campaignNames[row.campaign_id || ""] || "";
 
   function contextLine(row: LayerRow) {
@@ -1488,21 +1538,45 @@ function DataTable({
           {countLabel}
           {canDrill ? " · bấm tên để xuống tầng dưới" : ""}
         </span>
+        <div ref={colsRef} className="relative ml-auto">
+          <button type="button" onClick={() => setColsOpen((v) => !v)} aria-expanded={colsOpen} aria-haspopup="true" className={cn("inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium", colsOpen ? "bg-ink text-paper" : "bg-inset text-ink hover:bg-line")}>
+            <Columns3 className="size-4" /> Cột <span className="text-xs tabular-nums opacity-70">{onCount}/{optCols.length}</span>
+          </button>
+          {colsOpen ? (
+            <div className="absolute right-0 top-full z-40 mt-1 w-64 rounded-lg border border-line bg-paper p-2 shadow-sheet" role="group" aria-label="Chọn cột">
+              <div className="mb-1.5 flex gap-1.5">
+                <button type="button" onClick={() => saveColPref(Object.fromEntries(optCols.map((c) => [c.key, true])))} className="h-8 flex-1 rounded-md bg-inset px-2 text-xs font-medium text-ink hover:bg-line">Hiện tất cả</button>
+                <button type="button" onClick={() => saveColPref({})} className="h-8 flex-1 rounded-md bg-inset px-2 text-xs font-medium text-ink hover:bg-line">Mặc định</button>
+              </div>
+              <ul className="max-h-72 overflow-y-auto">
+                {optCols.map((c) => (
+                  <li key={c.key}>
+                    <label className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-sm hover:bg-inset">
+                      <input type="checkbox" checked={isOn(c.key)} onChange={(e) => saveColPref({ ...colPref, [c.key]: e.target.checked })} className="size-4 accent-accent" />
+                      <span className="flex-1">{c.label}</span>
+                      {!c.def ? <span className="text-[11px] text-subtle">thêm</span> : null}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className={scrollBox}>
         <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
           <thead>
             <tr>
-              <th className={cn(thBase, cornerCell, "min-w-[10rem] text-left md:min-w-[18rem]")}>
+              <th className={cn(thBase, cornerCell, "min-w-[10rem] text-left md:min-w-[14rem]")}>
                 <button type="button" onClick={() => toggleSort("name")} className="inline-flex items-center gap-1 hover:text-ink">{firstLabel} {sortIcon("name")}</button>
               </th>
-              {layer !== "search_term" ? (
+              {showStatus ? (
                 <th className={cn(thBase, "text-left")}>
                   <button type="button" onClick={() => toggleSort("status")} className="inline-flex items-center gap-1 hover:text-ink">Trạng thái {sortIcon("status")}</button>
                 </th>
               ) : null}
-              {showMatch ? <th className={cn(thBase, "text-left")}>Khớp</th> : null}
+              {showMatchCol ? <th className={cn(thBase, "text-left")}>Khớp</th> : null}
               {showCampaign ? (
                 <th className={cn(thBase, "text-left")} aria-sort={sort.key === "campaign" ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
                   <button type="button" onClick={() => toggleSort("campaign")} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === "campaign" && "text-ink")}>Chiến dịch {sortIcon("campaign")}</button>
@@ -1513,7 +1587,7 @@ function DataTable({
                   <button type="button" onClick={() => toggleSort("adgroup")} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === "adgroup" && "text-ink")}>Nhóm {sortIcon("adgroup")}</button>
                 </th>
               ) : null}
-              {cols.map((c) => (
+              {shownCols.map((c) => (
                 <th key={c.key} className={cn(thBase, "text-right")} aria-sort={sort.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
                   <button type="button" onClick={() => toggleSort(c.key)} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === c.key && "text-ink")}>{sortIcon(c.key)}{c.label}</button>
                 </th>
@@ -1523,30 +1597,30 @@ function DataTable({
           <tbody>
             {visible.map((row) => (
               <tr key={row.id} className="group">
-                <td className={cn(stickyCol, "border-b border-line/60 px-3 py-1.5 group-hover:bg-inset")}>
+                <td className={cn(stickyCol, "border-b border-line/60 px-3 py-2 group-hover:bg-inset")}>
                   {canDrill ? (
-                    <button type="button" onClick={() => onDrill(row)} className="flex min-h-9 w-full max-w-[10rem] items-center gap-2 text-left font-medium text-ink hover:text-accent hover:underline md:max-w-[24rem]" title={row.name}>
-                      <span className="truncate">{row.name}</span>
+                    <button type="button" onClick={() => onDrill(row)} className="flex min-h-9 w-full max-w-[12rem] items-center gap-2 text-left font-medium text-ink hover:text-accent hover:underline md:max-w-[22rem]" title={row.name}>
+                      <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">{row.name}</span>
                       {compare && !compare.partial && !compare.map.has(row.id) ? <span className="shrink-0 rounded-full bg-ok-bg px-1.5 text-[11px] font-medium text-ok">mới</span> : null}
                       {row.pmax ? <span className="shrink-0 rounded-full bg-inset px-1.5 text-[11px] font-medium text-muted">PMax</span> : null}
                       <ChevronRight className="size-3.5 shrink-0 text-subtle" />
                     </button>
                   ) : (
-                    <div className="flex min-h-9 max-w-[10rem] flex-col justify-center md:max-w-[24rem]" title={row.name}>
+                    <div className="flex min-h-9 max-w-[12rem] flex-col justify-center md:max-w-[22rem]" title={row.name}>
                       <span className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate font-medium">{row.name}</span>
+                        <span className="line-clamp-2 min-w-0 font-medium [overflow-wrap:anywhere]">{row.name}</span>
                         {compare && !compare.partial && !compare.map.has(row.id) ? <span className="shrink-0 rounded-full bg-ok-bg px-1.5 text-[11px] font-medium text-ok">mới</span> : null}
                       </span>
-                      {(layer === "search_term" || layer === "keyword") && contextLine(row) ? <span className="truncate text-xs text-subtle" title={contextLine(row)}>{contextLine(row)}</span> : null}
+                      {(layer === "search_term" || layer === "keyword") && !showCampaign && !showAdGroup && contextLine(row) ? <span className="truncate text-xs text-subtle" title={contextLine(row)}>{contextLine(row)}</span> : null}
                     </div>
                   )}
                 </td>
-                {layer !== "search_term" ? <td className="border-b border-line/60 px-3 py-1.5"><StatusBadge status={row.status} /></td> : null}
-                {showMatch ? <td className="whitespace-nowrap border-b border-line/60 px-3 py-1.5 text-muted">{row.match_type_label || row.match_type || "—"}</td> : null}
-                {showCampaign ? <td className="max-w-[14rem] truncate border-b border-line/60 px-3 py-1.5 text-muted" title={campOf(row)}>{campOf(row) || "—"}</td> : null}
-                {showAdGroup ? <td className="max-w-[14rem] truncate border-b border-line/60 px-3 py-1.5 text-muted" title={row.ad_group_name || ""}>{row.ad_group_name || "—"}</td> : null}
-                {cols.map((c) => (
-                  <td key={c.key} className={cn("whitespace-nowrap border-b border-line/60 px-3 py-1.5 text-right tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
+                {showStatus ? <td className="border-b border-line/60 px-2.5 py-2"><StatusBadge status={row.status} /></td> : null}
+                {showMatchCol ? <td className="whitespace-nowrap border-b border-line/60 px-2.5 py-2 text-muted">{row.match_type_label || row.match_type || "—"}</td> : null}
+                {showCampaign ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-2.5 py-2 text-muted" title={campOf(row)}><span className="line-clamp-2 [overflow-wrap:anywhere]">{campOf(row) || "—"}</span></td> : null}
+                {showAdGroup ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-2.5 py-2 text-muted" title={row.ad_group_name || ""}><span className="line-clamp-2 [overflow-wrap:anywhere]">{row.ad_group_name || "—"}</span></td> : null}
+                {shownCols.map((c) => (
+                  <td key={c.key} className={cn("whitespace-nowrap border-b border-line/60 px-2.5 py-2 text-right tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
                     {c.cell(row)}
                     {compare && DELTA_COLS.has(c.key) && compare.map.has(row.id) ? (
                       <DeltaText d={metricDelta(c.key, row.metrics, compare.map.get(row.id) || {})} className="block leading-tight" />
@@ -1562,12 +1636,12 @@ function DataTable({
                 <td className={cn(stickyCol, "sticky bottom-0 z-[15] border-t border-line-strong bg-inset px-3 py-2.5 text-xs font-semibold md:text-sm")}>
                   <span className="block max-w-[10rem] md:max-w-[24rem]" title={totalLabel}>{totalLabel}</span>
                 </td>
-                {layer !== "search_term" ? <td className={stickyFoot} /> : null}
-                {showMatch ? <td className={stickyFoot} /> : null}
+                {showStatus ? <td className={stickyFoot} /> : null}
+                {showMatchCol ? <td className={stickyFoot} /> : null}
                 {showCampaign ? <td className={stickyFoot} /> : null}
                 {showAdGroup ? <td className={stickyFoot} /> : null}
-                {cols.map((c) => (
-                  <td key={c.key} className={cn(stickyFoot, "whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums")}>{c.total ? c.total(totals) : "—"}</td>
+                {shownCols.map((c) => (
+                  <td key={c.key} className={cn(stickyFoot, "whitespace-nowrap px-2.5 py-2.5 text-right font-semibold tabular-nums")}>{c.total ? c.total(totals) : "—"}</td>
                 ))}
               </tr>
             </tfoot>
