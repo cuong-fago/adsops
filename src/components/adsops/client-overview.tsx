@@ -39,11 +39,11 @@ const PRESETS: { id: PresetId; key: Parameters<typeof t>[1] }[] = [
 ];
 
 const CONV_COLORS: Record<string, string> = {
-  conv_call: "#21545c",
-  conv_zalo: "#2f7fbf",
-  conv_form: "#b7791f",
-  conv_facebook_chat: "#6b46c1",
-  conv_other: "#8a8278",
+  conv_call: "#0f766e",
+  conv_zalo: "#0284c7",
+  conv_form: "#d97706",
+  conv_facebook_chat: "#7c3aed",
+  conv_other: "#94a3b8",
 };
 
 type TrendMetric = "cost" | "clicks" | "impressions" | "conversions" | "ctr" | "cpc" | "cost_per_conversion";
@@ -119,7 +119,7 @@ function Kpi({
         <span className="truncate">{label || metricText(lang, id).label}</span>
         <InfoTip lang={lang} id={id} className={strong ? "[&>button]:text-accent-fg/80 [&>button:hover]:bg-white/10" : ""} />
       </div>
-      <p className="mt-0.5 font-display text-[1.3rem] font-medium leading-tight tabular-nums tracking-tight [overflow-wrap:anywhere] sm:text-2xl md:text-[1.7rem]">
+      <p className="mt-0.5 font-display text-[1.3rem] font-semibold leading-tight tabular-nums tracking-tight [overflow-wrap:anywhere] sm:text-2xl md:text-[1.7rem]">
         {value}
       </p>
       {sub ? <p className={cn("text-xs", strong ? "text-accent-fg/80" : "text-subtle")}>{sub}</p> : null}
@@ -360,11 +360,11 @@ export function ClientOverview({
             <div className="h-56 md:h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                  <CartesianGrid stroke="#d7d0c4" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#6b645b" }} tickLine={false} axisLine={false} minTickGap={18} />
+                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={false} minTickGap={18} />
                   <YAxis
                     width={56}
-                    tick={{ fontSize: 11, fill: "#6b645b" }}
+                    tick={{ fontSize: 11, fill: "#64748b" }}
                     tickLine={false}
                     axisLine={false}
                     tickFormatter={(v: number) =>
@@ -381,14 +381,14 @@ export function ClientOverview({
                       const d = p?.[0]?.payload as DayPoint | undefined;
                       return d ? fmtDay(d.date) : "";
                     }}
-                    contentStyle={{ borderRadius: 12, border: "1px solid #d7d0c4", background: "#faf7f1", fontSize: 12 }}
+                    contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", background: "#ffffff", fontSize: 12 }}
                   />
                   {metric === "cost" || metric === "clicks" || metric === "impressions" || metric === "conversions" ? (
-                    <Bar dataKey={metric} fill="#21545c" radius={[3, 3, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+                    <Bar dataKey={metric} fill="#0f766e" radius={[3, 3, 0, 0]} maxBarSize={28} isAnimationActive={false} />
                   ) : (
                     <Line
                       dataKey={metric}
-                      stroke="#21545c"
+                      stroke="#0f766e"
                       strokeWidth={2}
                       dot={false}
                       connectNulls={false}
@@ -404,16 +404,16 @@ export function ClientOverview({
                 <div className="h-44 md:h-56">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                      <CartesianGrid stroke="#d7d0c4" strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#6b645b" }} tickLine={false} axisLine={false} minTickGap={18} />
-                      <YAxis width={56} allowDecimals={false} tick={{ fontSize: 11, fill: "#6b645b" }} tickLine={false} axisLine={false} />
+                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={false} minTickGap={18} />
+                      <YAxis width={56} allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={false} />
                       <Tooltip
                         formatter={(v, name) => [fmtNum(lang, v == null ? null : Number(v)), metricText(lang, name as MetricId).label]}
                         labelFormatter={(_, p) => {
                           const d = p?.[0]?.payload as DayPoint | undefined;
                           return d ? fmtDay(d.date) : "";
                         }}
-                        contentStyle={{ borderRadius: 12, border: "1px solid #d7d0c4", background: "#faf7f1", fontSize: 12 }}
+                        contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", background: "#ffffff", fontSize: 12 }}
                       />
                       {convTypes.map((k) => (
                         <Bar key={k} dataKey={k} stackId="c" fill={CONV_COLORS[k]} maxBarSize={28} isAnimationActive={false} />

@@ -69,13 +69,13 @@ function dmy(iso: string) {
 function fold(s: string) {
   return s.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
 }
-/** Subtle per-column heat tint. Text stays ink (contrast ≥ 7:1 on every step). */
+/** Subtle per-column heat tint (teal for volume, indigo for cost). Text stays ink (contrast ≥ 7:1 on every step). */
 function heat(value: number, max: number, tone: "cool" | "warm" = "cool", min = 0): CSSProperties | undefined {
   if (!(value > 0) || !(max > 0)) return undefined;
   const lo = min > 0 && min < max ? min : 0;
   const t = Math.max(0, Math.min(1, (value - lo) / (max - lo || 1)));
   const a = 0.03 + 0.22 * t;
-  return { backgroundColor: tone === "cool" ? `rgb(33 84 92 / ${a.toFixed(3)})` : `rgb(154 103 0 / ${a.toFixed(3)})` };
+  return { backgroundColor: tone === "cool" ? `rgb(13 148 136 / ${a.toFixed(3)})` : `rgb(79 70 229 / ${(a * 0.8).toFixed(3)})` };
 }
 
 function InfoPopover({ label, children, align = "right" }: { label: string; children: ReactNode; align?: "left" | "right" }) {
@@ -170,9 +170,9 @@ function Sparkline({ values, tone = "cool" }: { values: (number | null)[]; tone?
 
 function Segmented<T extends string>({ items, value, onChange, size = "md" }: { items: readonly { id: T; label: string }[]; value: T; onChange: (v: T) => void; size?: "sm" | "md" }) {
   return (
-    <div className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full bg-inset p-1 [scrollbar-width:none]" role="tablist">
+    <div className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-lg border border-line bg-inset p-1 [scrollbar-width:none]" role="tablist">
       {items.map((item) => (
-        <button key={item.id} type="button" role="tab" aria-selected={value === item.id} onClick={() => onChange(item.id)} className={cn("shrink-0 whitespace-nowrap rounded-full font-medium transition-colors duration-150", size === "sm" ? "h-8 px-3 text-xs" : "h-9 px-3.5 text-sm", value === item.id ? "bg-paper text-ink shadow-sm" : "text-muted hover:text-ink")}>
+        <button key={item.id} type="button" role="tab" aria-selected={value === item.id} onClick={() => onChange(item.id)} className={cn("shrink-0 whitespace-nowrap rounded-md font-medium transition-colors duration-150", size === "sm" ? "h-7 px-3 text-xs" : "h-8 px-3.5 text-sm", value === item.id ? "bg-paper text-ink shadow-sm" : "text-muted hover:text-ink")}>
           {item.label}
         </button>
       ))}
@@ -615,7 +615,7 @@ function KpiCard({ def, metrics, prev, values, big }: { def: KpiDef; metrics: Re
   return (
     <div className={cn(card, "flex min-w-0 flex-col gap-1 p-3 md:p-4", big && "ring-1 ring-accent/10")}>
       <p className="truncate text-xs font-medium uppercase tracking-wider text-subtle" title={def.hint || def.label}>{def.label}</p>
-      <p className={cn("truncate font-display font-medium tracking-tight tabular-nums", big ? "text-2xl md:text-[1.75rem]" : "text-lg md:text-xl")}>{def.value(metrics)}</p>
+      <p className={cn("truncate font-display font-semibold tracking-tight tabular-nums", big ? "text-2xl md:text-[1.75rem]" : "text-lg md:text-xl")}>{def.value(metrics)}</p>
       <Sparkline values={values} tone={def.tone} />
       {d ? (
         <p className="flex items-center gap-1 text-xs text-muted">{d.dir > 0 ? <ArrowUp className="size-3" /> : d.dir < 0 ? <ArrowDown className="size-3" /> : null}{d.word} vs kỳ trước</p>
@@ -656,10 +656,10 @@ function entityUnion(blocks: LayerBlock[]) {
   return [...map.values()].sort((a, b) => b.cost - a.cost);
 }
 
-const scrollBox = "relative max-h-[70vh] overflow-auto overscroll-contain rounded-lg border border-line bg-paper";
-const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-paper px-3 py-2.5 text-xs font-medium text-muted";
+const scrollBox = "relative max-h-[70vh] overflow-auto overscroll-contain rounded-xl border border-line bg-paper shadow-sm";
+const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-xs font-semibold text-muted";
 const stickyCol = "sticky left-0 z-[5] bg-paper shadow-[1px_0_0_var(--color-line)]";
-const cornerCell = "sticky left-0 top-0 z-20 bg-paper shadow-[1px_0_0_var(--color-line)]";
+const cornerCell = "sticky left-0 top-0 z-20 bg-inset shadow-[1px_0_0_var(--color-line)]";
 
 function PeriodSection({
   title, cols, blocks, accountBlocks, groups, layer, onLayerChange, onPickCampaign, onWholeWarehouse, splitKnown,

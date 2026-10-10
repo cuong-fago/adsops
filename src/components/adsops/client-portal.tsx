@@ -34,9 +34,9 @@ function freshnessText(lang: Lang, asOf: string | null, through: string | null):
 export function FagoMark({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>
-      <img src="/favicon.svg" alt="" className="size-8 rounded-lg" width={32} height={32} />
+      <img src="/favicon.svg" alt="" className="size-7 rounded-lg shadow-sm" width={28} height={28} />
       <span className="leading-none">
-        <span className="block font-display text-lg font-semibold tracking-tight text-ink">Fago Group</span>
+        <span className="block text-[15px] font-semibold tracking-tight text-ink">Fago Group</span>
       </span>
     </span>
   );
@@ -134,8 +134,8 @@ export function ClientPortal({
         </div>
       ) : null}
 
-      <header className="border-b border-line bg-paper">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 md:px-6">
+      <header className="sticky top-0 z-40 border-b border-line bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-2.5 md:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <FagoMark />
@@ -145,7 +145,7 @@ export function ClientPortal({
               <div
                 role="group"
                 aria-label={t(lang, "lang_label")}
-                className="inline-flex h-9 items-center rounded-full bg-inset p-0.5 text-xs font-semibold"
+                className="inline-flex h-9 items-center rounded-lg border border-line bg-inset p-0.5 text-xs font-semibold"
               >
                 {(["vi", "en"] as const).map((l) => (
                   <button
@@ -154,7 +154,7 @@ export function ClientPortal({
                     onClick={() => changeLang(l)}
                     aria-pressed={lang === l}
                     className={cn(
-                      "h-8 rounded-full px-3 uppercase transition-colors",
+                      "h-7 rounded-md px-2.5 uppercase transition-colors",
                       lang === l ? "bg-paper text-ink shadow-sm" : "text-muted hover:text-ink",
                     )}
                   >
@@ -167,7 +167,7 @@ export function ClientPortal({
                   type="button"
                   onClick={onSignOut}
                   aria-label={t(lang, "sign_out")}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-line-strong px-3 text-sm font-medium text-ink hover:bg-inset"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink hover:bg-inset"
                 >
                   <LogOut className="size-4" />
                   <span className="hidden sm:inline">{t(lang, "sign_out")}</span>
@@ -186,15 +186,15 @@ export function ClientPortal({
                   onChange={setClientId}
                 />
               </div>
-              <nav className="flex gap-1" aria-label="tabs">
+              <nav className="flex gap-1 rounded-lg border border-line bg-inset p-1" aria-label="tabs">
                 {(["overview", "analytics"] as const).map((id) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => setTab(id)}
                     className={cn(
-                      "h-10 flex-1 rounded-full px-4 text-sm font-medium transition-colors md:flex-none",
-                      tab === id ? "bg-accent text-accent-fg" : "bg-inset text-ink hover:bg-line",
+                      "h-8 flex-1 rounded-md px-4 text-sm font-medium transition-colors md:flex-none",
+                      tab === id ? "bg-paper text-ink shadow-sm" : "text-muted hover:text-ink",
                     )}
                   >
                     {t(lang, id === "overview" ? "tab_overview" : "tab_analytics")}
