@@ -30,7 +30,7 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const { listRosterAccounts } = await import("@/lib/adsops/access.server");
   const { cronAccounts } = await import("@/lib/adsops/change-log.server");
   const { checkBudgetRunway, runwayCronQueue } = await import("@/lib/adsops/budget-runway.server");
-  const { checkOptimizationScore } = await import("@/lib/adsops/optimization-score.server");
+  const { checkOptimizationScore, scoreCronQueue } = await import("@/lib/adsops/optimization-score.server");
   const { checkSharedSetCounts } = await import("@/lib/adsops/change-log.server");
   const { resolveAdsConfig } = await import("@/lib/adsops/google-ads.server");
   const cfg = await resolveAdsConfig();
@@ -39,19 +39,42 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const roster = (await listRosterAccounts()).filter((c) => (c.adapter || "live") === "live");
   // cronAccounts adds MCC-pulled Neon accounts to the file roster.
   const queue = await runwayCronQueue(await cronAccounts(roster));
-  const results: Array<{ client_id: string; ok: boolean; status: string; score_ok: boolean }> = [];
-  for (const id of queue) {
-    if (Date.now() - started > BUDGET_MS) break;
-    // Same account, same pass: runway (3 queries) and optimization score (1 query) in parallel.
-    // + shared negative list member counts (1 query; records additions as change-log events).
-    const [r, s] = await Promise.all([
-      checkBudgetRunway(id, cfg),
-      checkOptimizationScore(id, cfg),
-      checkSharedSetCounts(id, cfg).catch(() => null),
-    ]);
-    results.push({ client_id: id, ok: r.ok, status: r.status, score_ok: s.ok });
-  }
-  return Response.json({ ok: true, total: queue.length, done: results.length, remaining: queue.length - results.length, results }, { headers });
+  const scoreQueue = await scoreCronQueue(queue);
+  const results: Array<{ client_id: string; ok: boolean; status: string }> = [];
+  const scores: Array<{ client_id: string; ok: boolean }> = [];
+  const inTime = () => Date.now() - started < BUDGET_MS;
+  // Runway (+ shared list counts), oldest first, one account at a time.
+  const runwayLoop = (async () => {
+    for (const id of queue) {
+      if (!inTime()) break;
+      const [r] = await Promise.all([checkBudgetRunway(id, cfg), checkSharedSetCounts(id, cfg).catch(() => null)]);
+      results.push({ client_id: id, ok: r.ok, status: r.status });
+    }
+  })();
+  // Optimization score is one cheap query: its own queue (never-checked first), 4 at a time,
+  // in the same 45 s, so it reaches far more accounts than the runway loop.
+  let next = 0;
+  const scoreWorker = async () => {
+    while (inTime() && next < scoreQueue.length) {
+      const id = scoreQueue[next++];
+      const s = await checkOptimizationScore(id, cfg).catch(() => ({ ok: false }));
+      scores.push({ client_id: id, ok: s.ok });
+    }
+  };
+  await Promise.all([runwayLoop, scoreWorker(), scoreWorker(), scoreWorker(), scoreWorker()]);
+  return Response.json(
+    {
+      ok: true,
+      total: queue.length,
+      done: results.length,
+      remaining: queue.length - results.length,
+      score_done: scores.length,
+      score_remaining: scoreQueue.length - scores.length,
+      results,
+      scores,
+    },
+    { headers },
+  );
 }
 
 export const Route = createFileRoute("/api/cron/budget-runway")({

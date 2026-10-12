@@ -4,7 +4,8 @@ import { readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-
 import { autoPullChangeLogFn, checkSharedCountsFn } from "@/lib/adsops/change-log.functions";
 import { OPT_AMBER_DAYS, OPT_RED_DAYS } from "@/lib/adsops/accounts-overview.types";
 import { scoreTone } from "@/lib/adsops/optimization-score.types";
-import { scorePct } from "@/components/adsops/optimization-score-card";
+import { runPool, scorePct, scoredToday } from "@/components/adsops/optimization-score-card";
+import { refreshAccountScoreFn } from "@/lib/adsops/optimization-score.functions";
 import { num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
@@ -122,6 +123,20 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
     };
     setLogProgress(`Đang cập nhật nhật ký tối ưu 0/${stale.length}…`);
     void Promise.all([worker(), worker(), worker()]);
+  }, [rows]);
+
+  // Every open: optimization score for accounts not checked today (score only, 4 at a time, server-guarded).
+  const scoresStarted = useRef(false);
+  useEffect(() => {
+    if (!rows || scoresStarted.current) return;
+    scoresStarted.current = true;
+    const stale = rows.filter((r) => !scoredToday(r.score.checked_at)).map((r) => r.client_id);
+    let refreshed = 0;
+    void runPool(stale, 4, async (id) => {
+      if (!mounted.current) return;
+      const res = await refreshAccountScoreFn({ data: { clientId: id } }).catch(() => null);
+      if (res?.state === "refreshed" && ++refreshed % 8 === 0 && mounted.current) setEpoch((n) => n + 1);
+    }).then(() => { if (refreshed && mounted.current) setEpoch((n) => n + 1); });
   }, [rows]);
 
   // Every open: cheap member-count check of shared negative lists for every account (1 GAQL each).

@@ -123,6 +123,23 @@ export async function readOptimizationScores(
   });
 }
 
+/** Cron order: never-checked accounts first, then oldest check. */
+export async function scoreCronQueue(ids: string[]): Promise<string[]> {
+  const last = new Map<string, number>();
+  try {
+    const sql = await getSql();
+    const ext = ids.map((id) => customerIdFor(id));
+    const r = await sql.query<{ external_id: string; at: Date | string }>(
+      `select external_id, max(checked_at) as at from ads_optimization_score where external_id = any($1::text[]) group by external_id`,
+      [ext],
+    );
+    for (const x of r) last.set(x.external_id, Date.parse(iso(x.at)) || 0);
+  } catch {
+    /* table missing: keep given order */
+  }
+  return [...new Set(ids)].sort((a, b) => (last.get(customerIdFor(a)) ?? -1) - (last.get(customerIdFor(b)) ?? -1));
+}
+
 // ── on-view refresh of ONE account (read-only cache fill) ────────────────────────
 
 const COOLDOWN_S = 30 * 60;
