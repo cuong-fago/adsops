@@ -25,6 +25,7 @@ import { AccountPicker } from "@/components/adsops/account-picker";
 import { BrandMark, NavTab } from "@/components/adsops/brand";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
 import { BUDGET_CARD_ID, BudgetRunwayCard, BudgetStrip } from "@/components/adsops/budget-runway-card";
+import { OptimizationScoreCard, SCORE_CARD_ID, ScoreStrip } from "@/components/adsops/optimization-score-card";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
 import { clientSignOut } from "@/lib/adsops/client-auth.functions";
@@ -480,12 +481,12 @@ export function AdsOpsApp() {
     if (!ops || !list.some((s) => s.id === scenario)) setScenario("");
   }
 
-  /** Strip pill → Cảnh báo, then scroll to "Ngân sách còn lại" once it renders. */
-  function openBudgetCard() {
+  /** Strip pill → Cảnh báo, then scroll to that card once it renders. */
+  function openAlertCard(cardId: string) {
     goTab("alerts");
     let tries = 0;
     const seek = () => {
-      const el = document.getElementById(BUDGET_CARD_ID);
+      const el = document.getElementById(cardId);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
       else if (++tries < 25) window.setTimeout(seek, 120);
     };
@@ -821,7 +822,14 @@ export function AdsOpsApp() {
     );
     if (shownTab === "alerts") {
       // Staff only (the tab needs optimize; client roles never have it). The server checks again.
-      const runway = access.kind === "staff" ? <BudgetRunwayCard canCheck={Boolean(access.caps.pull && !access.read_only)} /> : null;
+      const canCheck = Boolean(access.caps.pull && !access.read_only);
+      const runway =
+        access.kind === "staff" ? (
+          <>
+            <BudgetRunwayCard canCheck={canCheck} />
+            <OptimizationScoreCard canCheck={canCheck} />
+          </>
+        ) : null;
       // No alert file: show only the budget runway card, never the empty connection panel.
       if (!pack.alerts) {
         return runway ?? <p className="px-1 py-16 text-center text-sm text-muted">Không có cảnh báo cho tài khoản này.</p>;
@@ -1034,10 +1042,16 @@ export function AdsOpsApp() {
                       : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}
                 </p>
                 {access?.kind === "staff" ? (
-                  <BudgetStrip
-                    clientId={client.client_id}
-                    onOpen={tabAllowed(access, "alerts") ? openBudgetCard : undefined}
-                  />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <BudgetStrip
+                      clientId={client.client_id}
+                      onOpen={tabAllowed(access, "alerts") ? () => openAlertCard(BUDGET_CARD_ID) : undefined}
+                    />
+                    <ScoreStrip
+                      clientId={client.client_id}
+                      onOpen={tabAllowed(access, "alerts") ? () => openAlertCard(SCORE_CARD_ID) : undefined}
+                    />
+                  </div>
                 ) : null}
                 {canPull && adsStatus?.message_vi ? <p className="mt-1 text-xs text-danger">{adsStatus.message_vi}</p> : null}
               </>
