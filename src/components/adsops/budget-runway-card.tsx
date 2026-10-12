@@ -161,13 +161,13 @@ export function BudgetStrip({ clientId, onOpen }: { clientId: string; onOpen?: (
     </>
   );
   return (
-    <p className="mt-1.5">
+    <span className="inline-flex max-w-full">
       {onOpen ? (
         <button type="button" onClick={onOpen} className={cls} title="Mở Cảnh báo → Ngân sách còn lại">{body}</button>
       ) : (
         <span className={cls}>{body}</span>
       )}
-    </p>
+    </span>
   );
 }
 
