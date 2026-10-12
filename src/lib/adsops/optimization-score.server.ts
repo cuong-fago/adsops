@@ -59,6 +59,10 @@ export async function checkOptimizationScore(clientId: string, cfgIn?: AdsConfig
     return { ok: true, client_id: id, score, error_vi: null };
   } catch (err) {
     const msg = err instanceof AdsApiError ? err.adminMessage : err instanceof Error && err.message ? err.message : "Không đọc được điểm tối ưu.";
+    if (err instanceof AdsApiError && err.kind === "CUSTOMER_NOT_ENABLED") {
+      const { markNotEnabled } = await import("./account-activity.server.ts");
+      await markNotEnabled(id);
+    }
     await upsert(customerId, id, ymdInTz("Asia/Saigon"), null, null, msg.slice(0, 500)).catch(() => null);
     return fail(msg);
   }
