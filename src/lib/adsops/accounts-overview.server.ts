@@ -3,6 +3,7 @@ import { getSql } from "@/lib/db";
 import { readBudgetRunway } from "./budget-runway.server.ts";
 import { readOptimizationScores } from "./optimization-score.server.ts";
 import type { OverviewRow } from "./accounts-overview.types.ts";
+import { OPTIMIZED_ACTIONS } from "./change-log.types.ts";
 
 type Acc = { client_id: string; label: string; customer_id_dashed: string };
 
@@ -19,10 +20,10 @@ async function lastOptimizations(ids: string[]): Promise<Map<string, { last: str
     const rows = await sql.query<{ client_id: string; last: Date | string | null; pulled: Date | string | null }>(
       `select a.client_id,
          (select max(e.change_date_time) from ads_change_events e
-           where e.client_id = a.client_id and e.action in ('add_keyword', 'add_negative')) as last,
+           where e.client_id = a.client_id and e.action = any($2::text[])) as last,
          (select max(p.pulled_at) from ads_change_pulls p where p.client_id = a.client_id and p.ok) as pulled
        from unnest($1::text[]) as a(client_id)`,
-      [ids],
+      [ids, OPTIMIZED_ACTIONS],
     );
     for (const r of rows) out.set(r.client_id, { last: iso(r.last), pulled: iso(r.pulled) });
   } catch {

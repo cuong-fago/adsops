@@ -10,7 +10,7 @@
  */
 import { getSql } from "@/lib/db";
 import { AdsApiError, resolveAdsConfig, type AdsConfig, type GaqlRow } from "./google-ads.server.ts";
-import { asRec, customerIdFor, pullMeta, searchLeaf, ymdInTz, addDaysYmd } from "./warehouse.server.ts";
+import { acquireLock, asRec, customerIdFor, pullMeta, releaseLock, searchLeaf, ymdInTz, addDaysYmd } from "./warehouse.server.ts";
 import {
   actionsInBucket,
   isOptimization,
@@ -469,7 +469,134 @@ async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string
     }
   }
   await fillNames(cfg, customerId, out);
-  return out.filter((e) => e.criterion_kind === "shared_negative");
+  const keep = out.filter((e) => e.criterion_kind === "shared_negative");
+  await diffNegativeLists(cfg, customerId, keep, setInfo);
+  return keep;
+}
+
+/**
+ * A changed NEGATIVE_KEYWORDS list: read its keywords (read-only shared_criterion), diff against
+ * the stored snapshot, and record the added negatives on the list's latest change event.
+ * Google gives no user and no per-keyword history here, so all additions since the previous
+ * pull are attached to the list's latest change time.
+ */
+async function diffNegativeLists(
+  cfg: AdsConfig,
+  customerId: string,
+  events: EventRow[],
+  setInfo: Map<string, { name: string; type: string }>,
+): Promise<void> {
+  const changed = events.filter((e) => e.resource_type === "SHARED_SET" && e.operation !== "REMOVED");
+  const sets = [...new Set(changed.map((e) => e.change_resource_name))].filter((s) => {
+    const type = setInfo.get(s)?.type;
+    return !type || type === "NEGATIVE_KEYWORDS";
+  });
+  if (!sets.length) return;
+  // Newest change per list gets the diff.
+  const latestBySet = new Map<string, EventRow>();
+  for (const e of changed) {
+    const cur = latestBySet.get(e.change_resource_name);
+    if (!cur || e.change_date_time > cur.change_date_time) latestBySet.set(e.change_resource_name, e);
+  }
+  const now = new Map<string, Map<string, { text: string; match: string | null }>>();
+  for (const s of sets) now.set(s, new Map());
+  const campaigns = new Map<string, Set<string>>();
+  for (let i = 0; i < sets.length; i += 50) {
+    const chunk = sqlList(sets.slice(i, i + 50));
+    const rows = await searchLeaf(
+      cfg,
+      customerId,
+      `SELECT shared_criterion.resource_name, shared_criterion.keyword.text, shared_criterion.keyword.match_type, shared_set.resource_name
+       FROM shared_criterion WHERE shared_set.resource_name IN (${chunk})`,
+    ).catch(() => null);
+    if (!rows) {
+      for (const s of sets.slice(i, i + 50)) now.delete(s); // unreadable: no diff, no snapshot change
+      continue;
+    }
+    for (const r of rows) {
+      const sc = asRec(r.sharedCriterion);
+      const kw = asRec(sc.keyword);
+      const set = String(asRec(r.sharedSet).resourceName || "");
+      if (!sc.resourceName || !kw.text || !now.has(set)) continue;
+      now.get(set)!.set(String(sc.resourceName), { text: String(kw.text), match: kw.matchType ? String(kw.matchType) : null });
+    }
+    const links = await searchLeaf(
+      cfg,
+      customerId,
+      `SELECT campaign.name, shared_set.resource_name FROM campaign_shared_set
+       WHERE shared_set.resource_name IN (${chunk}) AND campaign_shared_set.status = 'ENABLED'`,
+    ).catch(() => [] as GaqlRow[]);
+    for (const r of links) {
+      const set = String(asRec(r.sharedSet).resourceName || "");
+      const name = String(asRec(r.campaign).name || "");
+      if (!set || !name) continue;
+      if (!campaigns.has(set)) campaigns.set(set, new Set());
+      campaigns.get(set)!.add(name);
+    }
+  }
+  const sql = await getSql();
+  for (const [set, current] of now) {
+    let had = false;
+    const stored = new Set<string>();
+    try {
+      const b = await sql.query<{ n: number }>(
+        `select count(*)::int as n from ads_shared_negative_baseline where external_id = $1 and shared_set = $2`,
+        [customerId, set],
+      );
+      had = (b[0]?.n || 0) > 0;
+      const s = await sql.query<{ criterion: string }>(
+        `select criterion from ads_shared_negative_snapshot where external_id = $1 and shared_set = $2`,
+        [customerId, set],
+      );
+      for (const r of s) stored.add(r.criterion);
+    } catch {
+      return; // migration 0013 not applied yet: keep the plain change_status rows
+    }
+    const added = [...current.entries()].filter(([c]) => !stored.has(c));
+    const removed = [...stored].filter((c) => !current.has(c));
+    const ev = latestBySet.get(set);
+    if (ev) {
+      const names = campaigns.get(set);
+      if (names?.size && !ev.campaign_name) ev.campaign_name = [...names].sort((a, b) => a.localeCompare(b, "vi")).join(", ");
+      if (!had) {
+        // First snapshot: Google does not say what changed; record it as an addition without keywords.
+        ev.action = "shared_negative_added";
+        ev.changed_fields = "Lần đầu chụp danh sách — chưa biết từ khoá nào được thêm";
+      } else if (added.length) {
+        ev.action = "shared_negative_added";
+        const texts = added.map(([, v]) => v.text);
+        ev.keyword_text = (texts.slice(0, 20).join(", ") + (texts.length > 20 ? ` … (+${texts.length - 20})` : "")).slice(0, 1000);
+        const matches = new Set(added.map(([, v]) => v.match || ""));
+        ev.match_type = matches.size === 1 ? [...matches][0] || null : null;
+        ev.changed_fields = `+${added.length}${removed.length ? ` / −${removed.length}` : ""} từ khoá phủ định`;
+      } else if (removed.length) {
+        ev.changed_fields = `−${removed.length} từ khoá phủ định`;
+      }
+      // No difference (list re-pulled): leave the stored row as it is (upsert keeps its action).
+    }
+    for (let i = 0; i < added.length; i += 200) {
+      const part = added.slice(i, i + 200);
+      const params: unknown[] = [];
+      const tuples = part.map(([c, v], j) => {
+        params.push(customerId, set, c, v.text, v.match);
+        const b = j * 5;
+        return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5})`;
+      });
+      await sql.query(
+        `insert into ads_shared_negative_snapshot (external_id, shared_set, criterion, keyword_text, match_type) values ${tuples.join(", ")}
+         on conflict (external_id, criterion) do nothing`,
+        params,
+      );
+    }
+    if (removed.length) {
+      await sql.query(`delete from ads_shared_negative_snapshot where external_id = $1 and criterion = any($2::text[])`, [customerId, removed]);
+    }
+    await sql.query(
+      `insert into ads_shared_negative_baseline (external_id, shared_set) values ($1, $2)
+       on conflict (external_id, shared_set) do update set taken_at = now()`,
+      [customerId, set],
+    );
+  }
 }
 
 async function upsertEvents(clientId: string, customerId: string, tz: string, rows: EventRow[]): Promise<number> {
@@ -505,7 +632,11 @@ async function upsertEvents(clientId: string, customerId: string, tz: string, ro
       `insert into ads_change_events (${cols.join(", ")}) values ${tuples.join(", ")}
        on conflict on constraint ads_change_events_dedupe do update set
          client_id = excluded.client_id,
-         action = excluded.action,
+         -- change_status rows: the snapshot diff only knows the added keywords on the first pull
+         -- that sees the change, so a later re-pull of the same event never downgrades it.
+         action = case when ads_change_events.source = 'change_status' and ads_change_events.action = 'shared_negative_added'
+                       then ads_change_events.action else excluded.action end,
+         changed_fields = coalesce(ads_change_events.changed_fields, excluded.changed_fields),
          criterion_kind = excluded.criterion_kind,
          keyword_text = coalesce(excluded.keyword_text, ads_change_events.keyword_text),
          match_type = coalesce(excluded.match_type, ads_change_events.match_type),
@@ -554,7 +685,7 @@ function errorVi(err: unknown): string {
 /** Pull the last 30 days of keyword changes for one account and upsert them. */
 export async function pullChangeLog(
   clientId: string,
-  opts: { trigger: "manual" | "cron"; actor: string | null; cfg?: AdsConfig },
+  opts: { trigger: "manual" | "cron" | "auto"; actor: string | null; cfg?: AdsConfig },
 ): Promise<ChangeLogPullResult> {
   const id = clientId.trim();
   const base: ChangeLogPullResult = { ok: false, client_id: id, row_count: 0, read_count: 0, keyword_rows: 0, shared_rows: 0, truncated: false, covered_start: null, covered_end: null, error_vi: null, note_vi: null };
@@ -886,3 +1017,41 @@ export async function cronAccounts(all: Array<{ client_id: string; customer_id_d
   return [...new Set(ids)].sort((a, b) => (lastBy.get(a) || 0) - (lastBy.get(b) || 0));
 }
 
+
+// ── on-view auto-pull (read-only cache fill, any staff viewer) ───────────────────
+
+export const AUTO_PULL_STALE_MS = 6 * 60 * 60 * 1000;
+const AUTO_PULL_ERROR_MS = 30 * 60 * 1000;
+
+export type ChangeAutoPullResult = { state: "fresh" | "cooldown" | "busy" | "pulled" | "error"; error_vi?: string | null };
+
+/**
+ * Pull one account's change log when the last successful pull is older than 6 h.
+ * Guards: Neon lock `<client>:changelog` (one in flight), 30 min after a failed attempt.
+ */
+export async function autoPullChangeLog(clientId: string, actor: string | null): Promise<ChangeAutoPullResult> {
+  const id = clientId.trim();
+  if (!CLIENT_ID_RE.test(id) || customerIdFor(id).length !== 10) return { state: "error", error_vi: "Tài khoản không hợp lệ." };
+  try {
+    const sql = await getSql();
+    const r = await sql.query<{ ok_at: Date | string | null; fail_at: Date | string | null }>(
+      `select max(pulled_at) filter (where ok) as ok_at, max(pulled_at) filter (where not ok) as fail_at
+       from ads_change_pulls where client_id = $1`,
+      [id],
+    );
+    const okAt = Date.parse(iso(r[0]?.ok_at) || "") || 0;
+    const failAt = Date.parse(iso(r[0]?.fail_at) || "") || 0;
+    if (Date.now() - okAt < AUTO_PULL_STALE_MS) return { state: "fresh" };
+    if (failAt > okAt && Date.now() - failAt < AUTO_PULL_ERROR_MS) return { state: "cooldown" };
+  } catch {
+    return { state: "error", error_vi: "Chưa có bảng nhật ký." };
+  }
+  const key = `${id}:changelog`;
+  if (!(await acquireLock(key, 120))) return { state: "busy" };
+  try {
+    const res = await pullChangeLog(id, { trigger: "auto", actor });
+    return res.ok ? { state: "pulled" } : { state: "error", error_vi: res.error_vi };
+  } finally {
+    await releaseLock(key);
+  }
+}
