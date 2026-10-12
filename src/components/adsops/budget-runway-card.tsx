@@ -10,6 +10,8 @@ import {
 import { money, num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
+import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/adsops/account-activity";
+
 
 const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
 const td = "border-b border-line/60 px-3 py-2.5 align-top";
@@ -179,6 +181,7 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
   const [onlyRed, setOnlyRed] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "runway", dir: 1 });
   const [epoch, setEpoch] = useState(0);
+  const act = useActiveFilter(rows, (r) => r.client_id);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,6 +198,7 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
   }, [epoch]);
 
   async function checkAll() {
+    const rows = act.shown;
     if (!rows || busy) return;
     setBusy(true);
     let ok = 0;
@@ -217,7 +221,7 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
   }
 
   const shown = useMemo(() => {
-    const list = (rows || []).filter((r) => !onlyRed || r.status === "red" || r.expiring);
+    const list = (act.shown || []).filter((r) => !onlyRed || r.status === "red" || r.expiring);
     return [...list].sort((a, b) => {
       if (sort.key === "account") return a.label.localeCompare(b.label, "vi") * sort.dir;
       const ra = rank(a);
@@ -233,9 +237,9 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
       if (vb == null) return -1;
       return (va - vb) * sort.dir;
     });
-  }, [rows, onlyRed, sort]);
+  }, [act.shown, onlyRed, sort]);
 
-  const redCount = (rows || []).filter((r) => r.status === "red" || r.expiring).length;
+  const redCount = (act.shown || []).filter((r) => r.status === "red" || r.expiring).length;
   const toggle = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
   const head = (key: SortKey, label: string, right = false, cls?: string) => (
     <th className={cls || cn(right ? thNum : th)} aria-sort={sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
@@ -263,14 +267,15 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
             <input type="checkbox" checked={onlyRed} onChange={(e) => setOnlyRed(e.target.checked)} className="accent-[var(--color-accent)]" />
             Chỉ hiện dưới 3 ngày{rows ? ` (${redCount})` : ""}
           </label>
+          <InactiveToggle show={act.show} onChange={act.setShow} count={act.inactiveCount} />
           {canCheck ? (
             <button
               type="button"
-              disabled={busy || !rows?.length}
+              disabled={busy || !act.shown?.length}
               onClick={() => void checkAll()}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-medium text-accent-fg shadow-sm hover:opacity-95 disabled:opacity-60"
             >
-              <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Kiểm tra tất cả tài khoản{rows ? ` (${rows.length})` : ""}
+              <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Kiểm tra tất cả tài khoản{act.shown ? ` (${act.shown.length})` : ""}
             </button>
           ) : null}
         </div>
@@ -301,6 +306,7 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
                   <td className={cn(nameTd, r.status === "red" ? "bg-[color-mix(in_srgb,var(--color-danger-bg)_40%,var(--color-paper))]" : "bg-paper")}>
                     <span className={nameText} title={[r.label, r.customer_id_dashed].filter(Boolean).join(" · ")}>{r.label}</span>
                     <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{r.customer_id_dashed}</span>
+                    <InactiveBadge activity={act.map?.[r.client_id]} />
                   </td>
                   <td className={cn(td, "min-w-[8rem] max-w-[10rem] text-muted")}>
                     {r.kind === "account_budget" ? "Có ngân sách tài khoản" : r.kind === "no_budget" ? "Không có số dư từ Google" : r.kind === "error" ? "—" : "Chưa kiểm tra"}
