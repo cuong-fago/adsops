@@ -188,6 +188,10 @@ export async function checkBudgetRunway(
     return { ok: true, client_id: id, status, error_vi: null };
   } catch (err) {
     const msg = err instanceof AdsApiError ? err.adminMessage : err instanceof Error && err.message ? err.message : "Không kiểm tra được.";
+    if (err instanceof AdsApiError && err.kind === "CUSTOMER_NOT_ENABLED") {
+      const { markNotEnabled } = await import("./account-activity.server.ts");
+      await markNotEnabled(id);
+    }
     if (opts.keepOnError) return fail(msg); // background refresh: keep the last stored result
     await store({
       clientId: id, customerId, ok: false, kind: "error", currency: null, limit: null, served: null, remaining: null,

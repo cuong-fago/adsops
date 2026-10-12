@@ -36,6 +36,9 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const cfg = await resolveAdsConfig();
   if (!cfg.ready) return Response.json({ ok: false, error: "google ads not configured" }, { status: 503, headers });
 
+  // Once a day: customer_client.status for every MCC (read-only, one query per MCC).
+  const { refreshMccStatusIfStale } = await import("@/lib/adsops/account-activity.server");
+  const mccStatus = await refreshMccStatusIfStale(cfg).catch((e: unknown) => ({ ran: false, error: e instanceof Error ? e.message : String(e) }));
   const roster = (await listRosterAccounts()).filter((c) => (c.adapter || "live") === "live");
   // cronAccounts adds MCC-pulled Neon accounts to the file roster.
   const queue = await runwayCronQueue(await cronAccounts(roster));
@@ -76,6 +79,7 @@ async function handle({ request }: { request: Request }): Promise<Response> {
       total: queue.length,
       done: results.length,
       remaining: queue.length - results.length,
+      mcc_status: mccStatus,
       score_done: scores.length,
       score_remaining: scoreQueue.length - scores.length,
       results,
