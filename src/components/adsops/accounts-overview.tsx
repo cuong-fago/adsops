@@ -90,31 +90,38 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
     return () => { cancelled = true; };
   }, [epoch]);
 
-  // Once per visit: refresh change logs older than 6 h, one account at a time (read-only;
+  // Lives for the whole visit; a rows refresh must NOT cancel the background loop.
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+
+  // Once per visit: refresh change logs older than 6 h, oldest first, 3 at a time (read-only;
   // the server re-checks freshness, lock and error cooldown, so a reload never doubles work).
   useEffect(() => {
     if (!rows || autoStarted.current) return;
     autoStarted.current = true;
-    const stale = rows.filter((r) => !r.change_pulled_at || Date.now() - Date.parse(r.change_pulled_at) > STALE_LOG_MS);
+    const age = (r: OverviewRow) => (r.change_pulled_at ? Date.parse(r.change_pulled_at) : 0);
+    const stale = rows
+      .filter((r) => !r.change_pulled_at || Date.now() - age(r) > STALE_LOG_MS)
+      .sort((a, b) => age(a) - age(b));
     if (!stale.length) return;
-    let alive = true;
-    void (async () => {
-      let pulled = 0;
-      for (let i = 0; i < stale.length && alive; i++) {
-        setLogProgress(`Đang cập nhật nhật ký tối ưu ${i + 1}/${stale.length}…`);
+    let next = 0;
+    let done = 0;
+    const worker = async () => {
+      while (mounted.current && next < stale.length) {
+        const r = stale[next++];
         try {
-          const r = await autoPullChangeLogFn({ data: { clientId: stale[i].client_id } });
-          if (r.state === "pulled") pulled += 1;
-        } catch {
-          /* keep going */
+          const res = await autoPullChangeLogFn({ data: { clientId: r.client_id } });
+          if (res.state === "pulled" && mounted.current) setEpoch((n) => n + 1); // re-read the stored overview
+          if (res.state === "error") console.warn("[overview] change-log auto-pull failed", r.client_id, res.error_vi);
+        } catch (err) {
+          console.warn("[overview] change-log auto-pull threw", r.client_id, err);
         }
-        if (pulled && pulled % 5 === 0) setEpoch((n) => n + 1);
+        done += 1;
+        if (mounted.current) setLogProgress(done < stale.length ? `Đang cập nhật nhật ký tối ưu ${done}/${stale.length}…` : "");
       }
-      if (!alive) return;
-      setLogProgress("");
-      if (pulled) setEpoch((n) => n + 1);
-    })();
-    return () => { alive = false; };
+    };
+    setLogProgress(`Đang cập nhật nhật ký tối ưu 0/${stale.length}…`);
+    void Promise.all([worker(), worker(), worker()]);
   }, [rows]);
 
   const counts = useMemo(() => {
