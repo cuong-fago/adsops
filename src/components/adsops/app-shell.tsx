@@ -24,6 +24,7 @@ import { adminUpdateAdAccount, stopViewAs } from "@/lib/adsops/admin.functions";
 import { AccountPicker } from "@/components/adsops/account-picker";
 import { BrandMark, NavTab } from "@/components/adsops/brand";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
+import { AccountsOverview } from "@/components/adsops/accounts-overview";
 import { BUDGET_CARD_ID, BudgetRunwayCard, BudgetStrip } from "@/components/adsops/budget-runway-card";
 import { OptimizationScoreCard, SCORE_CARD_ID, ScoreStrip } from "@/components/adsops/optimization-score-card";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
@@ -76,6 +77,7 @@ type TabId =
   | "sop"
   | "analytics"
   | "changelog"
+  | "overview"
   | "members";
 
 const OPS_TABS: { id: TabId; label: string }[] = [
@@ -136,6 +138,7 @@ const TAB_MODULES: Record<TabId, string[]> = {
   sop: ["sop"],
   analytics: ["analytics", "pace"],
   changelog: [],
+  overview: [],
   members: [],
 };
 
@@ -161,6 +164,8 @@ function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
   if (id === "analytics") return caps.analytics;
   // Server functions enforce the same capability (admin / head_ads only).
   if (id === "changelog") return Boolean(caps.changeLog);
+  // Every staff role (view-as included); the server checks again. Never customer roles.
+  if (id === "overview") return access.kind === "staff";
   // Old connect panel: never shown, so a stale "connect" tab falls back like any disallowed tab.
   if (id === "connect") return false;
   const cap = MODULE_CAPABILITY[id];
@@ -703,6 +708,18 @@ export function AdsOpsApp() {
         </section>
       );
     }
+    if (shownTab === "overview") {
+      return (
+        <AccountsOverview
+          onOpenAccount={(id) => {
+            setClientId(id);
+            setAliasDraft(null);
+            setAliasMsg("");
+            goTab(tabAllowed(access, "analytics") ? "analytics" : "alerts");
+          }}
+        />
+      );
+    }
     if (shownTab === "changelog") {
       return <ChangeLogView clients={clients} clientId={clientId} canPull={Boolean(access.caps.changeLog && !access.read_only)} />;
     }
@@ -984,6 +1001,14 @@ export function AdsOpsApp() {
         </div>
         {access && access.role !== "pending" ? (
           <nav aria-label="Điều hướng" className="mx-auto flex max-w-[1800px] items-end gap-1 overflow-x-auto px-4 md:px-6 lg:px-8 [scrollbar-width:none]">
+            {access.kind === "staff" ? (
+              <>
+                <NavTab active={shownTab === "overview"} onClick={() => goTab("overview")}>
+                  Tổng quan tài khoản
+                </NavTab>
+                {opsTabs.length || caps?.analytics || caps?.changeLog ? <span aria-hidden className="mx-2 h-5 w-px shrink-0 self-center bg-line" /> : null}
+              </>
+            ) : null}
             {opsTabs.length ? (
               <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
                 {viewer ? "Báo cáo" : "Vận hành"}
@@ -1020,7 +1045,7 @@ export function AdsOpsApp() {
       <main className="mx-auto max-w-[1800px] px-4 py-5 md:px-6 lg:px-8">
         <section className="mb-5 flex flex-col gap-3 rounded-xl bg-paper px-4 py-3 shadow-sheet md:flex-row md:items-center md:justify-between md:px-5">
           <div className="min-w-0">
-            {client && shownTab !== "members" ? (
+            {client && shownTab !== "members" && shownTab !== "overview" ? (
               <>
                 <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
                   <span className="truncate text-base font-semibold tracking-tight text-ink">{client.alias || client.display_name}</span>
