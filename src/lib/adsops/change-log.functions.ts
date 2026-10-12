@@ -81,3 +81,25 @@ export const pullChangeLogFn = createServerFn({ method: "POST" })
     const { pullChangeLog } = await import("./change-log.server");
     return pullChangeLog(data.clientId, { trigger: "manual", actor: actorLabel(ctx.real) });
   });
+
+/**
+ * On-view refresh of ONE account's change log (overview tab). Read-only Google pull used as a
+ * cache fill, so any staff role with the account may trigger it (Sale and view-as included);
+ * the guards (6 h freshness, lock, 30 min error cooldown) live in autoPullChangeLog.
+ * Returns no change details: those stay behind the changeLog capability.
+ */
+export const autoPullChangeLogFn = createServerFn({ method: "POST" })
+  .validator((data: unknown): { clientId: string } => {
+    const id = data && typeof data === "object" ? (data as { clientId?: unknown }).clientId : null;
+    if (typeof id !== "string" || !id.trim()) throw new Error("Thiếu tài khoản");
+    return { clientId: id.trim() };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const ctx = context.access;
+    const { ForbiddenError, assertAccount, actorLabel } = await import("./permissions.server");
+    if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");
+    assertAccount(ctx, data.clientId);
+    const { autoPullChangeLog } = await import("./change-log.server");
+    return autoPullChangeLog(data.clientId, `auto:${actorLabel(ctx.real)}`);
+  });

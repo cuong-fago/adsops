@@ -12,6 +12,7 @@ export type ChangeAction =
   | "enable"
   | "bid_change"
   | "other_update"
+  | "shared_negative_added"
   | "shared_list_created"
   | "shared_list_changed"
   | "shared_list_removed"
@@ -34,6 +35,7 @@ export const ACTION_LABEL_VI: Record<ChangeAction, string> = {
   enable: "Bật lại",
   bid_change: "Đổi giá thầu",
   other_update: "Sửa khác",
+  shared_negative_added: "Thêm phủ định vào danh sách dùng chung",
   shared_list_created: "Tạo DS phủ định chung",
   shared_list_changed: "Sửa DS phủ định chung",
   shared_list_removed: "Xoá DS phủ định chung",
@@ -67,6 +69,7 @@ export function categoryOf(action: ChangeAction): ChangeCategory {
     case "add_keyword":
       return "add_keyword";
     case "add_negative":
+    case "shared_negative_added":
     case "remove_negative":
     case "shared_list_created":
     case "shared_list_changed":
@@ -96,7 +99,7 @@ export const ALL_ACTIONS = Object.keys(ACTION_LABEL_VI) as ChangeAction[];
 
 export function summaryBucketOf(action: string): SummaryBucket {
   if (action === "add_keyword") return "add_keyword";
-  if (action === "add_negative") return "add_negative";
+  if (action === "add_negative" || action === "shared_negative_added") return "add_negative";
   if (action === "pause" || action === "remove_keyword" || action === "remove_negative") return "pause_remove";
   if (action === "bid_change") return "bid_change";
   if (action.startsWith("shared_list_")) return "shared";
@@ -198,3 +201,6 @@ export type ChangeLogPullResult = {
   error_vi: string | null;
   note_vi: string | null;
 };
+
+/** Actions that count as "tối ưu từ khoá" for "last optimized" (adds keywords or negatives, incl. shared lists). */
+export const OPTIMIZED_ACTIONS: ChangeAction[] = ["add_keyword", "add_negative", "shared_negative_added"];

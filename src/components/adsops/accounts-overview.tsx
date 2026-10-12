@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-overview.functions";
+import { autoPullChangeLogFn } from "@/lib/adsops/change-log.functions";
 import { OPT_AMBER_DAYS, OPT_RED_DAYS } from "@/lib/adsops/accounts-overview.types";
 import { scoreTone } from "@/lib/adsops/optimization-score.types";
 import { scorePct } from "@/components/adsops/optimization-score-card";
@@ -9,6 +10,8 @@ import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
 
 type Level = "red" | "amber" | "ok" | "none";
+
+const STALE_LOG_MS = 6 * 60 * 60 * 1000;
 
 const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
 const td = "border-b border-line/60 px-3 py-2.5 align-top";
@@ -75,6 +78,9 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
   const [error, setError] = useState("");
   const [onlyRed, setOnlyRed] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "urgency", dir: -1 });
+  const [epoch, setEpoch] = useState(0);
+  const [logProgress, setLogProgress] = useState("");
+  const autoStarted = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +88,34 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
       .then((res) => { if (!cancelled) setRows(res.rows); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error && err.message ? err.message : "Không đọc được tổng quan."); });
     return () => { cancelled = true; };
-  }, []);
+  }, [epoch]);
+
+  // Once per visit: refresh change logs older than 6 h, one account at a time (read-only;
+  // the server re-checks freshness, lock and error cooldown, so a reload never doubles work).
+  useEffect(() => {
+    if (!rows || autoStarted.current) return;
+    autoStarted.current = true;
+    const stale = rows.filter((r) => !r.change_pulled_at || Date.now() - Date.parse(r.change_pulled_at) > STALE_LOG_MS);
+    if (!stale.length) return;
+    let alive = true;
+    void (async () => {
+      let pulled = 0;
+      for (let i = 0; i < stale.length && alive; i++) {
+        setLogProgress(`Đang cập nhật nhật ký tối ưu ${i + 1}/${stale.length}…`);
+        try {
+          const r = await autoPullChangeLogFn({ data: { clientId: stale[i].client_id } });
+          if (r.state === "pulled") pulled += 1;
+        } catch {
+          /* keep going */
+        }
+        if (pulled && pulled % 5 === 0) setEpoch((n) => n + 1);
+      }
+      if (!alive) return;
+      setLogProgress("");
+      if (pulled) setEpoch((n) => n + 1);
+    })();
+    return () => { alive = false; };
+  }, [rows]);
 
   const counts = useMemo(() => {
     const list = rows || [];
@@ -163,11 +196,13 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
 
   const optCell = (r: OverviewRow) => {
     const d = optDays(r);
-    if (d == null) return <span className={toneCls[optLevel(r)]}>{r.change_pulled_at ? "Chưa ghi nhận trong 30 ngày" : "—"}</span>;
+    const tip = r.change_pulled_at ? `Nhật ký cập nhật lúc ${formatSaigon(r.change_pulled_at)}` : "Chưa kéo nhật ký tối ưu";
+    if (d == null) return <span className={toneCls[optLevel(r)]} title={tip}>{r.change_pulled_at ? "Chưa ghi nhận trong 30 ngày" : "—"}</span>;
     return (
-      <span className="tabular-nums">
+      <span className="tabular-nums" title={tip}>
         <span className={toneCls[optLevel(r)]}>{d === 0 ? "Hôm nay" : `${d} ngày trước`}</span>
         <span className="block text-xs text-subtle">{dmy(r.last_opt_at as string)}</span>
+        {r.change_pulled_at ? <span className="block text-[11px] text-subtle">nhật ký {formatSaigon(r.change_pulled_at)}</span> : null}
       </span>
     );
   };
@@ -179,7 +214,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
           <h2 className="font-display text-lg font-semibold tracking-tight">Tổng quan tài khoản</h2>
           <p className="mt-0.5 text-sm text-muted">Ngân sách còn, điểm tối ưu và lần tối ưu từ khoá gần nhất của mọi tài khoản bạn được xem. Số đã lưu, không gọi Google.</p>
           <p className="mt-1 text-xs text-subtle">
-            Tối ưu từ khoá = thêm từ khoá hoặc thêm phủ định (Nhật ký tối ưu). Google chỉ trả lại khoảng 30 ngày gần nhất; thay đổi qua Google Ads Editor có thể không có trong nhật ký. "—" = chưa có số đã lưu.
+            Tối ưu từ khoá = thêm từ khoá, thêm phủ định, hoặc thêm phủ định vào danh sách dùng chung (Nhật ký tối ưu; danh sách dùng chung Google không ghi người sửa). Google chỉ trả lại khoảng 30 ngày gần nhất; thay đổi qua Google Ads Editor có thể không có trong nhật ký. "—" = chưa có số đã lưu.
           </p>
         </div>
         <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-line bg-paper px-3 text-sm">
@@ -203,6 +238,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
           ))}
         </div>
       ) : null}
+      {logProgress ? <p className="text-xs text-muted">{logProgress}</p> : null}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       {!rows && !error ? <p className="py-4 text-center text-sm text-muted">Đang đọc số đã lưu…</p> : null}
       {rows ? (
