@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-overview.functions";
-import { autoPullChangeLogFn } from "@/lib/adsops/change-log.functions";
+import { autoPullChangeLogFn, checkSharedCountsFn } from "@/lib/adsops/change-log.functions";
 import { OPT_AMBER_DAYS, OPT_RED_DAYS } from "@/lib/adsops/accounts-overview.types";
 import { scoreTone } from "@/lib/adsops/optimization-score.types";
 import { scorePct } from "@/components/adsops/optimization-score-card";
@@ -124,6 +124,28 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
     void Promise.all([worker(), worker(), worker()]);
   }, [rows]);
 
+  // Every open: cheap member-count check of shared negative lists for every account (1 GAQL each).
+  const countsStarted = useRef(false);
+  useEffect(() => {
+    if (!rows || countsStarted.current) return;
+    countsStarted.current = true;
+    const list = rows.map((r) => r.client_id);
+    let next = 0;
+    const worker = async () => {
+      while (mounted.current && next < list.length) {
+        const id = list[next++];
+        try {
+          const r = await checkSharedCountsFn({ data: { clientId: id } });
+          if (r.events && mounted.current) setEpoch((n) => n + 1);
+          if (r.state === "error") console.warn("[overview] shared list check failed", id, r.error_vi);
+        } catch (err) {
+          console.warn("[overview] shared list check threw", id, err);
+        }
+      }
+    };
+    void Promise.all([worker(), worker(), worker(), worker()]);
+  }, [rows]);
+
   const counts = useMemo(() => {
     const list = rows || [];
     return {
@@ -203,7 +225,9 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
 
   const optCell = (r: OverviewRow) => {
     const d = optDays(r);
-    const tip = r.change_pulled_at ? `Nhật ký cập nhật lúc ${formatSaigon(r.change_pulled_at)}` : "Chưa kéo nhật ký tối ưu";
+    const tip =
+      (r.change_pulled_at ? `Nhật ký cập nhật lúc ${formatSaigon(r.change_pulled_at)}` : "Chưa kéo nhật ký tối ưu") +
+      ". Phủ định trong danh sách dùng chung được ghi nhận theo lúc AdsOps phát hiện.";
     const failed = r.change_last_ok === false ? (
       <span className="mt-0.5 block text-xs font-medium text-danger" title={`${r.change_last_at ? formatSaigon(r.change_last_at) + ": " : ""}${r.change_last_error || "Lỗi không rõ"}`}>
         Lỗi cập nhật nhật ký

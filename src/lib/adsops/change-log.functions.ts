@@ -115,3 +115,21 @@ export const diagnoseChangeLogFn = createServerFn({ method: "POST" })
     const { diagnoseChangeLog } = await import("./change-log.server");
     return { json: JSON.stringify(await diagnoseChangeLog(data.clientId), null, 2) };
   });
+
+/**
+ * Cheap shared negative list check for ONE account (one read-only GAQL on shared_set.member_count).
+ * Any staff role with the account, view-as included; guarded (10 min, lock) in the server module.
+ * Returns counts only; change details stay behind changeLog.
+ */
+export const checkSharedCountsFn = createServerFn({ method: "POST" })
+  .validator(asClient)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const ctx = context.access;
+    const { ForbiddenError, assertAccount } = await import("./permissions.server");
+    if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");
+    assertAccount(ctx, data.clientId);
+    const { checkSharedSetCountsIfStale } = await import("./change-log.server");
+    const r = await checkSharedSetCountsIfStale(data.clientId);
+    return { state: r.state, events: r.events, error_vi: r.error_vi ?? null };
+  });

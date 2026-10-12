@@ -493,7 +493,9 @@ async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string
     negSets.push(String(ss.resourceName));
     if (!setInfo.has(String(ss.resourceName))) setInfo.set(String(ss.resourceName), { name: String(ss.name || ""), type: "NEGATIVE_KEYWORDS" });
   }
-  await diffNegativeLists(cfg, customerId, keep, setInfo, negSets, tz);
+  // Unchanged lists are watched by checkSharedSetCounts (member_count), not re-read here.
+  void negSets;
+  await diffNegativeLists(cfg, customerId, keep, setInfo, [], tz);
   return keep;
 }
 
@@ -771,6 +773,12 @@ export async function pullChangeLog(
     let note: string | null = null;
     try {
       const shared = await pullSharedLists(cfg, customerId, startYmd, today, tz);
+      // Always (even when change_status is empty): member-count watch, writes its own events.
+      const counted = await checkSharedSetCounts(id, cfg).catch((err) => {
+        console.warn(JSON.stringify({ tag: "changelog.shared_counts_error", client_id: id, error: errorVi(err) }));
+        return null;
+      });
+      if (counted) sharedRows += counted.events;
       sharedRows = shared.length;
       sharedWritten = await upsertEvents(id, customerId, tz, shared);
     } catch (err) {
@@ -1154,6 +1162,9 @@ export async function diagnoseChangeLog(clientId: string): Promise<Record<string
       [customerId],
     )
     .catch((e) => String(e));
+  out.member_counts = await sql
+    .query(`select shared_set, name, member_count, checked_at from ads_shared_set_counts where external_id = $1 order by name`, [customerId])
+    .catch((e) => String(e));
   const cfg = await resolveAdsConfig();
   if (!cfg.ready || customerId.length !== 10) return { ...out, google: "Google Ads chưa cấu hình / CID không hợp lệ" };
   const run = async (label: string, q: string) => {
@@ -1184,4 +1195,205 @@ export async function diagnoseChangeLog(clientId: string): Promise<Record<string
     out.google = `Lỗi: ${errorVi(err)}`;
   }
   return out;
+}
+
+// ── shared negative lists: member_count watch ───────────────────────────────────
+
+const MEMBER_FETCH_MAX = 5000; // larger lists: count only, no keyword diff
+const MEMBER_FETCH_BUDGET = 12000; // members read per check across lists
+const SMALL_LIST = 500; // small lists keep a member snapshot from the first sight
+
+export type SharedCountResult = { ok: boolean; lists: number; increased: number; events: number; baseline: number; error_vi?: string | null };
+
+async function readMembers(cfg: AdsConfig, customerId: string, set: string): Promise<Map<string, { text: string; match: string | null }> | null> {
+  const rows = await searchLeaf(
+    cfg,
+    customerId,
+    `SELECT shared_criterion.resource_name, shared_criterion.keyword.text, shared_criterion.keyword.match_type
+     FROM shared_criterion WHERE shared_set.resource_name = '${set.replace(/'/g, "")}'`,
+  ).catch((err) => {
+    console.warn(JSON.stringify({ tag: "changelog.shared_criterion_error", customer_id: customerId, set, error: errorVi(err) }));
+    return null;
+  });
+  if (!rows) return null;
+  const out = new Map<string, { text: string; match: string | null }>();
+  for (const r of rows) {
+    const sc = asRec(r.sharedCriterion);
+    const kw = asRec(sc.keyword);
+    if (sc.resourceName && kw.text) out.set(String(sc.resourceName), { text: String(kw.text), match: kw.matchType ? String(kw.matchType) : null });
+  }
+  return out;
+}
+
+async function replaceMembers(customerId: string, set: string, members: Map<string, { text: string; match: string | null }>) {
+  const sql = await getSql();
+  await sql.query(`delete from ads_shared_negative_snapshot where external_id = $1 and shared_set = $2`, [customerId, set]);
+  const list = [...members.entries()];
+  for (let i = 0; i < list.length; i += 300) {
+    const params: unknown[] = [];
+    const tuples = list.slice(i, i + 300).map(([c, v], j) => {
+      params.push(customerId, set, c, v.text, v.match);
+      const b = j * 5;
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5})`;
+    });
+    await sql.query(
+      `insert into ads_shared_negative_snapshot (external_id, shared_set, criterion, keyword_text, match_type) values ${tuples.join(", ")}
+       on conflict (external_id, criterion) do update set shared_set = excluded.shared_set, keyword_text = excluded.keyword_text, match_type = excluded.match_type`,
+      params,
+    );
+  }
+  await sql.query(
+    `insert into ads_shared_negative_baseline (external_id, shared_set) values ($1, $2) on conflict (external_id, shared_set) do update set taken_at = now()`,
+    [customerId, set],
+  );
+}
+
+/**
+ * One read-only GAQL (shared_set.member_count) per account. A count above the stored one is an
+ * addition, recorded at detection time; the first sight of a list is the baseline (no event).
+ * When a list changed and has <= 5000 members, its keywords are read and diffed against the
+ * stored member snapshot (if one exists) to name the added negatives.
+ */
+export async function checkSharedSetCounts(clientId: string, cfgIn?: AdsConfig): Promise<SharedCountResult> {
+  const id = clientId.trim();
+  const customerId = customerIdFor(id);
+  if (!CLIENT_ID_RE.test(id) || customerId.length !== 10) return { ok: false, lists: 0, increased: 0, events: 0, baseline: 0, error_vi: "Tài khoản không hợp lệ." };
+  const cfg = cfgIn || (await resolveAdsConfig());
+  if (!cfg.ready) return { ok: false, lists: 0, increased: 0, events: 0, baseline: 0, error_vi: "Chưa cấu hình Google Ads API." };
+  const rows = await searchLeaf(
+    cfg,
+    customerId,
+    `SELECT shared_set.resource_name, shared_set.name, shared_set.member_count FROM shared_set
+     WHERE shared_set.type = 'NEGATIVE_KEYWORDS' AND shared_set.status = 'ENABLED'`,
+  );
+  const sets = rows
+    .map((r) => asRec(r.sharedSet))
+    .filter((s) => s.resourceName)
+    .map((s) => ({ set: String(s.resourceName), name: String(s.name || ""), count: Number(s.memberCount ?? 0) || 0 }));
+  const sql = await getSql();
+  const stored = new Map<string, number>();
+  const snapped = new Set<string>();
+  const prev = await sql.query<{ shared_set: string; member_count: number }>(
+    `select shared_set, member_count from ads_shared_set_counts where external_id = $1`,
+    [customerId],
+  );
+  for (const r of prev) stored.set(r.shared_set, Number(r.member_count));
+  const base = await sql.query<{ shared_set: string }>(`select shared_set from ads_shared_negative_baseline where external_id = $1`, [customerId]);
+  for (const r of base) snapped.add(r.shared_set);
+
+  const up = sets.filter((s) => stored.has(s.set) && s.count > (stored.get(s.set) as number));
+  const campaigns = new Map<string, string[]>();
+  if (up.length) {
+    const links = await searchLeaf(
+      cfg,
+      customerId,
+      `SELECT campaign.name, shared_set.resource_name FROM campaign_shared_set
+       WHERE shared_set.resource_name IN (${sqlList(up.map((s) => s.set))}) AND campaign_shared_set.status = 'ENABLED'`,
+    ).catch(() => [] as GaqlRow[]);
+    for (const r of links) {
+      const set = String(asRec(r.sharedSet).resourceName || "");
+      const name = String(asRec(r.campaign).name || "");
+      if (set && name) campaigns.set(set, [...(campaigns.get(set) || []), name]);
+    }
+  }
+  let budget = MEMBER_FETCH_BUDGET;
+  const events: EventRow[] = [];
+  const at = localNow("UTC");
+  let baseline = 0;
+  for (const s of sets) {
+    const before = stored.get(s.set);
+    if (before == null) {
+      baseline += 1;
+      // Small lists: keep members from the first sight so the next increase can name keywords.
+      if (s.count <= SMALL_LIST && budget >= s.count) {
+        const m = await readMembers(cfg, customerId, s.set);
+        if (m) { budget -= m.size; await replaceMembers(customerId, s.set, m); }
+      }
+      continue;
+    }
+    if (s.count <= before) continue;
+    let keywords: string | null = null;
+    let match: string | null = null;
+    if (s.count <= MEMBER_FETCH_MAX && budget >= s.count) {
+      const m = await readMembers(cfg, customerId, s.set);
+      if (m) {
+        budget -= m.size;
+        if (snapped.has(s.set)) {
+          const old = await sql.query<{ criterion: string }>(
+            `select criterion from ads_shared_negative_snapshot where external_id = $1 and shared_set = $2`,
+            [customerId, s.set],
+          );
+          const had = new Set(old.map((r) => r.criterion));
+          const added = [...m.entries()].filter(([c]) => !had.has(c)).map(([, v]) => v);
+          if (added.length) {
+            keywords = (added.slice(0, 20).map((v) => v.text).join(", ") + (added.length > 20 ? ` … (+${added.length - 20})` : "")).slice(0, 1000);
+            const ms = new Set(added.map((v) => v.match || ""));
+            match = ms.size === 1 ? [...ms][0] || null : null;
+          }
+        }
+        await replaceMembers(customerId, s.set, m);
+      }
+    }
+    const names = (campaigns.get(s.set) || []).sort((a, b) => a.localeCompare(b, "vi"));
+    events.push({
+      change_date_time: at,
+      source: "change_status",
+      resource_type: "SHARED_SET",
+      operation: "COUNT_UP",
+      action: "shared_negative_added",
+      criterion_kind: "shared_negative",
+      level: "shared",
+      change_resource_name: s.set,
+      keyword_text: keywords,
+      match_type: match,
+      campaign_id: null,
+      campaign_name: names.length ? names.join(", ") : null,
+      ad_group_id: null,
+      ad_group_name: null,
+      shared_set_name: s.name || null,
+      user_email: null,
+      client_type: null,
+      changed_fields: `+${s.count - before} từ khoá phủ định (${before} → ${s.count}) (phát hiện khi kiểm tra; Google không cung cấp giờ sửa)`,
+      old_status: null,
+      new_status: null,
+      old_bid_micros: null,
+      new_bid_micros: null,
+      raw: { detected_by: "member_count", before, after: s.count },
+    });
+  }
+  if (events.length) await upsertEvents(id, customerId, "UTC", events);
+  for (const s of sets) {
+    await sql.query(
+      `insert into ads_shared_set_counts (external_id, shared_set, name, member_count, checked_at) values ($1, $2, $3, $4, now())
+       on conflict (external_id, shared_set) do update set name = excluded.name, member_count = excluded.member_count, checked_at = now()`,
+      [customerId, s.set, s.name, s.count],
+    );
+  }
+  console.info(JSON.stringify({ tag: "changelog.shared_counts", client_id: id, lists: sets.length, baseline, increased: up.length, events: events.length }));
+  return { ok: true, lists: sets.length, increased: up.length, events: events.length, baseline };
+}
+
+/** On-view guard: one in flight per account, skip if checked < 10 min ago. */
+export async function checkSharedSetCountsIfStale(clientId: string): Promise<SharedCountResult & { state: string }> {
+  const id = clientId.trim();
+  const customerId = customerIdFor(id);
+  const empty = { ok: false, lists: 0, increased: 0, events: 0, baseline: 0 };
+  try {
+    const sql = await getSql();
+    const r = await sql.query<{ at: Date | string | null }>(`select max(checked_at) as at from ads_shared_set_counts where external_id = $1`, [customerId]);
+    const at = Date.parse(iso(r[0]?.at) || "") || 0;
+    if (Date.now() - at < 10 * 60 * 1000) return { ...empty, ok: true, state: "fresh" };
+  } catch {
+    return { ...empty, state: "error", error_vi: "Chưa có bảng ads_shared_set_counts (migration 0014)." };
+  }
+  const key = `${id}:sharedcount`;
+  if (!(await acquireLock(key, 60))) return { ...empty, state: "busy" };
+  try {
+    const res = await checkSharedSetCounts(id);
+    return { ...res, state: res.events ? "changed" : "checked" };
+  } catch (err) {
+    return { ...empty, state: "error", error_vi: errorVi(err) };
+  } finally {
+    await releaseLock(key);
+  }
 }
