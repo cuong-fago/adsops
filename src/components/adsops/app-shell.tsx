@@ -721,7 +721,7 @@ export function AdsOpsApp() {
       );
     }
     if (shownTab === "changelog") {
-      return <ChangeLogView clients={clients} clientId={clientId} canPull={Boolean(access.caps.changeLog && !access.read_only)} />;
+      return <ChangeLogView clients={clients} clientId={clientId} canPull={Boolean(access.caps.changeLog && !access.read_only)} canDiagnose={Boolean(access.caps.grant && !access.read_only)} />;
     }
     if (loading) {
       return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở khách…</p>;

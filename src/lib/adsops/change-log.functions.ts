@@ -103,3 +103,15 @@ export const autoPullChangeLogFn = createServerFn({ method: "POST" })
     const { autoPullChangeLog } = await import("./change-log.server");
     return autoPullChangeLog(data.clientId, `auto:${actorLabel(ctx.real)}`);
   });
+
+/** "Chẩn đoán" in Nhật ký tối ưu: effective admin only (never in view-as). Read-only. */
+export const diagnoseChangeLogFn = createServerFn({ method: "POST" })
+  .validator(asClient)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertEffectiveAdmin, assertAccount } = await import("./permissions.server");
+    assertEffectiveAdmin(context.access);
+    assertAccount(context.access, data.clientId);
+    const { diagnoseChangeLog } = await import("./change-log.server");
+    return { json: JSON.stringify(await diagnoseChangeLog(data.clientId), null, 2) };
+  });

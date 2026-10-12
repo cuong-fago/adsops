@@ -12,6 +12,10 @@ export type OverviewRow = {
   last_opt_at: string | null;
   /** Latest successful change-log pull; null = never pulled (then "—", not "none in 30 days"). */
   change_pulled_at: string | null;
+  /** Latest pull attempt (ok or not); a failed latest attempt is shown, never hidden behind old data. */
+  change_last_ok: boolean | null;
+  change_last_error: string | null;
+  change_last_at: string | null;
 };
 
 export type OverviewRead = { rows: OverviewRow[] };

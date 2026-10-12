@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
-import { pullChangeLogFn, readChangeLogFn } from "@/lib/adsops/change-log.functions";
+import { diagnoseChangeLogFn, pullChangeLogFn, readChangeLogFn } from "@/lib/adsops/change-log.functions";
 import {
   ACTION_LABEL_VI,
   CATEGORY_LABEL_VI,
@@ -113,7 +113,7 @@ function CoverageBadge({ a }: { a: ChangeAccountSummary }) {
   );
 }
 
-export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellClient[]; clientId: string; canPull: boolean }) {
+export function ChangeLogView({ clients, clientId, canPull, canDiagnose = false }: { clients: ShellClient[]; clientId: string; canPull: boolean; canDiagnose?: boolean }) {
   const today = todaySaigon();
   const [preset, setPreset] = useState<string | null>("y");
   const [start, setStart] = useState(addDays(today, -1));
@@ -301,6 +301,7 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
               Từ khoá thêm / tạm dừng / xoá / đổi giá thầu và phủ định — ai làm, ở chiến dịch / nhóm nào. Chỉ đọc, không sửa Google Ads.
             </p>
             <p className="mt-1 text-xs text-subtle">{NOTE}</p>
+            {canDiagnose && clientId ? <DiagnosePanel clientId={clientId} /> : null}
           </div>
           {canPull ? (
             <div className="flex shrink-0 flex-wrap gap-2">
@@ -536,6 +537,33 @@ export function ChangeLogView({ clients, clientId, canPull }: { clients: ShellCl
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+/** Admin-only read-only diagnostic for the selected account (Neon rows + raw GAQL counts). */
+function DiagnosePanel({ clientId }: { clientId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [out, setOut] = useState<string>("");
+  async function run() {
+    setBusy(true);
+    try {
+      const r = await diagnoseChangeLogFn({ data: { clientId } });
+      setOut(r.json);
+    } catch (err) {
+      setOut(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-2">
+      <button type="button" disabled={busy} onClick={() => void run()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium text-ink hover:bg-inset disabled:opacity-60">
+        <RefreshCw className={cn("size-3.5", busy && "animate-spin")} /> Chẩn đoán (admin)
+      </button>
+      {out ? (
+        <pre className="mt-2 max-h-[50vh] max-w-[min(100%,1100px)] overflow-auto rounded-lg border border-line bg-inset p-3 text-[11px] leading-snug">{out}</pre>
+      ) : null}
     </div>
   );
 }
