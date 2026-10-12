@@ -31,6 +31,7 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const { cronAccounts } = await import("@/lib/adsops/change-log.server");
   const { checkBudgetRunway, runwayCronQueue } = await import("@/lib/adsops/budget-runway.server");
   const { checkOptimizationScore } = await import("@/lib/adsops/optimization-score.server");
+  const { checkSharedSetCounts } = await import("@/lib/adsops/change-log.server");
   const { resolveAdsConfig } = await import("@/lib/adsops/google-ads.server");
   const cfg = await resolveAdsConfig();
   if (!cfg.ready) return Response.json({ ok: false, error: "google ads not configured" }, { status: 503, headers });
@@ -42,7 +43,12 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   for (const id of queue) {
     if (Date.now() - started > BUDGET_MS) break;
     // Same account, same pass: runway (3 queries) and optimization score (1 query) in parallel.
-    const [r, s] = await Promise.all([checkBudgetRunway(id, cfg), checkOptimizationScore(id, cfg)]);
+    // + shared negative list member counts (1 query; records additions as change-log events).
+    const [r, s] = await Promise.all([
+      checkBudgetRunway(id, cfg),
+      checkOptimizationScore(id, cfg),
+      checkSharedSetCounts(id, cfg).catch(() => null),
+    ]);
     results.push({ client_id: id, ok: r.ok, status: r.status, score_ok: s.ok });
   }
   return Response.json({ ok: true, total: queue.length, done: results.length, remaining: queue.length - results.length, results }, { headers });
