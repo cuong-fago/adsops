@@ -37,7 +37,7 @@ export const ACTION_LABEL_VI: Record<ChangeAction, string> = {
   other_update: "Sửa khác",
   shared_negative_added: "Thêm phủ định vào danh sách dùng chung",
   shared_list_created: "Tạo DS phủ định chung",
-  shared_list_changed: "Sửa DS phủ định chung",
+  shared_list_changed: "Sửa danh sách phủ định dùng chung",
   shared_list_removed: "Xoá DS phủ định chung",
   shared_list_attached: "Gắn DS phủ định chung",
   shared_list_detached: "Gỡ DS phủ định chung",
@@ -203,4 +203,4 @@ export type ChangeLogPullResult = {
 };
 
 /** Actions that count as "tối ưu từ khoá" for "last optimized" (adds keywords or negatives, incl. shared lists). */
-export const OPTIMIZED_ACTIONS: ChangeAction[] = ["add_keyword", "add_negative", "shared_negative_added"];
+export const OPTIMIZED_ACTIONS: ChangeAction[] = ["add_keyword", "add_negative", "shared_negative_added", "shared_list_changed", "shared_list_created"];

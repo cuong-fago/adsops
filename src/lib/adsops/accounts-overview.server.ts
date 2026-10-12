@@ -12,20 +12,30 @@ function iso(v: Date | string | null): string | null {
   return v instanceof Date ? v.toISOString() : String(v);
 }
 
-async function lastOptimizations(ids: string[]): Promise<Map<string, { last: string | null; pulled: string | null }>> {
-  const out = new Map<string, { last: string | null; pulled: string | null }>();
+type Opt = { last: string | null; pulled: string | null; lastOk: boolean | null; lastErr: string | null; lastAt: string | null };
+
+async function lastOptimizations(ids: string[]): Promise<Map<string, Opt>> {
+  const out = new Map<string, Opt>();
   if (!ids.length) return out;
   try {
     const sql = await getSql();
-    const rows = await sql.query<{ client_id: string; last: Date | string | null; pulled: Date | string | null }>(
+    const rows = await sql.query<{
+      client_id: string; last: Date | string | null; pulled: Date | string | null;
+      last_ok: boolean | null; last_err: string | null; last_at: Date | string | null;
+    }>(
       `select a.client_id,
          (select max(e.change_date_time) from ads_change_events e
            where e.client_id = a.client_id and e.action = any($2::text[])) as last,
-         (select max(p.pulled_at) from ads_change_pulls p where p.client_id = a.client_id and p.ok) as pulled
-       from unnest($1::text[]) as a(client_id)`,
+         (select max(p.pulled_at) from ads_change_pulls p where p.client_id = a.client_id and p.ok) as pulled,
+         l.ok as last_ok, l.error_vi as last_err, l.pulled_at as last_at
+       from unnest($1::text[]) as a(client_id)
+       left join lateral (select ok, error_vi, pulled_at from ads_change_pulls p
+                          where p.client_id = a.client_id order by pulled_at desc limit 1) l on true`,
       [ids, OPTIMIZED_ACTIONS],
     );
-    for (const r of rows) out.set(r.client_id, { last: iso(r.last), pulled: iso(r.pulled) });
+    for (const r of rows) {
+      out.set(r.client_id, { last: iso(r.last), pulled: iso(r.pulled), lastOk: r.last_ok, lastErr: r.last_err, lastAt: iso(r.last_at) });
+    }
   } catch {
     /* change-log tables missing: leave empty ("—") */
   }
@@ -60,6 +70,9 @@ export async function readAccountsOverview(accounts: Acc[]): Promise<OverviewRow
       score: { checked_at: s?.checked_at ?? null, score: s?.score ?? null, d1: s?.d1 ?? null, error_vi: s?.error_vi ?? null },
       last_opt_at: o?.last ?? null,
       change_pulled_at: o?.pulled ?? null,
+      change_last_ok: o?.lastOk ?? null,
+      change_last_error: o?.lastErr ?? null,
+      change_last_at: o?.lastAt ?? null,
     };
   });
 }

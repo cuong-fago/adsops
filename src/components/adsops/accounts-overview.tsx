@@ -204,12 +204,25 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
   const optCell = (r: OverviewRow) => {
     const d = optDays(r);
     const tip = r.change_pulled_at ? `Nhật ký cập nhật lúc ${formatSaigon(r.change_pulled_at)}` : "Chưa kéo nhật ký tối ưu";
-    if (d == null) return <span className={toneCls[optLevel(r)]} title={tip}>{r.change_pulled_at ? "Chưa ghi nhận trong 30 ngày" : "—"}</span>;
+    const failed = r.change_last_ok === false ? (
+      <span className="mt-0.5 block text-xs font-medium text-danger" title={`${r.change_last_at ? formatSaigon(r.change_last_at) + ": " : ""}${r.change_last_error || "Lỗi không rõ"}`}>
+        Lỗi cập nhật nhật ký
+      </span>
+    ) : null;
+    if (d == null) {
+      return (
+        <span title={tip}>
+          <span className={toneCls[optLevel(r)]}>{r.change_pulled_at ? "Chưa ghi nhận trong 30 ngày" : "—"}</span>
+          {failed}
+        </span>
+      );
+    }
     return (
       <span className="tabular-nums" title={tip}>
         <span className={toneCls[optLevel(r)]}>{d === 0 ? "Hôm nay" : `${d} ngày trước`}</span>
         <span className="block text-xs text-subtle">{dmy(r.last_opt_at as string)}</span>
         {r.change_pulled_at ? <span className="block text-[11px] text-subtle">nhật ký {formatSaigon(r.change_pulled_at)}</span> : null}
+        {failed}
       </span>
     );
   };

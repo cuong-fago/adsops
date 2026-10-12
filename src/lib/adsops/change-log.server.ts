@@ -65,6 +65,13 @@ export function sharedSetStatusQuery(start: string, today: string): string {
 
 // ── time helpers ────────────────────────────────────────────────────────────────
 
+/** "YYYY-MM-DD HH:mm:ss" now in `tz` (the format change_status uses). */
+function localNow(tz: string): string {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date());
+  const g = (k: string) => p.find((x) => x.type === k)?.value || "00";
+  return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}:${g("second")}`;
+}
+
 function tzOffsetMinutes(utcMs: number, tz: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
@@ -371,7 +378,7 @@ async function fillNames(cfg: AdsConfig, customerId: string, rows: EventRow[]): 
 
 const SHARED_SET_RE = /^customers\/\d{10}\/sharedSets\/\d+$/;
 
-async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string, today: string): Promise<EventRow[]> {
+async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string, today: string, tz: string): Promise<EventRow[]> {
   const rows = await searchLeaf(cfg, customerId, sharedSetStatusQuery(start, today));
   console.info(JSON.stringify({ tag: "changelog.shared_status", customer_id: customerId, rows: rows.length,
     types: rows.map((r) => `${String(asRec(r.changeStatus).resourceType || "")}:${String(asRec(r.changeStatus).resourceStatus || "")}`).slice(0, 20) }));
@@ -472,7 +479,21 @@ async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string
   }
   await fillNames(cfg, customerId, out);
   const keep = out.filter((e) => e.criterion_kind === "shared_negative");
-  await diffNegativeLists(cfg, customerId, keep, setInfo);
+  // Every enabled negative list is snapshotted on every pull, changed or not.
+  const allNeg = await searchLeaf(
+    cfg,
+    customerId,
+    `SELECT shared_set.resource_name, shared_set.name, shared_set.type, shared_set.status, shared_set.member_count
+     FROM shared_set WHERE shared_set.type = 'NEGATIVE_KEYWORDS' AND shared_set.status = 'ENABLED'`,
+  ).catch(() => [] as GaqlRow[]);
+  const negSets: string[] = [];
+  for (const r of allNeg) {
+    const ss = asRec(r.sharedSet);
+    if (!ss.resourceName) continue;
+    negSets.push(String(ss.resourceName));
+    if (!setInfo.has(String(ss.resourceName))) setInfo.set(String(ss.resourceName), { name: String(ss.name || ""), type: "NEGATIVE_KEYWORDS" });
+  }
+  await diffNegativeLists(cfg, customerId, keep, setInfo, negSets, tz);
   return keep;
 }
 
@@ -487,9 +508,11 @@ async function diffNegativeLists(
   customerId: string,
   events: EventRow[],
   setInfo: Map<string, { name: string; type: string }>,
+  negSets: string[],
+  tz: string,
 ): Promise<void> {
   const changed = events.filter((e) => e.resource_type === "SHARED_SET" && e.operation !== "REMOVED");
-  const sets = [...new Set(changed.map((e) => e.change_resource_name))].filter((s) => {
+  const sets = [...new Set([...changed.map((e) => e.change_resource_name), ...negSets])].filter((s) => {
     const type = setInfo.get(s)?.type;
     return !type || type === "NEGATIVE_KEYWORDS";
   });
@@ -561,7 +584,37 @@ async function diffNegativeLists(
     const removed = [...stored].filter((c) => !current.has(c));
     console.info(JSON.stringify({ tag: "changelog.shared_diff", customer_id: customerId, shared_set: set, baseline: had,
       now: current.size, stored: stored.size, added: added.length, removed: removed.length }));
-    const ev = latestBySet.get(set);
+    let ev = latestBySet.get(set);
+    if (!ev && had && added.length) {
+      // Keywords appeared but Google listed no change for the list: record what the snapshot saw,
+      // dated at this pull (Google gives no exact time).
+      ev = {
+        change_date_time: localNow(tz),
+        source: "change_status",
+        resource_type: "SHARED_SET",
+        operation: "SNAPSHOT",
+        action: "shared_list_changed",
+        criterion_kind: "shared_negative",
+        level: "shared",
+        change_resource_name: set,
+        keyword_text: null,
+        match_type: null,
+        campaign_id: null,
+        campaign_name: null,
+        ad_group_id: null,
+        ad_group_name: null,
+        shared_set_name: setInfo.get(set)?.name || null,
+        user_email: null,
+        client_type: null,
+        changed_fields: null,
+        old_status: null,
+        new_status: null,
+        old_bid_micros: null,
+        new_bid_micros: null,
+        raw: { detected_by: "snapshot" },
+      };
+      events.push(ev);
+    }
     if (ev) {
       const names = campaigns.get(set);
       if (names?.size && !ev.campaign_name) ev.campaign_name = [...names].sort((a, b) => a.localeCompare(b, "vi")).join(", ");
@@ -575,7 +628,7 @@ async function diffNegativeLists(
         ev.keyword_text = (texts.slice(0, 20).join(", ") + (texts.length > 20 ? ` … (+${texts.length - 20})` : "")).slice(0, 1000);
         const matches = new Set(added.map(([, v]) => v.match || ""));
         ev.match_type = matches.size === 1 ? [...matches][0] || null : null;
-        ev.changed_fields = `+${added.length}${removed.length ? ` / −${removed.length}` : ""} từ khoá phủ định`;
+        ev.changed_fields = `+${added.length}${removed.length ? ` / −${removed.length}` : ""} từ khoá phủ định${ev.operation === "SNAPSHOT" ? " (phát hiện khi kéo nhật ký)" : ""}`;
       } else if (removed.length) {
         ev.changed_fields = `−${removed.length} từ khoá phủ định`;
       }
@@ -710,6 +763,20 @@ export async function pullChangeLog(
     const today = ymdInTz(tz);
     const startYmd = addDaysYmd(today, -WINDOW_DAYS);
     const endYmd = addDaysYmd(today, 1);
+
+    // Shared negative lists first and stored at once: cheap, and they must not be lost if the
+    // keyword-level paging below runs long on a busy account.
+    let sharedRows = 0;
+    let sharedWritten = 0;
+    let note: string | null = null;
+    try {
+      const shared = await pullSharedLists(cfg, customerId, startYmd, today, tz);
+      sharedRows = shared.length;
+      sharedWritten = await upsertEvents(id, customerId, tz, shared);
+    } catch (err) {
+      note = `Không đọc được danh sách phủ định chung: ${errorVi(err)}`;
+      console.warn(JSON.stringify({ tag: "changelog.shared_error", client_id: id, error: note }));
+    }
     coveredStart = localToOffsetIso(`${startYmd} 00:00:00`, tz);
 
     // Keyword-level changes, newest first; page by the oldest timestamp when a page is full.
@@ -763,17 +830,7 @@ export async function pullChangeLog(
     await fillNames(cfg, customerId, events);
 
     const keywordRows = events.length;
-    let sharedRows = 0;
-    let note: string | null = null;
-    try {
-      const shared = await pullSharedLists(cfg, customerId, startYmd, today);
-      sharedRows = shared.length;
-      events.push(...shared);
-    } catch (err) {
-      note = `Không đọc được danh sách phủ định chung: ${errorVi(err)}`;
-    }
-
-    const written = await upsertEvents(id, customerId, tz, events);
+    const written = sharedWritten + (await upsertEvents(id, customerId, tz, events));
     if (truncated) note = [note, "Quá 30.000 thay đổi — chỉ lưu phần mới nhất."].filter(Boolean).join(" ");
     const coveredEnd = await recordPull({
       clientId: id,
@@ -1067,4 +1124,64 @@ export async function autoPullChangeLog(clientId: string, actor: string | null):
   } finally {
     await releaseLock(key);
   }
+}
+
+// ── admin diagnostic (read-only: Neon + GAQL SELECT) ─────────────────────────────
+
+export async function diagnoseChangeLog(clientId: string): Promise<Record<string, unknown>> {
+  const id = clientId.trim();
+  const customerId = customerIdFor(id);
+  const out: Record<string, unknown> = { client_id: id, customer_id: customerId, at: new Date().toISOString() };
+  const sql = await getSql();
+  out.pulls = await sql
+    .query(
+      `select pulled_at, ok, trigger, actor, row_count, truncated, error_vi, note_vi from ads_change_pulls
+       where client_id = $1 or external_id = $2 order by pulled_at desc limit 10`,
+      [id, customerId],
+    )
+    .catch((e) => String(e));
+  out.max_by_action = await sql
+    .query(
+      `select action, source, count(*)::int as n, max(change_date_time) as latest from ads_change_events
+       where client_id = $1 or external_id = $2 group by action, source order by latest desc`,
+      [id, customerId],
+    )
+    .catch((e) => String(e));
+  out.snapshot = await sql
+    .query(
+      `select b.shared_set, b.taken_at, (select count(*)::int from ads_shared_negative_snapshot s where s.external_id = b.external_id and s.shared_set = b.shared_set) as stored
+       from ads_shared_negative_baseline b where b.external_id = $1`,
+      [customerId],
+    )
+    .catch((e) => String(e));
+  const cfg = await resolveAdsConfig();
+  if (!cfg.ready || customerId.length !== 10) return { ...out, google: "Google Ads chưa cấu hình / CID không hợp lệ" };
+  const run = async (label: string, q: string) => {
+    try {
+      const rows = await searchLeaf(cfg, customerId, q);
+      return { label, ok: true, count: rows.length, rows: rows.slice(0, 30) };
+    } catch (err) {
+      return { label, ok: false, error: errorVi(err) };
+    }
+  };
+  try {
+    const meta = await pullMeta(cfg, customerId, id);
+    const tz = meta.timezone || "Asia/Saigon";
+    const today = ymdInTz(tz);
+    out.timezone = tz;
+    out.google = [
+      await run("change_status SHARED_SET / CAMPAIGN_SHARED_SET (30 ngày)", sharedSetStatusQuery(addDaysYmd(today, -WINDOW_DAYS), today)),
+      await run(
+        "shared_set (danh sách + số thành viên)",
+        `SELECT shared_set.resource_name, shared_set.name, shared_set.type, shared_set.status, shared_set.member_count, shared_set.reference_count FROM shared_set`,
+      ),
+      await run(
+        "campaign_shared_set",
+        `SELECT campaign.name, shared_set.name, shared_set.type, campaign_shared_set.status FROM campaign_shared_set`,
+      ),
+    ];
+  } catch (err) {
+    out.google = `Lỗi: ${errorVi(err)}`;
+  }
+  return out;
 }
