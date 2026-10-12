@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, Columns3, Info, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, Columns3, Info, Search, X } from "lucide-react";
 import {
   type AnalyticsSnap,
   type DeepFacets,
@@ -214,7 +214,6 @@ export function AnalyticsView({
   const [weekN, setWeekN] = useState(0);
   const [monthN, setMonthN] = useState(0);
   const [prevEqual, setPrevEqual] = useState(allowCompare);
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const storageKey = `${TAB_KEY}${userKey || "anon"}`;
   useEffect(() => {
@@ -262,10 +261,24 @@ export function AnalyticsView({
     { id: "30", label: "30 ngày", days: 30 },
     { id: "90", label: "90 ngày", days: 90 },
   ];
-  const activePreset =
-    weekN || monthN ? "" :
-    end === warehouseEnd && start === warehouseStart ? "all" :
-    end === warehouseEnd ? presets.find((p) => p.days === daySpan)?.id || "" : "";
+  // Calendar presets (days outside the warehouse stay blank, never 0).
+  const yesterday = addDays(new Date().toLocaleDateString("en-CA", { timeZone: snap.timezone || "Asia/Saigon" }), -1);
+  const monthStart = `${warehouseEnd.slice(0, 7)}-01`;
+  const lastMonthEnd = addDays(monthStart, -1);
+  const lastMonthStart = `${lastMonthEnd.slice(0, 7)}-01`;
+  const calPresets = [
+    { id: "yesterday", label: "Hôm qua", start: yesterday, end: yesterday },
+    ...presets.map((p) => ({ id: p.id, label: p.label, start: addDays(warehouseEnd, -(p.days - 1)), end: warehouseEnd })),
+    { id: "month", label: "Tháng này", start: monthStart, end: warehouseEnd },
+    { id: "lastmonth", label: "Tháng trước", start: lastMonthStart, end: lastMonthEnd },
+    { id: "all", label: "Toàn kho", start: warehouseStart, end: warehouseEnd },
+  ];
+  const activePreset = weekN || monthN ? "" : calPresets.find((p) => p.start === start && p.end === end)?.id || "";
+  function pickDate(nextStart: string, nextEnd: string) {
+    setDraftStart(nextStart); setDraftEnd(nextEnd);
+    // Applies at once when the range is valid (no extra "Xem số" click).
+    if (nextStart && nextEnd && nextStart <= nextEnd) applyRange(nextStart, nextEnd);
+  }
 
   const dates = useMemo(() => warehouseDates(snap), [snap]);
   // Older snapshots carry no per-campaign Gọi/Zalo/Form split (all 0 while account has some):
@@ -547,25 +560,16 @@ export function AnalyticsView({
     <div className="flex min-w-0 flex-col gap-4">
       {snap.budget_pace && <BudgetBanner pace={snap.budget_pace} currency={snap.currency} />}
 
-      <div className="sticky top-0 z-30 -mx-4 bg-bg/90 px-4 pb-1 pt-2 backdrop-blur md:-mx-1 md:px-1">
+      <div className="z-30 -mx-4 bg-bg/90 px-4 pb-1 pt-2 backdrop-blur md:sticky md:top-0 md:-mx-1 md:px-1">
         <div className={cn(card, "flex flex-col gap-3 p-3 md:p-4")}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-medium uppercase tracking-wider text-subtle">Phân tích · {snap.display_name}</p>
-              <p className="truncate font-display text-lg font-medium tracking-tight tabular-nums md:text-xl">
+              <p className="font-display text-xl font-semibold tracking-tight tabular-nums md:text-2xl">
                 {rangeLabel}
-                <span className="ml-2 align-middle font-sans text-xs font-normal text-muted">{daySpan} ngày</span>
+                <span className="ml-2 align-middle font-sans text-sm font-normal text-muted">{daySpan} ngày</span>
               </p>
             </div>
-            <div className="hidden items-center gap-1 lg:flex">
-              {presets.map((p) => (
-                <button key={p.id} type="button" onClick={() => applyRange(addDays(warehouseEnd, -(p.days - 1)), warehouseEnd)} className={cn("h-9 rounded-full px-3 text-sm font-medium transition-colors", activePreset === p.id ? "bg-accent text-accent-fg" : "text-ink hover:bg-inset")}>{p.label}</button>
-              ))}
-              <button type="button" onClick={() => applyRange(warehouseStart, warehouseEnd)} className={cn("h-9 rounded-full px-3 text-sm font-medium transition-colors", activePreset === "all" ? "bg-accent text-accent-fg" : "text-ink hover:bg-inset")}>Toàn kho</button>
-            </div>
-            <button type="button" onClick={() => setFiltersOpen((v) => !v)} aria-expanded={filtersOpen} className={cn("inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium", filtersOpen ? "bg-ink text-paper" : "bg-inset text-ink hover:bg-line")}>
-              <SlidersHorizontal className="size-4" /> Lọc ngày
-            </button>
             <InfoPopover label="Giải thích số liệu">
               <p className="font-medium">Về số liệu</p>
               <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
@@ -584,40 +588,46 @@ export function AnalyticsView({
             </InfoPopover>
           </div>
 
-          {filtersOpen ? (
-            <div className="flex flex-col gap-3 border-t border-line pt-3">
-              <div className="flex flex-wrap gap-1 lg:hidden">
-                {presets.map((p) => (
-                  <button key={p.id} type="button" onClick={() => applyRange(addDays(warehouseEnd, -(p.days - 1)), warehouseEnd)} className={cn("h-9 rounded-full px-3 text-sm font-medium", activePreset === p.id ? "bg-accent text-accent-fg" : "bg-inset text-ink")}>{p.label}</button>
-                ))}
-                <button type="button" onClick={() => applyRange(warehouseStart, warehouseEnd)} className={cn("h-9 rounded-full px-3 text-sm font-medium", activePreset === "all" ? "bg-accent text-accent-fg" : "bg-inset text-ink")}>Toàn kho</button>
-              </div>
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="flex flex-col gap-1 text-xs font-medium text-muted">Từ<input type="date" value={draftStart} min={snap.warehouse_start || undefined} max={warehouseEnd} onChange={(e) => setDraftStart(e.target.value)} className="h-10 rounded-md border border-line bg-bg px-2.5 text-sm text-ink" /></label>
-                <label className="flex flex-col gap-1 text-xs font-medium text-muted">Đến<input type="date" value={draftEnd} min={snap.warehouse_start || undefined} max={warehouseEnd} onChange={(e) => setDraftEnd(e.target.value)} className="h-10 rounded-md border border-line bg-bg px-2.5 text-sm text-ink" /></label>
-                <button type="button" onClick={() => draftStart && draftEnd && draftStart <= draftEnd && applyRange(draftStart, draftEnd)} className="h-10 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg">Xem số</button>
-                {allowCompare ? (
-                  <>
-                    <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={prevEqual} onChange={(e) => setPrevEqual(e.target.checked)} className="size-4 accent-accent" />So kỳ trước cùng độ dài{prevRange ? <span className="text-xs text-muted">({formatRangeShort(prevStart, prevEnd)})</span> : null}</label>
-                    {snap.week_choices.length ? (
-                      <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm">Tuần
-                        <select value={weekN} onChange={(e) => { setWeekN(Number(e.target.value)); setMonthN(0); if (Number(e.target.value)) setTab("monthly"); }} className="h-8 bg-transparent text-sm">
-                          <option value={0}>—</option>
-                          {snap.week_choices.map((n) => <option key={n} value={n}>{n} tuần (T2–CN)</option>)}
-                        </select>
-                      </label>
-                    ) : null}
-                    <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm">Tháng trước
-                      <select value={monthN} onChange={(e) => { setMonthN(Number(e.target.value)); setWeekN(0); if (Number(e.target.value)) setTab("monthly"); }} className="h-8 bg-transparent text-sm">
+          <div className="flex flex-col gap-2 border-t border-line pt-3" role="group" aria-label="Khoảng thời gian">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-sm font-semibold text-ink">Khoảng thời gian</span>
+              {calPresets.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyRange(p.start, p.end)}
+                  aria-pressed={activePreset === p.id}
+                  className={cn("h-9 rounded-full border px-3 text-sm font-medium transition-colors", activePreset === p.id ? "border-transparent bg-accent text-accent-fg" : "border-line bg-paper text-ink hover:bg-inset")}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1 text-xs font-medium text-muted">Từ<input type="date" value={draftStart} min={snap.warehouse_start || undefined} max={warehouseEnd} onChange={(e) => pickDate(e.target.value, draftEnd)} className="h-10 rounded-md border border-line bg-bg px-2.5 text-sm text-ink" /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-muted">Đến<input type="date" value={draftEnd} min={snap.warehouse_start || undefined} max={warehouseEnd} onChange={(e) => pickDate(draftStart, e.target.value)} className="h-10 rounded-md border border-line bg-bg px-2.5 text-sm text-ink" /></label>
+              {draftStart && draftEnd && draftStart > draftEnd ? <span className="pb-2.5 text-xs text-danger">Ngày bắt đầu sau ngày kết thúc.</span> : null}
+              {allowCompare ? (
+                <>
+                  <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={prevEqual} onChange={(e) => setPrevEqual(e.target.checked)} className="size-4 accent-accent" />So kỳ trước cùng độ dài{prevRange ? <span className="text-xs text-muted">({formatRangeShort(prevStart, prevEnd)})</span> : null}</label>
+                  {snap.week_choices.length ? (
+                    <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm">Tuần
+                      <select value={weekN} onChange={(e) => { setWeekN(Number(e.target.value)); setMonthN(0); if (Number(e.target.value)) setTab("monthly"); }} className="h-8 bg-transparent text-sm">
                         <option value={0}>—</option>
-                        {(snap.month_choices.length ? snap.month_choices : [1, 2, 3, 4, 5, 6, 7, 8, 9]).map((n) => <option key={n} value={n}>{n} tháng</option>)}
+                        {snap.week_choices.map((n) => <option key={n} value={n}>{n} tuần (T2–CN)</option>)}
                       </select>
                     </label>
-                  </>
-                ) : null}
-              </div>
+                  ) : null}
+                  <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm">Các tháng trước
+                    <select value={monthN} onChange={(e) => { setMonthN(Number(e.target.value)); setWeekN(0); if (Number(e.target.value)) setTab("monthly"); }} className="h-8 bg-transparent text-sm">
+                      <option value={0}>—</option>
+                      {(snap.month_choices.length ? snap.month_choices : [1, 2, 3, 4, 5, 6, 7, 8, 9]).map((n) => <option key={n} value={n}>{n} tháng</option>)}
+                    </select>
+                  </label>
+                </>
+              ) : null}
             </div>
-          ) : null}
+          </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Segmented items={SUBTABS} value={tab} onChange={setTab} />
@@ -862,8 +872,8 @@ function KpiCard({ def, metrics, prev, prevIncomplete, prevLoading, values, big 
   const d = prev ? metricDelta(def.id, metrics, prev) : null;
   return (
     <div className={cn(card, "flex min-w-0 flex-col gap-1 p-3 md:p-4", big && "ring-1 ring-accent/10")}>
-      <p className="truncate text-xs font-medium uppercase tracking-wider text-subtle" title={def.hint || def.label}>{def.label}</p>
-      <p className={cn("truncate font-display font-semibold tracking-tight tabular-nums", big ? "text-2xl md:text-[1.75rem]" : "text-lg md:text-xl")}>{def.value(metrics)}</p>
+      <p className="text-[13px] font-medium leading-snug text-muted" title={def.hint || def.label}>{def.label}</p>
+      <p className={cn("font-display font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]", big ? "text-2xl md:text-3xl" : "text-xl md:text-2xl")}>{def.value(metrics)}</p>
       <Sparkline values={values} tone={def.tone} />
       {prevLoading ? (
         <p className="text-xs text-subtle">Đang tải kỳ trước…</p>
