@@ -132,6 +132,22 @@ export function ScoreStrip({ clientId, onOpen }: { clientId: string; onOpen?: ()
 
 type SortKey = "score" | "account" | "d1" | "d7" | "d30";
 
+/** Run `fn` over `items` with at most `n` in flight; errors are the caller's business. */
+export async function runPool<T>(items: T[], n: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await fn(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
+}
+
+/** Checked today (Asia/Saigon calendar day). */
+export function scoredToday(checkedAt: string | null | undefined): boolean {
+  if (!checkedAt) return false;
+  const f = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Saigon" });
+  return f(new Date(checkedAt)) === f(new Date());
+}
+
 export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
   const [rows, setRows] = useState<ScoreRow[] | null>(null);
   const [error, setError] = useState("");
@@ -140,6 +156,7 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
   const [onlyLow, setOnlyLow] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: 1 });
   const [epoch, setEpoch] = useState(0);
+  const [autoProgress, setAutoProgress] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -149,23 +166,52 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
     return () => { cancelled = true; };
   }, [epoch]);
 
+  const autoStarted = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+
+  // On open: accounts without today's score are checked in the background (score only,
+  // 1 read-only GAQL each, 4 at a time). The server guards each one (lock, 30-min error cooldown).
+  useEffect(() => {
+    if (!rows || autoStarted.current) return;
+    autoStarted.current = true;
+    const stale = rows.filter((r) => !scoredToday(r.checked_at)).map((r) => r.client_id);
+    if (!stale.length) return;
+    let done = 0;
+    void runPool(stale, 4, async (id) => {
+      if (!mounted.current) return;
+      const res = await refreshAccountScoreFn({ data: { clientId: id } }).catch(() => null);
+      done += 1;
+      if (!mounted.current) return;
+      setAutoProgress(done < stale.length ? `Đang tự kiểm tra tài khoản chưa có điểm hôm nay ${done}/${stale.length}…` : "");
+      if (res?.state === "refreshed" && done % 8 === 0) setEpoch((n) => n + 1);
+    }).then(() => { if (mounted.current) { setAutoProgress(""); setEpoch((n) => n + 1); } });
+  }, [rows]);
+
   async function checkAll() {
     if (!rows || busy) return;
     setBusy(true);
+    const list = rows.map((r) => r.client_id);
     let ok = 0;
     let failed = 0;
-    for (let i = 0; i < rows.length; i++) {
-      setProgress(`Đang kiểm tra ${i + 1}/${rows.length}: ${rows[i].label}…`);
+    let done = 0;
+    setProgress(`Đang kiểm tra 0/${list.length}…`);
+    // Client-side loop, one account per server call, 4 at a time: never one long server call.
+    await runPool(list, 4, async (id) => {
       try {
-        const r = await checkOptimizationScoreFn({ data: { clientId: rows[i].client_id } });
+        const r = await checkOptimizationScoreFn({ data: { clientId: id } });
         if (r.ok) ok += 1;
         else failed += 1;
       } catch {
         failed += 1;
       }
-      if ((i + 1) % 10 === 0) setEpoch((n) => n + 1);
-    }
-    setProgress(`Xong: ${ok} tài khoản đọc được điểm${failed ? `, ${failed} lỗi` : ""}.`);
+      done += 1;
+      if (!mounted.current) return;
+      setProgress(`Đang kiểm tra ${done}/${list.length}…`);
+      if (done % 12 === 0) setEpoch((n) => n + 1); // partial table refresh
+    });
+    if (!mounted.current) return;
+    setProgress(`Xong ${done}/${list.length}: ${ok} tài khoản đọc được điểm${failed ? `, ${failed} lỗi` : ""}.`);
     setBusy(false);
     setEpoch((n) => n + 1);
   }
@@ -219,6 +265,7 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
         </div>
       </div>
       {progress ? <p className="text-sm text-muted">{progress}</p> : null}
+      {autoProgress && !busy ? <p className="text-xs text-muted">{autoProgress}</p> : null}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       {!rows && !error ? <p className="py-4 text-center text-sm text-muted">Đang đọc kết quả đã lưu…</p> : null}
       {rows ? (
