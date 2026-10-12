@@ -26,6 +26,7 @@ import { BrandMark, NavTab } from "@/components/adsops/brand";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
 import { AccountsOverview } from "@/components/adsops/accounts-overview";
 import { BUDGET_CARD_ID, BudgetRunwayCard, BudgetStrip } from "@/components/adsops/budget-runway-card";
+import { RecheckButton } from "@/components/adsops/recheck-button";
 import { OptimizationScoreCard, SCORE_CARD_ID, ScoreStrip } from "@/components/adsops/optimization-score-card";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import type { ClassifySnap } from "@/lib/adsops/classify.types";
@@ -223,6 +224,8 @@ export function AdsOpsApp() {
   const clientIdRef = useRef("");
   clientIdRef.current = clientId;
   const [tab, setTab] = useState<TabId>("final");
+  /** Bumped by "Kiểm tra lại" so the budget / score pills re-read the stored result. */
+  const [recheckN, setRecheckN] = useState(0);
   const [access, setAccess] = useState<AccessSnap | null>(null);
   const [accessError, setAccessError] = useState("");
   const [analytics, setAnalytics] = useState<AnalyticsSnap | null | undefined>(undefined);
@@ -1069,13 +1072,16 @@ export function AdsOpsApp() {
                 {access?.kind === "staff" ? (
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <BudgetStrip
+                      key={`b-${client.client_id}-${recheckN}`}
                       clientId={client.client_id}
                       onOpen={tabAllowed(access, "alerts") ? () => openAlertCard(BUDGET_CARD_ID) : undefined}
                     />
                     <ScoreStrip
+                      key={`s-${client.client_id}-${recheckN}`}
                       clientId={client.client_id}
                       onOpen={tabAllowed(access, "alerts") ? () => openAlertCard(SCORE_CARD_ID) : undefined}
                     />
+                    <RecheckButton key={`r-${client.client_id}`} clientId={client.client_id} onDone={() => setRecheckN((n) => n + 1)} />
                   </div>
                 ) : null}
                 {canPull && adsStatus?.message_vi ? <p className="mt-1 text-xs text-danger">{adsStatus.message_vi}</p> : null}
