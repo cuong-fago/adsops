@@ -51,10 +51,7 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const runwayLoop = (async () => {
     for (const id of queue) {
       if (!inTime()) break;
-      const [r] = await Promise.all([
-        checkBudgetRunway(id, cfg),
-        activeSet.has(id) ? checkSharedSetCounts(id, cfg).catch(() => null) : Promise.resolve(null),
-      ]);
+      const r = await checkBudgetRunway(id, cfg);
       results.push({ client_id: id, ok: r.ok, status: r.status });
     }
   })();
@@ -64,7 +61,11 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const scoreWorker = async () => {
     while (inTime() && next < scoreQueue.length) {
       const id = scoreQueue[next++];
-      const s = await checkOptimizationScore(id, cfg).catch(() => ({ ok: false }));
+      // Score + shared negative list member counts: both one cheap query, same fast pool.
+      const [s] = await Promise.all([
+        checkOptimizationScore(id, cfg).catch(() => ({ ok: false })),
+        checkSharedSetCounts(id, cfg).catch(() => null),
+      ]);
       scores.push({ client_id: id, ok: s.ok });
     }
   };

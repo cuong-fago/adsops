@@ -1175,6 +1175,34 @@ export async function diagnoseChangeLog(clientId: string): Promise<Record<string
       return { label, ok: false, error: errorVi(err) };
     }
   };
+  const grouped = async (label: string, q: string, key: (r: GaqlRow) => string, at: (r: GaqlRow) => string) => {
+    try {
+      const rows = await searchLeaf(cfg, customerId, q);
+      const g = new Map<string, { n: number; latest: string }>();
+      for (const r of rows) {
+        const k = key(r);
+        const cur = g.get(k) || { n: 0, latest: "" };
+        cur.n += 1;
+        const ts = at(r);
+        if (ts > cur.latest) cur.latest = ts;
+        g.set(k, cur);
+      }
+      return { label, ok: true, count: rows.length, groups: [...g.entries()].sort((a, b) => b[1].n - a[1].n).map(([k, v]) => ({ key: k, ...v })) };
+    } catch (err) {
+      return { label, ok: false, error: errorVi(err) };
+    }
+  };
+  // Activity / background-skip state (an inactive account is skipped by background checks).
+  try {
+    const { readActivity } = await import("./account-activity.server.ts");
+    out.activity = (await readActivity([id])).get(id) ?? null;
+  } catch (err) {
+    out.activity = String(err);
+  }
+  // No stored member counts yet: take the baseline now (read-only GAQL), so detection starts.
+  if (Array.isArray(out.member_counts) && out.member_counts.length === 0) {
+    out.baseline_taken_now = await checkSharedSetCounts(id, cfg).catch((err) => ({ ok: false, error_vi: errorVi(err) }));
+  }
   try {
     const meta = await pullMeta(cfg, customerId, id);
     const tz = meta.timezone || "Asia/Saigon";
@@ -1189,6 +1217,32 @@ export async function diagnoseChangeLog(clientId: string): Promise<Record<string
       await run(
         "campaign_shared_set",
         `SELECT campaign.name, shared_set.name, shared_set.type, campaign_shared_set.status FROM campaign_shared_set`,
+      ),
+      // No resource_type filter: what does Google actually report for this account?
+      await grouped(
+        "change_status 14 ngày, mọi resource_type (đếm theo type:status)",
+        `SELECT change_status.resource_name, change_status.resource_type, change_status.resource_status, change_status.last_change_date_time
+         FROM change_status
+         WHERE change_status.last_change_date_time BETWEEN '${addDaysYmd(today, -13)}' AND '${today}'
+         ORDER BY change_status.last_change_date_time DESC LIMIT 10000`,
+        (r) => {
+          const c = asRec(r.changeStatus);
+          return `${String(c.resourceType || "?")}:${String(c.resourceStatus || "?")}`;
+        },
+        (r) => String(asRec(r.changeStatus).lastChangeDateTime || ""),
+      ),
+      await grouped(
+        "change_event 14 ngày, mọi change_resource_type (đếm theo type:operation:client_type:user)",
+        `SELECT change_event.change_date_time, change_event.change_resource_type, change_event.resource_change_operation,
+           change_event.client_type, change_event.user_email
+         FROM change_event
+         WHERE change_event.change_date_time >= '${addDaysYmd(today, -13)}' AND change_event.change_date_time <= '${addDaysYmd(today, 1)}'
+         ORDER BY change_event.change_date_time DESC LIMIT 10000`,
+        (r) => {
+          const c = asRec(r.changeEvent);
+          return `${String(c.changeResourceType || "?")}:${String(c.resourceChangeOperation || "?")}:${String(c.clientType || "?")}:${String(c.userEmail || "?")}`;
+        },
+        (r) => String(asRec(r.changeEvent).changeDateTime || ""),
       ),
     ];
   } catch (err) {
