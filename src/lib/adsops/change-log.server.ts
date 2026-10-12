@@ -373,6 +373,8 @@ const SHARED_SET_RE = /^customers\/\d{10}\/sharedSets\/\d+$/;
 
 async function pullSharedLists(cfg: AdsConfig, customerId: string, start: string, today: string): Promise<EventRow[]> {
   const rows = await searchLeaf(cfg, customerId, sharedSetStatusQuery(start, today));
+  console.info(JSON.stringify({ tag: "changelog.shared_status", customer_id: customerId, rows: rows.length,
+    types: rows.map((r) => `${String(asRec(r.changeStatus).resourceType || "")}:${String(asRec(r.changeStatus).resourceStatus || "")}`).slice(0, 20) }));
   const out: EventRow[] = [];
   const setNames = new Set<string>();
   const cssNames = new Set<string>();
@@ -508,7 +510,10 @@ async function diffNegativeLists(
       customerId,
       `SELECT shared_criterion.resource_name, shared_criterion.keyword.text, shared_criterion.keyword.match_type, shared_set.resource_name
        FROM shared_criterion WHERE shared_set.resource_name IN (${chunk})`,
-    ).catch(() => null);
+    ).catch((err) => {
+      console.warn(JSON.stringify({ tag: "changelog.shared_criterion_error", customer_id: customerId, error: err instanceof Error ? err.message : String(err) }));
+      return null;
+    });
     if (!rows) {
       for (const s of sets.slice(i, i + 50)) now.delete(s); // unreadable: no diff, no snapshot change
       continue;
@@ -554,6 +559,8 @@ async function diffNegativeLists(
     }
     const added = [...current.entries()].filter(([c]) => !stored.has(c));
     const removed = [...stored].filter((c) => !current.has(c));
+    console.info(JSON.stringify({ tag: "changelog.shared_diff", customer_id: customerId, shared_set: set, baseline: had,
+      now: current.size, stored: stored.size, added: added.length, removed: removed.length }));
     const ev = latestBySet.get(set);
     if (ev) {
       const names = campaigns.get(set);
@@ -1022,6 +1029,8 @@ export async function cronAccounts(all: Array<{ client_id: string; customer_id_d
 
 export const AUTO_PULL_STALE_MS = 6 * 60 * 60 * 1000;
 const AUTO_PULL_ERROR_MS = 30 * 60 * 1000;
+/** Deploy of the shared negative list diff (#36, 12/10/2026 ~14:30 VN). */
+const SHARED_DIFF_SINCE = Date.parse("2026-10-12T07:40:00Z");
 
 export type ChangeAutoPullResult = { state: "fresh" | "cooldown" | "busy" | "pulled" | "error"; error_vi?: string | null };
 
@@ -1041,15 +1050,19 @@ export async function autoPullChangeLog(clientId: string, actor: string | null):
     );
     const okAt = Date.parse(iso(r[0]?.ok_at) || "") || 0;
     const failAt = Date.parse(iso(r[0]?.fail_at) || "") || 0;
-    if (Date.now() - okAt < AUTO_PULL_STALE_MS) return { state: "fresh" };
+    // Pulls made before the shared-list diff shipped did not record shared negatives: never "fresh".
+    if (okAt > SHARED_DIFF_SINCE && Date.now() - okAt < AUTO_PULL_STALE_MS) return { state: "fresh" };
     if (failAt > okAt && Date.now() - failAt < AUTO_PULL_ERROR_MS) return { state: "cooldown" };
   } catch {
     return { state: "error", error_vi: "Chưa có bảng nhật ký." };
   }
   const key = `${id}:changelog`;
   if (!(await acquireLock(key, 120))) return { state: "busy" };
+  const t0 = Date.now();
   try {
     const res = await pullChangeLog(id, { trigger: "auto", actor });
+    console.info(JSON.stringify({ tag: "changelog.autopull", client_id: id, ok: res.ok, ms: Date.now() - t0, rows: res.row_count,
+      keyword_rows: res.keyword_rows, shared_rows: res.shared_rows, note: res.note_vi, error: res.error_vi }));
     return res.ok ? { state: "pulled" } : { state: "error", error_vi: res.error_vi };
   } finally {
     await releaseLock(key);
