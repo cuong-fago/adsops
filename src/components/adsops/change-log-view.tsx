@@ -18,6 +18,8 @@ import {
 import { addDays, formatRangeVi, moneyPlain, num, statusVi } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
+import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/adsops/account-activity";
+
 
 type ShellClient = { client_id: string; display_name: string; customer_id_dashed?: string; alias?: string | null; adapter?: string };
 
@@ -154,10 +156,12 @@ export function ChangeLogView({ clients, clientId, canPull, canDiagnose = false 
     for (const c of clients) m.set(c.client_id, [labelOf.get(c.client_id), c.customer_id_dashed].filter(Boolean).join(" · "));
     return m;
   }, [clients, labelOf]);
-  const liveClients = useMemo(
+  const allLiveClients = useMemo(
     () => clients.filter((c) => (c.adapter || "live") === "live" && cidOf(c).length === 10),
     [clients],
   );
+  // "Kéo tất cả" covers active accounts unless inactive ones are shown (per-account pull still works).
+  const liveClients = useActiveFilter(allLiveClients, (c) => c.client_id).shown || allLiveClients;
 
   function applyPreset(id: string) {
     const p = PRESETS.find((x) => x.id === id);
@@ -286,7 +290,8 @@ export function ChangeLogView({ clients, clientId, canPull, canDiagnose = false 
     </th>
   );
 
-  const accounts = data?.accounts || [];
+  const act = useActiveFilter(data?.accounts || null, (a) => a.client_id, drill?.client_id);
+  const accounts = act.shown || [];
   const drillLoaded = Boolean(drill && data?.drill && data.drill.client_id === drill.client_id && data.drill.bucket === drill.bucket);
   const noOpt = accounts.filter((a) => a.counts && a.counts.optimization_total === 0).length;
   const notPulled = accounts.filter((a) => a.coverage === "not_pulled").length;
@@ -384,6 +389,7 @@ export function ChangeLogView({ clients, clientId, canPull, canDiagnose = false 
       <section className={cn(card, "flex flex-col gap-3 px-4 py-4 md:px-5")}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="font-display text-lg font-semibold tracking-tight">Tóm tắt theo tài khoản</h3>
+          <InactiveToggle show={act.show} onChange={act.setShow} count={act.inactiveCount} />
           {accounts.length ? (
             <span className="text-xs text-muted">
               {noOpt ? <b className="text-danger">{noOpt} tài khoản không có thao tác tối ưu từ khoá</b> : "Mọi tài khoản đã kéo đều có thao tác"}
@@ -435,6 +441,7 @@ export function ChangeLogView({ clients, clientId, canPull, canDiagnose = false 
                       <td className={cn(td, nameCol)}>
                         <span className={cn(nameText, "font-medium text-ink")} title={[a.label, a.customer_id_dashed].filter(Boolean).join(" · ")}>{a.label}</span>
                         <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{a.customer_id_dashed}</span>
+                        <InactiveBadge activity={act.map?.[a.client_id]} />
                       </td>
                       <td className={cn(td, "text-right tabular-nums")}>{cell(c?.add_keyword, "add_keyword")}</td>
                       <td className={cn(td, "text-right tabular-nums")}>{cell(c?.add_negative, "add_negative")}</td>

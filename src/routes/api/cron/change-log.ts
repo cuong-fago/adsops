@@ -37,7 +37,9 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   if (!cfg.ready) return Response.json({ ok: false, error: "google ads not configured" }, { status: 503, headers });
 
   const roster = (await listRosterAccounts()).filter((c) => (c.adapter || "live") === "live");
-  const queue = await cronAccounts(roster);
+  // Known-inactive accounts (Google suspended/cancelled, or no spend for 7 days) are skipped to save quota.
+  const { activeOnly } = await import("@/lib/adsops/account-activity.server");
+  const queue = await activeOnly(await cronAccounts(roster));
   const results: Array<{ client_id: string; ok: boolean; rows: number; error?: string | null }> = [];
   for (const id of queue) {
     if (Date.now() - started > BUDGET_MS) break;

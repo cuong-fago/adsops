@@ -9,6 +9,8 @@ import { refreshAccountScoreFn } from "@/lib/adsops/optimization-score.functions
 import { num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
+import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/adsops/account-activity";
+
 
 type Level = "red" | "amber" | "ok" | "none";
 
@@ -80,6 +82,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
   const [onlyRed, setOnlyRed] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "urgency", dir: -1 });
   const [epoch, setEpoch] = useState(0);
+  const act = useActiveFilter(rows, (r) => r.client_id);
   const [logProgress, setLogProgress] = useState("");
   const autoStarted = useRef(false);
 
@@ -98,10 +101,11 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
   // Once per visit: refresh change logs older than 6 h, oldest first, 3 at a time (read-only;
   // the server re-checks freshness, lock and error cooldown, so a reload never doubles work).
   useEffect(() => {
-    if (!rows || autoStarted.current) return;
+    if (!rows || !act.map || autoStarted.current) return;
     autoStarted.current = true;
     const age = (r: OverviewRow) => (r.change_pulled_at ? Date.parse(r.change_pulled_at) : 0);
     const stale = rows
+      .filter((r) => act.map?.[r.client_id]?.state !== "inactive")
       .filter((r) => !r.change_pulled_at || Date.now() - age(r) > STALE_LOG_MS)
       .sort((a, b) => age(a) - age(b));
     if (!stale.length) return;
@@ -123,28 +127,28 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
     };
     setLogProgress(`Đang cập nhật nhật ký tối ưu 0/${stale.length}…`);
     void Promise.all([worker(), worker(), worker()]);
-  }, [rows]);
+  }, [rows, act.map]);
 
   // Every open: optimization score for accounts not checked today (score only, 4 at a time, server-guarded).
   const scoresStarted = useRef(false);
   useEffect(() => {
-    if (!rows || scoresStarted.current) return;
+    if (!rows || !act.map || scoresStarted.current) return;
     scoresStarted.current = true;
-    const stale = rows.filter((r) => !scoredToday(r.score.checked_at)).map((r) => r.client_id);
+    const stale = rows.filter((r) => !scoredToday(r.score.checked_at) && act.map?.[r.client_id]?.state !== "inactive").map((r) => r.client_id);
     let refreshed = 0;
     void runPool(stale, 4, async (id) => {
       if (!mounted.current) return;
       const res = await refreshAccountScoreFn({ data: { clientId: id } }).catch(() => null);
       if (res?.state === "refreshed" && ++refreshed % 8 === 0 && mounted.current) setEpoch((n) => n + 1);
     }).then(() => { if (refreshed && mounted.current) setEpoch((n) => n + 1); });
-  }, [rows]);
+  }, [rows, act.map]);
 
   // Every open: cheap member-count check of shared negative lists for every account (1 GAQL each).
   const countsStarted = useRef(false);
   useEffect(() => {
-    if (!rows || countsStarted.current) return;
+    if (!rows || !act.map || countsStarted.current) return;
     countsStarted.current = true;
-    const list = rows.map((r) => r.client_id);
+    const list = rows.filter((r) => act.map?.[r.client_id]?.state !== "inactive").map((r) => r.client_id);
     let next = 0;
     const worker = async () => {
       while (mounted.current && next < list.length) {
@@ -159,10 +163,10 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
       }
     };
     void Promise.all([worker(), worker(), worker(), worker()]);
-  }, [rows]);
+  }, [rows, act.map]);
 
   const counts = useMemo(() => {
-    const list = rows || [];
+    const list = act.shown || [];
     return {
       total: list.length,
       action: list.filter((r) => urgency(r) >= 100).length,
@@ -170,10 +174,10 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
       score: list.filter((r) => scoreLevel(r) === "red").length,
       opt: list.filter((r) => optLevel(r) === "red").length,
     };
-  }, [rows]);
+  }, [act.shown]);
 
   const shown = useMemo(() => {
-    const list = (rows || []).filter((r) => !onlyRed || urgency(r) >= 100);
+    const list = (act.shown || []).filter((r) => !onlyRed || urgency(r) >= 100);
     const val = (r: OverviewRow): number | null => {
       switch (sort.key) {
         case "urgency": return urgency(r);
@@ -195,7 +199,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
       // Tie (e.g. same urgency): shortest budget runway first.
       return (a.runway.runway_days ?? Infinity) - (b.runway.runway_days ?? Infinity) || a.label.localeCompare(b.label, "vi");
     });
-  }, [rows, onlyRed, sort]);
+  }, [act.shown, onlyRed, sort]);
 
   const toggle = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "opt" || key === "urgency" || key === "checked" ? -1 : 1 }));
@@ -276,10 +280,13 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
             Tối ưu từ khoá = thêm từ khoá, thêm phủ định, hoặc thêm phủ định vào danh sách dùng chung (Nhật ký tối ưu; danh sách dùng chung Google không ghi người sửa). Google chỉ trả lại khoảng 30 ngày gần nhất; thay đổi qua Google Ads Editor có thể không có trong nhật ký. "—" = chưa có số đã lưu.
           </p>
         </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <InactiveToggle show={act.show} onChange={act.setShow} count={act.inactiveCount} />
         <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-line bg-paper px-3 text-sm">
           <input type="checkbox" checked={onlyRed} onChange={(e) => setOnlyRed(e.target.checked)} className="accent-[var(--color-accent)]" />
           Cần xử lý{rows ? ` (${counts.action})` : ""}
         </label>
+        </div>
       </div>
       {rows ? (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
@@ -327,6 +334,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
                         {r.label}
                       </button>
                       <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{r.customer_id_dashed}</span>
+                      <InactiveBadge activity={act.map?.[r.client_id]} />
                     </td>
                     <td className={td}>{budgetCell(r)}</td>
                     <td className={td}>{scoreCell(r)}</td>

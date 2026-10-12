@@ -86,6 +86,11 @@ export async function importMccAccounts(
       `;
       touched.push(id);
     }
+    // Google status on every pull (migration 0015; ignored if the column is not there yet).
+    const gs = String(r.status || "").trim().toUpperCase();
+    if (gs) {
+      await sql`update ad_accounts set google_status = ${gs}, google_status_at = now() where id = ${id}`.catch(() => null);
+    }
   }
   if (inserted.length) {
     await audit("system:mcc", "ad_accounts.discovered", "ad_account", null, {

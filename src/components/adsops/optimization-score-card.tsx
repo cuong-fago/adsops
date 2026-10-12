@@ -11,6 +11,8 @@ import { SCORE_RED, scoreTone, type ScorePoint, type ScoreTone } from "@/lib/ads
 import { num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
+import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/adsops/account-activity";
+
 
 /** DOM id of the card (the account-strip pill scrolls here). */
 export const SCORE_CARD_ID = "optimization-score";
@@ -157,6 +159,7 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: 1 });
   const [epoch, setEpoch] = useState(0);
   const [autoProgress, setAutoProgress] = useState("");
+  const act = useActiveFilter(rows, (r) => r.client_id);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,9 +176,10 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
   // On open: accounts without today's score are checked in the background (score only,
   // 1 read-only GAQL each, 4 at a time). The server guards each one (lock, 30-min error cooldown).
   useEffect(() => {
-    if (!rows || autoStarted.current) return;
+    if (!rows || !act.map || autoStarted.current) return;
     autoStarted.current = true;
-    const stale = rows.filter((r) => !scoredToday(r.checked_at)).map((r) => r.client_id);
+    // Inactive accounts are skipped in background checks (the button still checks what is shown).
+    const stale = rows.filter((r) => !scoredToday(r.checked_at) && act.map?.[r.client_id]?.state !== "inactive").map((r) => r.client_id);
     if (!stale.length) return;
     let done = 0;
     void runPool(stale, 4, async (id) => {
@@ -186,9 +190,10 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
       setAutoProgress(done < stale.length ? `Đang tự kiểm tra tài khoản chưa có điểm hôm nay ${done}/${stale.length}…` : "");
       if (res?.state === "refreshed" && done % 8 === 0) setEpoch((n) => n + 1);
     }).then(() => { if (mounted.current) { setAutoProgress(""); setEpoch((n) => n + 1); } });
-  }, [rows]);
+  }, [rows, act.map]);
 
   async function checkAll() {
+    const rows = act.shown;
     if (!rows || busy) return;
     setBusy(true);
     const list = rows.map((r) => r.client_id);
@@ -217,7 +222,7 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
   }
 
   const shown = useMemo(() => {
-    const list = (rows || []).filter((r) => !onlyLow || (r.score != null && r.score < SCORE_RED));
+    const list = (act.shown || []).filter((r) => !onlyLow || (r.score != null && r.score < SCORE_RED));
     const val = (r: ScoreRow) => (sort.key === "score" ? r.score : sort.key === "d1" ? r.d1 : sort.key === "d7" ? r.d7 : sort.key === "d30" ? r.d30 : null);
     return [...list].sort((a, b) => {
       if (sort.key === "account") return a.label.localeCompare(b.label, "vi") * sort.dir;
@@ -229,9 +234,9 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
       if (vb == null) return -1;
       return (va - vb) * sort.dir;
     });
-  }, [rows, onlyLow, sort]);
+  }, [act.shown, onlyLow, sort]);
 
-  const lowCount = (rows || []).filter((r) => r.score != null && r.score < SCORE_RED).length;
+  const lowCount = (act.shown || []).filter((r) => r.score != null && r.score < SCORE_RED).length;
   const toggle = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
   const head = (key: SortKey, label: string, cls: string) => (
     <th className={cls} aria-sort={sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
@@ -257,9 +262,10 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
             <input type="checkbox" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} className="accent-[var(--color-accent)]" />
             Chỉ hiện dưới 70%{rows ? ` (${lowCount})` : ""}
           </label>
+          <InactiveToggle show={act.show} onChange={act.setShow} count={act.inactiveCount} />
           {canCheck ? (
-            <button type="button" disabled={busy || !rows?.length} onClick={() => void checkAll()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-medium text-accent-fg shadow-sm hover:opacity-95 disabled:opacity-60">
-              <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Kiểm tra tất cả tài khoản{rows ? ` (${rows.length})` : ""}
+            <button type="button" disabled={busy || !act.shown?.length} onClick={() => void checkAll()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-medium text-accent-fg shadow-sm hover:opacity-95 disabled:opacity-60">
+              <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Kiểm tra tất cả tài khoản{act.shown ? ` (${act.shown.length})` : ""}
             </button>
           ) : null}
         </div>
@@ -288,6 +294,7 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
                   <td className={nameTd}>
                     <span className={nameText} title={[r.label, r.customer_id_dashed].filter(Boolean).join(" · ")}>{r.label}</span>
                     <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{r.customer_id_dashed}</span>
+                    <InactiveBadge activity={act.map?.[r.client_id]} />
                   </td>
                   <td className={cn(tdNum, "font-semibold", toneText(scoreTone(r.score)))}>
                     {r.score != null ? scorePct(r.score) : !r.checked_at ? <span className="font-normal text-subtle">Chưa kiểm tra</span> : r.error_vi ? <span className="font-normal text-danger" title={r.error_vi}>Lỗi đọc</span> : <span className="font-normal text-subtle">Google chưa có điểm</span>}

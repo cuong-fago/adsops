@@ -39,7 +39,11 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const roster = (await listRosterAccounts()).filter((c) => (c.adapter || "live") === "live");
   // cronAccounts adds MCC-pulled Neon accounts to the file roster.
   const queue = await runwayCronQueue(await cronAccounts(roster));
-  const scoreQueue = await scoreCronQueue(queue);
+  // Runway still runs for every account (its spend figure is how an account becomes active again);
+  // score and shared-list counts skip known-inactive accounts.
+  const { activeOnly } = await import("@/lib/adsops/account-activity.server");
+  const activeSet = new Set(await activeOnly(queue));
+  const scoreQueue = await scoreCronQueue(queue.filter((id) => activeSet.has(id)));
   const results: Array<{ client_id: string; ok: boolean; status: string }> = [];
   const scores: Array<{ client_id: string; ok: boolean }> = [];
   const inTime = () => Date.now() - started < BUDGET_MS;
@@ -47,7 +51,10 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const runwayLoop = (async () => {
     for (const id of queue) {
       if (!inTime()) break;
-      const [r] = await Promise.all([checkBudgetRunway(id, cfg), checkSharedSetCounts(id, cfg).catch(() => null)]);
+      const [r] = await Promise.all([
+        checkBudgetRunway(id, cfg),
+        activeSet.has(id) ? checkSharedSetCounts(id, cfg).catch(() => null) : Promise.resolve(null),
+      ]);
       results.push({ client_id: id, ok: r.ok, status: r.status });
     }
   })();
