@@ -76,10 +76,36 @@ function latest(...v: Array<string | null>): string | null {
 
 type SortKey = "urgency" | "account" | "budget" | "score" | "opt" | "checked";
 
+type TileId = "all" | "action" | "budget" | "score" | "opt";
+/** One predicate per tile: the tile count and the filtered list use the same function. */
+const TILE_PRED: Record<TileId, (r: OverviewRow) => boolean> = {
+  all: () => true,
+  action: (r) => urgency(r) >= 100,
+  budget: (r) => budgetLevel(r) === "red",
+  score: (r) => scoreLevel(r) === "red",
+  opt: (r) => optLevel(r) === "red",
+};
+const TILE_SORT: Record<TileId, { key: SortKey; dir: 1 | -1 }> = {
+  all: { key: "urgency", dir: -1 },
+  action: { key: "urgency", dir: -1 },
+  budget: { key: "budget", dir: 1 },
+  score: { key: "score", dir: 1 },
+  opt: { key: "opt", dir: -1 },
+};
+const TILE_LABEL: Record<TileId, string> = {
+  all: "Tài khoản",
+  action: "Cần xử lý",
+  budget: "Ngân sách dưới 3 ngày / sắp hết hạn",
+  score: "Điểm tối ưu dưới 70%",
+  opt: "Không tối ưu từ khoá ≥ 7 ngày",
+};
+
 export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: string) => void }) {
   const [rows, setRows] = useState<OverviewRow[] | null>(null);
   const [error, setError] = useState("");
-  const [onlyRed, setOnlyRed] = useState(false);
+  // Summary tile filter; "Cần xử lý" checkbox is the "action" tile.
+  const [tile, setTile] = useState<TileId>("all");
+  const onlyRed = tile === "action";
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "urgency", dir: -1 });
   const [epoch, setEpoch] = useState(0);
   const act = useActiveFilter(rows, (r) => r.client_id);
@@ -169,15 +195,21 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
     const list = act.shown || [];
     return {
       total: list.length,
-      action: list.filter((r) => urgency(r) >= 100).length,
-      budget: list.filter((r) => budgetLevel(r) === "red").length,
-      score: list.filter((r) => scoreLevel(r) === "red").length,
-      opt: list.filter((r) => optLevel(r) === "red").length,
+      action: list.filter(TILE_PRED.action).length,
+      budget: list.filter(TILE_PRED.budget).length,
+      score: list.filter(TILE_PRED.score).length,
+      opt: list.filter(TILE_PRED.opt).length,
     };
   }, [act.shown]);
 
+  function pickTile(id: TileId) {
+    const next = id === tile || id === "all" ? "all" : id;
+    setTile(next);
+    setSort(TILE_SORT[next]);
+  }
+
   const shown = useMemo(() => {
-    const list = (act.shown || []).filter((r) => !onlyRed || urgency(r) >= 100);
+    const list = (act.shown || []).filter(TILE_PRED[tile]);
     const val = (r: OverviewRow): number | null => {
       switch (sort.key) {
         case "urgency": return urgency(r);
@@ -199,7 +231,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
       // Tie (e.g. same urgency): shortest budget runway first.
       return (a.runway.runway_days ?? Infinity) - (b.runway.runway_days ?? Infinity) || a.label.localeCompare(b.label, "vi");
     });
-  }, [act.shown, onlyRed, sort]);
+  }, [act.shown, tile, sort]);
 
   const toggle = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "opt" || key === "urgency" || key === "checked" ? -1 : 1 }));
@@ -283,31 +315,55 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
         <InactiveToggle show={act.show} onChange={act.setShow} count={act.inactiveCount} />
         <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-line bg-paper px-3 text-sm">
-          <input type="checkbox" checked={onlyRed} onChange={(e) => setOnlyRed(e.target.checked)} className="accent-[var(--color-accent)]" />
+          <input type="checkbox" checked={onlyRed} onChange={(e) => pickTile(e.target.checked ? "action" : "all")} className="accent-[var(--color-accent)]" />
           Cần xử lý{rows ? ` (${counts.action})` : ""}
         </label>
         </div>
       </div>
       {rows ? (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-          {[
-            ["Tài khoản", counts.total, false],
-            ["Cần xử lý", counts.action, true],
-            ["Ngân sách dưới 3 ngày / sắp hết hạn", counts.budget, true],
-            ["Điểm tối ưu dưới 70%", counts.score, true],
-            ["Không tối ưu từ khoá ≥ 7 ngày", counts.opt, true],
-          ].map(([label, n, warn]) => (
-            <div key={String(label)} className="rounded-lg border border-line px-3 py-2">
-              <p className="text-xs text-muted">{label}</p>
-              <p className={cn("text-xl font-semibold tabular-nums", warn && Number(n) > 0 ? "text-danger" : "text-ink")}>{String(n)}</p>
-            </div>
-          ))}
+          {([
+            ["all", "Tài khoản", counts.total, false],
+            ["action", "Cần xử lý", counts.action, true],
+            ["budget", "Ngân sách dưới 3 ngày / sắp hết hạn", counts.budget, true],
+            ["score", "Điểm tối ưu dưới 70%", counts.score, true],
+            ["opt", "Không tối ưu từ khoá ≥ 7 ngày", counts.opt, true],
+          ] as Array<[TileId, string, number, boolean]>).map(([id, label, n, warn]) => {
+            const on = tile === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => pickTile(id)}
+                title={id === "all" ? "Hiện tất cả" : on ? "Bấm lần nữa để bỏ lọc" : "Chỉ hiện các tài khoản này"}
+                className={cn(
+                  "cursor-pointer rounded-lg border px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-inset/60",
+                  on ? "border-accent bg-accent-soft ring-1 ring-accent" : "border-line",
+                )}
+              >
+                <p className="text-xs text-muted">{label}</p>
+                <p className={cn("text-xl font-semibold tabular-nums", warn && n > 0 ? "text-danger" : "text-ink")}>{n}</p>
+              </button>
+            );
+          })}
         </div>
       ) : null}
       {logProgress ? <p className="text-xs text-muted">{logProgress}</p> : null}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       {!rows && !error ? <p className="py-4 text-center text-sm text-muted">Đang đọc số đã lưu…</p> : null}
       {rows ? (
+        <>
+        {tile !== "all" ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="inline-flex items-center rounded-full bg-accent-soft px-3 py-1 font-medium text-ink">
+              Đang lọc: {TILE_LABEL[tile]} ({shown.length})
+            </span>
+            <button type="button" onClick={() => pickTile("all")} className="inline-flex h-7 items-center rounded-full border border-line px-3 text-xs font-medium text-muted hover:bg-inset hover:text-ink">
+              Xem tất cả
+            </button>
+          </div>
+        ) : null}
         <div className="relative max-h-[70vh] overflow-auto rounded-lg border border-line">
           <table className="min-w-full border-separate border-spacing-0 text-sm">
             <thead>
@@ -346,13 +402,14 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
               {!shown.length ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted">
-                    {onlyRed ? "Không có tài khoản nào cần xử lý." : "Chưa có tài khoản."}
+                    {tile !== "all" ? `Không có tài khoản nào: ${TILE_LABEL[tile]}.` : "Chưa có tài khoản."}
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
+        </>
       ) : null}
     </section>
   );
