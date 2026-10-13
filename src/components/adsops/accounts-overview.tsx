@@ -110,9 +110,16 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "urgency", dir: -1 });
   const [epoch, setEpoch] = useState(0);
   const act = useActiveFilter(rows, (r) => r.client_id);
-  // Scope: the account selected in the picker by default; "all" on request. Resets when the selection changes.
-  const [scopeAll, setScopeAll] = useState(false);
-  useEffect(() => { setScopeAll(false); }, [selectedClientId]);
+  // Scope: all accounts, or the picker's account after the user changes it here.
+  // All accounts by default (each time the tab opens); only an actual picker change while here scopes to one account.
+  const [scopeAll, setScopeAll] = useState(true);
+  const prevSel = useRef(selectedClientId);
+  useEffect(() => {
+    if (prevSel.current !== selectedClientId) {
+      prevSel.current = selectedClientId;
+      setScopeAll(false);
+    }
+  }, [selectedClientId]);
   const selectedRow = selectedClientId ? (rows || []).find((r) => r.client_id === selectedClientId) : undefined;
   const scoped = !scopeAll && selectedRow;
   const base = scoped ? [selectedRow] : act.shown || [];
