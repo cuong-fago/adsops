@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
+import { recheckAccountFn } from "@/lib/adsops/recheck.functions";
 import { readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-overview.functions";
 import { autoPullChangeLogFn, checkSharedCountsFn } from "@/lib/adsops/change-log.functions";
 import { OPT_AMBER_DAYS, OPT_RED_DAYS } from "@/lib/adsops/accounts-overview.types";
@@ -100,7 +101,7 @@ const TILE_LABEL: Record<TileId, string> = {
   opt: "Không tối ưu từ khoá ≥ 7 ngày",
 };
 
-export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: string) => void }) {
+export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAccount: (clientId: string) => void; selectedClientId?: string }) {
   const [rows, setRows] = useState<OverviewRow[] | null>(null);
   const [error, setError] = useState("");
   // Summary tile filter; "Cần xử lý" checkbox is the "action" tile.
@@ -109,6 +110,56 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "urgency", dir: -1 });
   const [epoch, setEpoch] = useState(0);
   const act = useActiveFilter(rows, (r) => r.client_id);
+  // Scope: the account selected in the picker by default; "all" on request. Resets when the selection changes.
+  const [scopeAll, setScopeAll] = useState(false);
+  useEffect(() => { setScopeAll(false); }, [selectedClientId]);
+  const selectedRow = selectedClientId ? (rows || []).find((r) => r.client_id === selectedClientId) : undefined;
+  const scoped = !scopeAll && selectedRow;
+  const base = scoped ? [selectedRow] : act.shown || [];
+  const allCount = (act.shown || []).length;
+
+  // Per-row "Kiểm tra lại" (budget + score + shared counts; server: 2-min per-account lock/cooldown).
+  const [rowState, setRowState] = useState<Record<string, { busy: boolean; msg: string | null; tone?: "muted" | "danger" }>>({});
+  const [bulk, setBulk] = useState("");
+  async function recheck(id: string): Promise<"done" | "cooldown" | "error"> {
+    setRowState((s) => ({ ...s, [id]: { busy: true, msg: null } }));
+    try {
+      const r = await recheckAccountFn({ data: { clientId: id } });
+      if (r.state === "cooldown") {
+        setRowState((s) => ({ ...s, [id]: { busy: false, msg: "Vừa kiểm tra, thử lại sau", tone: "muted" } }));
+        return "cooldown";
+      }
+      setRowState((s) => ({ ...s, [id]: { busy: false, msg: r.error_vi, tone: "danger" } }));
+      return r.error_vi ? "error" : "done";
+    } catch (err) {
+      setRowState((s) => ({ ...s, [id]: { busy: false, msg: err instanceof Error && err.message ? err.message : "Không kiểm tra được.", tone: "danger" } }));
+      return "error";
+    }
+  }
+  async function recheckOne(id: string) {
+    await recheck(id);
+    if (mounted.current) setEpoch((n) => n + 1);
+  }
+  async function recheckAll(ids: string[]) {
+    if (bulk) return;
+    let done = 0;
+    let skipped = 0;
+    let failed = 0;
+    setBulk(`Đang kiểm tra lại 0/${ids.length}…`);
+    await runPool(ids, 4, async (id) => {
+      if (!mounted.current) return;
+      const r = await recheck(id);
+      done += 1;
+      if (r === "cooldown") skipped += 1;
+      if (r === "error") failed += 1;
+      if (mounted.current) setBulk(`Đang kiểm tra lại ${done}/${ids.length}…`);
+      if (done % 12 === 0 && mounted.current) setEpoch((n) => n + 1);
+    });
+    if (!mounted.current) return;
+    setBulk("");
+    setRowState((s) => ({ ...s, __summary: { busy: false, msg: `Xong ${done}/${ids.length}${skipped ? ` · ${skipped} vừa kiểm tra, bỏ qua` : ""}${failed ? ` · ${failed} lỗi` : ""}.`, tone: "muted" } }));
+    setEpoch((n) => n + 1);
+  }
   const [logProgress, setLogProgress] = useState("");
   const autoStarted = useRef(false);
 
@@ -192,7 +243,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
   }, [rows, act.map]);
 
   const counts = useMemo(() => {
-    const list = act.shown || [];
+    const list = base;
     return {
       total: list.length,
       action: list.filter(TILE_PRED.action).length,
@@ -200,7 +251,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
       score: list.filter(TILE_PRED.score).length,
       opt: list.filter(TILE_PRED.opt).length,
     };
-  }, [act.shown]);
+  }, [base]);
 
   function pickTile(id: TileId) {
     const next = id === tile || id === "all" ? "all" : id;
@@ -209,7 +260,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
   }
 
   const shown = useMemo(() => {
-    const list = (act.shown || []).filter(TILE_PRED[tile]);
+    const list = base.filter(TILE_PRED[tile]);
     const val = (r: OverviewRow): number | null => {
       switch (sort.key) {
         case "urgency": return urgency(r);
@@ -231,7 +282,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
       // Tie (e.g. same urgency): shortest budget runway first.
       return (a.runway.runway_days ?? Infinity) - (b.runway.runway_days ?? Infinity) || a.label.localeCompare(b.label, "vi");
     });
-  }, [act.shown, tile, sort]);
+  }, [base, tile, sort]);
 
   const toggle = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "opt" || key === "urgency" || key === "checked" ? -1 : 1 }));
@@ -313,13 +364,38 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <InactiveToggle show={act.show} onChange={act.setShow} count={act.inactiveCount} />
+        <button
+          type="button"
+          disabled={Boolean(bulk) || !shown.length}
+          onClick={() => void recheckAll(shown.map((r) => r.client_id))}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset disabled:opacity-60"
+        >
+          <RefreshCw className={cn("size-4", bulk && "animate-spin")} /> Kiểm tra lại tất cả ({shown.length})
+        </button>
+        {scoped ? null : <InactiveToggle show={act.show} onChange={act.setShow} count={act.inactiveCount} />}
         <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-line bg-paper px-3 text-sm">
           <input type="checkbox" checked={onlyRed} onChange={(e) => pickTile(e.target.checked ? "action" : "all")} className="accent-[var(--color-accent)]" />
           Cần xử lý{rows ? ` (${counts.action})` : ""}
         </label>
         </div>
       </div>
+      {bulk || rowState.__summary?.msg ? <p className="text-xs text-muted">{bulk || rowState.__summary?.msg}</p> : null}
+      {rows && selectedRow ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {scoped ? (
+            <>
+              <span className="inline-flex items-center rounded-full bg-accent-soft px-3 py-1 font-medium text-ink [overflow-wrap:anywhere]">Chỉ tài khoản: {selectedRow.label}</span>
+              <button type="button" onClick={() => setScopeAll(true)} className="inline-flex h-7 items-center rounded-full border border-line px-3 text-xs font-medium text-muted hover:bg-inset hover:text-ink">
+                Xem tất cả tài khoản ({allCount})
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => setScopeAll(false)} className="inline-flex h-7 items-center rounded-full border border-line px-3 text-xs font-medium text-muted hover:bg-inset hover:text-ink [overflow-wrap:anywhere]">
+              Chỉ tài khoản đang chọn: {selectedRow.label}
+            </button>
+          )}
+        </div>
+      ) : null}
       {rows ? (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
           {([
@@ -373,6 +449,7 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
                 {head("score", "Điểm tối ưu")}
                 {head("opt", "Tối ưu từ khoá gần nhất")}
                 {head("checked", "Kiểm tra lúc")}
+                <th className="sticky top-0 z-10 border-b border-line bg-inset px-2 py-2.5"><span className="sr-only">Kiểm tra lại</span></th>
               </tr>
             </thead>
             <tbody>
@@ -396,12 +473,27 @@ export function AccountsOverview({ onOpenAccount }: { onOpenAccount: (clientId: 
                     <td className={td}>{scoreCell(r)}</td>
                     <td className={td}>{optCell(r)}</td>
                     <td className={cn(td, "whitespace-nowrap text-xs text-muted")}>{checked ? formatSaigon(checked) : "—"}</td>
+                    <td className={cn(td, "w-10 px-2")}>
+                      <button
+                        type="button"
+                        disabled={rowState[r.client_id]?.busy || Boolean(bulk)}
+                        onClick={() => void recheckOne(r.client_id)}
+                        title="Kiểm tra lại ngân sách và điểm tối ưu ngay (chỉ đọc Google Ads)"
+                        aria-label={`Kiểm tra lại ${r.label}`}
+                        className="inline-flex size-8 items-center justify-center rounded-full border border-line text-muted hover:bg-inset hover:text-ink disabled:opacity-60"
+                      >
+                        <RefreshCw className={cn("size-3.5", rowState[r.client_id]?.busy && "animate-spin")} />
+                      </button>
+                      {rowState[r.client_id]?.msg ? (
+                        <span className={cn("mt-1 block max-w-[12rem] text-[11px] [overflow-wrap:anywhere]", rowState[r.client_id]?.tone === "danger" ? "text-danger" : "text-muted")}>{rowState[r.client_id]?.msg}</span>
+                      ) : null}
+                    </td>
                   </tr>
                 );
               })}
               {!shown.length ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted">
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted">
                     {tile !== "all" ? `Không có tài khoản nào: ${TILE_LABEL[tile]}.` : "Chưa có tài khoản."}
                   </td>
                 </tr>
