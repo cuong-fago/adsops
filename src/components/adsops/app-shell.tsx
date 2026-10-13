@@ -714,6 +714,7 @@ export function AdsOpsApp() {
     if (shownTab === "overview") {
       return (
         <AccountsOverview
+          selectedClientId={clientId}
           onOpenAccount={(id) => {
             setClientId(id);
             setAliasDraft(null);
