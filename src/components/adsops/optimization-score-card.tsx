@@ -18,11 +18,11 @@ import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/ads
 /** DOM id of the card (the account-strip pill scrolls here). */
 export const SCORE_CARD_ID = "optimization-score";
 
-const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
-const thNum = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-right text-xs font-medium text-muted";
+const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-left text-[13px] font-semibold text-muted";
+const thNum = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-right text-[13px] font-semibold text-muted";
 const td = "border-b border-line/60 px-3 py-2.5 align-top";
-const tdNum = "border-b border-line/60 px-2 py-2.5 align-top whitespace-nowrap text-right tabular-nums";
-const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
+const tdNum = "border-b border-line/60 px-2 py-2.5 align-top whitespace-nowrap text-right font-medium tabular-nums";
+const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-row-hover px-3 py-2.5 text-left text-[13px] font-semibold text-muted";
 const nameTd = "sticky left-0 z-[5] min-w-[220px] max-w-[320px] border-b border-r border-line/60 bg-paper px-3 py-2.5 align-top";
 const nameText = "line-clamp-3 font-medium text-ink [overflow-wrap:anywhere]";
 

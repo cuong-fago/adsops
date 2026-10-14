@@ -120,7 +120,7 @@ function Kpi({
         <span className="truncate">{label || metricText(lang, id).label}</span>
         <InfoTip lang={lang} id={id} className={strong ? "[&>button]:text-accent-fg/80 [&>button:hover]:bg-white/10" : ""} />
       </div>
-      <p className="mt-0.5 font-display text-[1.3rem] font-semibold leading-tight tabular-nums tracking-tight [overflow-wrap:anywhere] sm:text-2xl md:text-[1.7rem]">
+      <p className="mt-0.5 text-kpi-sm font-semibold tabular-nums tracking-tight [overflow-wrap:anywhere] md:text-kpi">
         {value}
       </p>
       {sub ? <p className={cn("text-xs", strong ? "text-accent-fg/80" : "text-subtle")}>{sub}</p> : null}
@@ -308,7 +308,7 @@ export function ClientOverview({
                         <span className="truncate">{metricText(lang, k).label}</span>
                         <InfoTip lang={lang} id={k} />
                       </div>
-                      <p className="font-display text-xl font-medium tabular-nums">{fmtNum(lang, v)}</p>
+                      <p className="text-xl font-semibold tabular-nums">{fmtNum(lang, v)}</p>
                       <p className="text-xs text-subtle tabular-nums">{share == null ? "—" : fmtPct(lang, share)}</p>
                     </div>
                   );

@@ -224,7 +224,7 @@ function AdminPermissions() {
   return (
     <section className="space-y-5">
       <article className={card}>
-        <h2 className="font-display text-xl font-medium tracking-tight">Phân quyền</h2>
+        <h2 className="font-display text-lg font-semibold tracking-tight">Phân quyền</h2>
         <p className="mt-1 text-sm text-muted">
           Mọi vai trò (trừ admin) chỉ thấy tài khoản quảng cáo được cấp rõ ràng. Tài khoản mới xuất hiện trong MCC chỉ admin
           thấy cho đến khi được cấp. Mọi thay đổi được ghi nhật ký.
@@ -304,7 +304,7 @@ function UsersTab({
   return (
     <>
       <article className={card}>
-        <h3 className="font-display text-lg font-medium tracking-tight">Nhân sự nội bộ (đăng nhập Google)</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">Nhân sự nội bộ (đăng nhập Google)</h3>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs font-medium text-muted">
             Email
@@ -397,7 +397,7 @@ function UsersTab({
       </article>
 
       <article className={card}>
-        <h3 className="font-display text-lg font-medium tracking-tight">Tạo người dùng khách hàng</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">Tạo người dùng khách hàng</h3>
         <p className="mt-1 text-sm text-muted">
           Khách đăng nhập bằng tên đăng nhập (hoặc email) + mật khẩu tại trang đăng nhập → “Đăng nhập khách hàng”.
           Không gửi email. Mật khẩu tối thiểu 10 ký tự — tự gửi cho khách qua kênh riêng.
@@ -473,7 +473,7 @@ function UsersTab({
       </article>
 
       <article className={card}>
-        <h3 className="font-display text-lg font-medium tracking-tight">Người dùng khách hàng</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">Người dùng khách hàng</h3>
         {dir.clients.length ? (
           <ul className="mt-3 divide-y divide-line">
             {dir.clients.map((c) => (
@@ -589,7 +589,7 @@ function GrantsTab({
   const staff = dir.staff.filter((s) => !s.hard_coded);
   return (
     <article className={card}>
-      <h3 className="font-display text-lg font-medium tracking-tight">Chọn người → tick tài khoản</h3>
+      <h3 className="font-display text-lg font-semibold tracking-tight">Chọn người → tick tài khoản</h3>
       <select className={cn(input, "mt-3 w-full max-w-lg")} value={target} onChange={(e) => setTarget(e.target.value)}>
         <option value="">— chọn người —</option>
         <optgroup label="Khách hàng">
@@ -640,7 +640,7 @@ function AccountsTab({ dir, busy, run }: { dir: AdminDirectory; busy: boolean; r
   return (
     <>
       <article className={card}>
-        <h3 className="font-display text-lg font-medium tracking-tight">Tài khoản quảng cáo</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">Tài khoản quảng cáo</h3>
         <p className="mt-1 text-sm text-muted">
           Tên gọi là tên ngắn lưu trong AdsOps, không đổi tên trên Google Ads. Để trống = hiện tên Google. Đổi Sale = chuyển giao từng tài khoản.
         </p>
@@ -744,7 +744,7 @@ function AccountsTab({ dir, busy, run }: { dir: AdminDirectory; busy: boolean; r
         </div>
       </article>
       <article className={card}>
-        <h3 className="font-display text-lg font-medium tracking-tight">Khách hàng (công ty)</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">Khách hàng (công ty)</h3>
         <div className="mt-3 flex flex-wrap gap-2">
           <input className={cn(input, "w-72")} placeholder="Tên khách hàng mới" value={name} onChange={(e) => setName(e.target.value)} />
           <button
@@ -812,7 +812,7 @@ function RequestsTab({
 }) {
   return (
     <article className={card}>
-      <h3 className="font-display text-lg font-medium tracking-tight">Yêu cầu cấp quyền</h3>
+      <h3 className="font-display text-lg font-semibold tracking-tight">Yêu cầu cấp quyền</h3>
       {requests.length ? (
         <ul className="mt-3 divide-y divide-line">
           {requests.map((r) => (
@@ -911,7 +911,7 @@ function AuditTab() {
   }, [load]);
   return (
     <article className={card}>
-      <h3 className="font-display text-lg font-medium tracking-tight">Nhật ký thay đổi quyền</h3>
+      <h3 className="font-display text-lg font-semibold tracking-tight">Nhật ký thay đổi quyền</h3>
       {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
@@ -992,7 +992,7 @@ function RequestPermissions() {
   return (
     <section className="space-y-5">
       <article className={card}>
-        <h2 className="font-display text-xl font-medium tracking-tight">Xin cấp quyền cho khách hàng</h2>
+        <h2 className="font-display text-lg font-semibold tracking-tight">Xin cấp quyền cho khách hàng</h2>
         <p className="mt-1 text-sm text-muted">
           Chọn người dùng khách hàng và tài khoản (trong số tài khoản bạn được giao). Chỉ admin duyệt; người dùng khách hàng mới do
           admin tạo.
@@ -1023,7 +1023,7 @@ function RequestPermissions() {
         )}
       </article>
       <article className={card}>
-        <h3 className="font-display text-lg font-medium tracking-tight">Yêu cầu của tôi</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">Yêu cầu của tôi</h3>
         {dir?.my_requests.length ? (
           <ul className="mt-3 divide-y divide-line">
             {dir.my_requests.map((r) => (

@@ -460,7 +460,7 @@ export function DayPackOverview({
   return (
     <section className="rounded-xl bg-paper p-4 shadow-sheet md:p-5">
       <p className="text-xs font-medium tracking-wide text-subtle">Việc hôm nay · chỉ READY · không apply</p>
-      <h3 className="mt-1 font-display text-lg font-medium tracking-tight">
+      <h3 className="mt-1 font-display text-lg font-semibold tracking-tight">
         {pasteLots > 0 ? `${pasteLots} lần dán vào Google Ads` : "Không có lô copy hôm nay"}
       </h3>
       <p className="mt-1 max-w-3xl text-pretty text-sm text-muted">

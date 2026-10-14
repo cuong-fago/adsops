@@ -308,7 +308,7 @@ export function FinalWorkbook({ data }: { data: AnyRec }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-medium uppercase tracking-widest text-subtle">Gói FINAL · 13 tab</p>
-            <h2 className="font-display text-xl font-medium tracking-tight text-balance">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-balance">
               {txt(workbook.file_title || workbook.title || tab0.title)}
             </h2>
             <p className="mt-1 max-w-3xl text-pretty text-sm text-muted">{txt(tab0.banner)}</p>
@@ -380,7 +380,7 @@ export function FinalWorkbook({ data }: { data: AnyRec }) {
 
       {current ? (
         <section className="rounded-xl bg-paper p-5 shadow-sheet">
-          <h3 className="font-display text-lg font-medium tracking-tight">
+          <h3 className="font-display text-lg font-semibold tracking-tight">
             {isCopyTab(current) ? "12 — Copy-Paste Ready" : txt(current.title)}
           </h3>
           <p className="mt-1 max-w-4xl text-pretty text-sm text-muted">
