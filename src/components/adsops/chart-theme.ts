@@ -15,7 +15,7 @@ export const chartColors = {
 
 export const chartTheme = {
   grid: { stroke: chartColors.grid, vertical: false },
-  axisTick: { fontSize: 11, fill: chartColors.axis },
+  axisTick: { fontSize: 12, fontWeight: 500, fill: chartColors.axis },
   axis: { tickLine: false, axisLine: false },
   line: { type: "monotone" as const, strokeWidth: 2, dot: false, activeDot: { r: 3, strokeWidth: 0 } },
   bar: { radius: [3, 3, 0, 0] as [number, number, number, number], maxBarSize: 28 },

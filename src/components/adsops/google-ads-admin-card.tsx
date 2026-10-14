@@ -131,7 +131,7 @@ export function GoogleAdsAdminCard({ readOnly }: { readOnly?: boolean }) {
     <section className={card}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-xl font-medium tracking-tight">Google Ads API</h2>
+          <h2 className="font-display text-lg font-semibold tracking-tight">Google Ads API</h2>
           <p className="mt-1 text-sm text-muted">Chỉ đọc số (không sửa gì trên Google Ads). Chỉ admin thấy thẻ này.</p>
         </div>
         {status ? (

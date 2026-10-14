@@ -707,7 +707,7 @@ export function AdsOpsApp() {
     if (access.role === "pending") {
       return (
         <section className="rounded-xl bg-paper px-5 py-10 text-center shadow-sheet">
-          <h2 className="font-display text-xl font-medium">Chưa được cấp quyền</h2>
+          <h2 className="font-display text-lg font-semibold">Chưa được cấp quyền</h2>
           <p className="mt-2 text-sm text-muted">
             {access.email || "Tài khoản này"} chưa có vai trò trong AdsOps. Nhờ admin cấp vai trò và tài khoản
             quảng cáo. Không dán token.

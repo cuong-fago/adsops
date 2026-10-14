@@ -149,7 +149,7 @@ function LiveEmpty({
     return (
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-display text-xl font-medium tracking-tight">{noun}</h2>
+          <h2 className="font-display text-lg font-semibold tracking-tight">{noun}</h2>
           <StatusChip value={String(guard.overall || "HARD_STOP")} />
         </div>
         <p className="mt-3 rounded-md bg-danger-bg px-4 py-3 text-sm text-danger">
@@ -163,7 +163,7 @@ function LiveEmpty({
     const pulled = Boolean(connect.pulled_kpis);
     return (
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
-        <h2 className="font-display text-xl font-medium tracking-tight">{noun}</h2>
+        <h2 className="font-display text-lg font-semibold tracking-tight">{noun}</h2>
         <p className="mt-2 text-sm text-ink">{txt(connect.title_vi || connect.status)}</p>
         <p className="mt-1 text-sm text-muted">{txt(connect.detail_vi)}</p>
         <p className="mt-3 text-sm text-muted">
@@ -192,7 +192,7 @@ function CompareBox({
   const keys = ["1", "7", "14", "30"].filter((key) => asObj(windows[key]).days);
   return (
     <section className="rounded-xl bg-paper p-5 shadow-sheet">
-      <h2 className="font-display text-xl font-medium tracking-tight">Đối chiếu Google Ads</h2>
+      <h2 className="font-display text-lg font-semibold tracking-tight">Đối chiếu Google Ads</h2>
       <p className="mt-1 text-sm text-muted">
         Cùng tài khoản, cùng cửa sổ ngày, cùng 5 số bìa. Hôm nay không nằm trong số.
       </p>
@@ -285,7 +285,7 @@ export function ReportPanel({
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-xl font-medium tracking-tight">Bìa 5 KPI</h2>
+            <h2 className="font-display text-lg font-semibold tracking-tight">Bìa 5 KPI</h2>
             <p className="mt-1 text-sm text-muted">{txt(data.banner)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -329,7 +329,7 @@ export function ReportPanel({
         )}
       </section>
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
-        <h3 className="font-display text-lg font-medium tracking-tight">Tuần — cùng 5 KPI</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">Tuần — cùng 5 KPI</h3>
         <p className="mt-1 text-sm text-muted">{txt(weekly.period_label)}</p>
         <KpiGrid kpis={kpis} values={weekPrimary} currency={currency} />
       </section>
@@ -425,7 +425,7 @@ export function GuardPanel({ data }: { data: AnyRec | null }) {
   return (
     <section className="rounded-xl bg-paper p-5 shadow-sheet">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="font-display text-xl font-medium tracking-tight">Measurement Guard</h2>
+        <h2 className="font-display text-lg font-semibold tracking-tight">Measurement Guard</h2>
         <StatusChip value={txt(data.overall)} />
         <StatusChip value={txt(data.source_flag)} />
       </div>
@@ -498,7 +498,7 @@ export function HubPanel({ data }: { data: AnyRec | null }) {
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-xl font-medium tracking-tight">Nguồn tối ưu Drive</h2>
+            <h2 className="font-display text-lg font-semibold tracking-tight">Nguồn tối ưu Drive</h2>
             <p className="mt-1 text-sm text-muted">
               Folder {txt(opt.folder_name) || "chưa gắn"} · {txt(opt.dialect) || "ops_drive_v1"}
             </p>
@@ -550,7 +550,7 @@ export function HubPanel({ data }: { data: AnyRec | null }) {
       </section>
 
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
-        <h2 className="font-display text-xl font-medium tracking-tight">Data Hub · 5 KPI</h2>
+        <h2 className="font-display text-lg font-semibold tracking-tight">Data Hub · 5 KPI</h2>
         <p className="mt-1 text-sm text-muted">
           {txt(data.day_count)} ngày · {txt(data.date_start)} → {txt(data.data_through)} · 5 KPI{" "}
           {txt(data.adapter)}
@@ -598,7 +598,7 @@ export function ProposalsPanel({ data }: { data: AnyRec | null }) {
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-xl font-medium tracking-tight">Máy đề xuất</h2>
+            <h2 className="font-display text-lg font-semibold tracking-tight">Máy đề xuất</h2>
             <p className="mt-1 text-sm text-muted">
               Chỉ đề xuất — không tự apply Google Ads. CPA Google không phải Qualified Lead.
             </p>
@@ -641,7 +641,7 @@ export function ProposalsPanel({ data }: { data: AnyRec | null }) {
 
       {holds.length > 0 && (
         <section className="rounded-xl bg-paper p-5 shadow-sheet">
-          <h3 className="font-display text-lg font-medium tracking-tight">Cổng đang chặn</h3>
+          <h3 className="font-display text-lg font-semibold tracking-tight">Cổng đang chặn</h3>
           <p className="mt-1 text-sm text-muted">Mỗi việc đủ 6 trường. Không copy HOLD / HARD_STOP vào Google Ads.</p>
           <ul className="mt-4 space-y-3">
             {holds.map((p, i) => (
@@ -659,7 +659,7 @@ export function ProposalsPanel({ data }: { data: AnyRec | null }) {
 
       {smallReady.length > 0 && (
         <section className="rounded-xl bg-paper p-5 shadow-sheet">
-          <h3 className="font-display text-lg font-medium tracking-tight">Việc nhỏ READY</h3>
+          <h3 className="font-display text-lg font-semibold tracking-tight">Việc nhỏ READY</h3>
           <p className="mt-1 text-sm text-muted">
             QA / gỡ whitelist — không phải việc lớn dựa trên ST.
             {finalBlocked ? " Coverage chưa 100% thì không đưa vào FINAL." : " Copy tay — AdsOps không tự apply."}
@@ -680,7 +680,7 @@ export function ProposalsPanel({ data }: { data: AnyRec | null }) {
 
       {largeReady.length > 0 && (
         <section className="rounded-xl bg-paper p-5 shadow-sheet">
-          <h3 className="font-display text-lg font-medium tracking-tight">Việc lớn READY</h3>
+          <h3 className="font-display text-lg font-semibold tracking-tight">Việc lớn READY</h3>
           <p className="mt-1 text-sm text-muted">Copy tay. AdsOps không tự apply.</p>
           <ul className="mt-4 space-y-3">
             {largeReady.map((p, i) => (
@@ -698,7 +698,7 @@ export function ProposalsPanel({ data }: { data: AnyRec | null }) {
 
       {conditional.length > 0 && (
         <section className="rounded-xl bg-paper p-5 shadow-sheet">
-          <h3 className="font-display text-lg font-medium tracking-tight">Cần duyệt</h3>
+          <h3 className="font-display text-lg font-semibold tracking-tight">Cần duyệt</h3>
           <p className="mt-1 text-sm text-muted">CONDITIONAL — trưởng phòng Ads duyệt. Không vào Tab 12.</p>
           <ul className="mt-4 space-y-3">
             {conditional.map((p, i) => (
@@ -750,7 +750,7 @@ export function FinalPanel({
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-xl font-medium tracking-tight">Gói FINAL · Tab 0</h2>
+            <h2 className="font-display text-lg font-semibold tracking-tight">Gói FINAL · Tab 0</h2>
             <p className="mt-1 text-sm text-muted">{txt(tab0.banner || data.banner)}</p>
           </div>
           <FileLink href={txt(data.xlsx_href) || undefined} label="Tải file FINAL" />
@@ -790,7 +790,7 @@ export function FinalPanel({
       </section>
 
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
-        <h3 className="font-display text-lg font-medium tracking-tight">5 việc — đủ 6 trường</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">5 việc — đủ 6 trường</h3>
         <ol className="mt-3 space-y-3">
           {top5.map((job) => (
             <li key={txt(job.index)} className="rounded-md bg-inset px-4 py-3">
@@ -810,7 +810,7 @@ export function FinalPanel({
       </section>
 
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
-        <h3 className="font-display text-lg font-medium tracking-tight">Tab 12 — copy theo nhóm quảng cáo</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">Tab 12 — copy theo nhóm quảng cáo</h3>
         <p className="mt-1 text-sm text-muted">{txt(tab12.banner)}</p>
         {rows.length === 0 ? (
           <p className="mt-4 rounded-md bg-warn-bg px-4 py-3 text-sm text-warn">
@@ -876,7 +876,7 @@ export function SopPanel({ data }: { data: AnyRec | null }) {
   const forbid = asArr(data.forbid).map(String);
   return (
     <section className="rounded-xl bg-paper p-5 shadow-sheet">
-      <h2 className="font-display text-xl font-medium tracking-tight">{txt(data.title)}</h2>
+      <h2 className="font-display text-lg font-semibold tracking-tight">{txt(data.title)}</h2>
       <p className="mt-1 text-sm text-muted">{txt(data.lead)}</p>
       {forbid.length > 0 && (
         <ul className="mt-4 list-disc space-y-1 pl-5 text-sm">
@@ -1055,7 +1055,7 @@ export function ConnectPanel({
   return (
     <section className="rounded-xl bg-paper p-5 shadow-sheet">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="font-display text-xl font-medium tracking-tight">Kết nối Ads</h2>
+        <h2 className="font-display text-lg font-semibold tracking-tight">Kết nối Ads</h2>
         <StatusChip value={status} label={statusVi} />
       </div>
       <p className="mt-2 text-sm">{txt(data.title_vi || data.status)}</p>

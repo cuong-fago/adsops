@@ -18,9 +18,9 @@ type Level = "red" | "amber" | "ok" | "none";
 
 const STALE_LOG_MS = 6 * 60 * 60 * 1000;
 
-const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
+const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-left text-[13px] font-semibold text-muted";
 const td = "border-b border-line/60 px-3 py-2.5 align-top";
-const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
+const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-row-hover px-3 py-2.5 text-left text-[13px] font-semibold text-muted";
 const nameTd = "sticky left-0 z-[5] min-w-[220px] max-w-[320px] border-b border-r border-line/60 bg-paper px-3 py-2.5 align-top";
 
 function saigonYmd(d: Date): string {
@@ -447,7 +447,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                 )}
               >
                 <p className={cn("text-xs font-medium", on ? "text-accent" : "text-muted")}>{label}</p>
-                <p className={cn("mt-0.5 text-[28px] font-semibold leading-8 tracking-tight tabular-nums", warn && n > 0 ? "text-danger" : "text-ink")}>{n}</p>
+                <p className={cn("mt-0.5 text-kpi font-semibold tracking-tight tabular-nums", warn && n > 0 ? "text-danger" : "text-ink")}>{n}</p>
               </button>
             );
           })}

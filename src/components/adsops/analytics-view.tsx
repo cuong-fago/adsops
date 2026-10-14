@@ -801,7 +801,7 @@ function Overview({
       <div className="grid gap-4 lg:grid-cols-5">
         <section className={cn(card, "p-4 lg:col-span-2")}>
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-lg font-medium tracking-tight">Loại chuyển đổi</h3>
+            <h3 className="font-display text-lg font-semibold tracking-tight">Loại chuyển đổi</h3>
             <InfoPopover label="Giải thích loại chuyển đổi">
               <p className="text-muted">Map từ conversion action của tài khoản đang xem. Chuyển đổi Google ≠ Qualified Lead. All conversions không gộp.</p>
               <ul className="mt-2 space-y-1 text-xs text-muted">
@@ -829,7 +829,7 @@ function Overview({
         </section>
         <section className={cn(card, "p-4 lg:col-span-3")}>
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-lg font-medium tracking-tight">Chiến dịch chi nhiều nhất</h3>
+            <h3 className="font-display text-lg font-semibold tracking-tight">Chiến dịch chi nhiều nhất</h3>
             <button type="button" onClick={onOpenCampaigns} className="inline-flex h-9 items-center gap-1 rounded-md px-3 text-sm font-medium text-accent hover:bg-inset">Xem tất cả ({campaigns.length}) <ChevronRight className="size-4" /></button>
           </div>
           {top.length === 0 ? <EmptyState title="Không có chiến dịch có số trong khoảng này." className="py-6" /> : (
@@ -860,8 +860,8 @@ function KpiCard({ def, metrics, prev, prevIncomplete, prevLoading, values, big 
   const d = prev ? metricDelta(def.id, metrics, prev) : null;
   return (
     <div className={cn(card, "flex min-w-0 flex-col gap-1.5 p-4", big && "border-accent-border")}>
-      <p className="text-xs font-medium leading-4 text-muted" title={def.hint || def.label}>{def.label}</p>
-      <p className={cn("font-semibold tracking-tight tabular-nums leading-8 [overflow-wrap:anywhere]", big ? "text-[28px]" : "text-2xl")}>{def.value(metrics)}</p>
+      <p className="text-[13px] font-medium leading-[18px] text-muted" title={def.hint || def.label}>{def.label}</p>
+      <p className={cn("font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]", big ? "text-kpi" : "text-kpi-sm")}>{def.value(metrics)}</p>
       <Sparkline values={values} tone={def.tone} />
       {prevLoading ? (
         <p className="text-xs leading-4 text-subtle">Đang tải kỳ trước…</p>
@@ -911,7 +911,7 @@ const scrollBox = "relative max-h-[70vh] overflow-auto overscroll-contain rounde
 /** Metric columns shown by default (the rest: "Cột" → thêm). */
 const DEFAULT_METRIC_COLS = new Set(["cost", "impressions", "clicks", "ctr", "conversions", "cpc", "cost_per_conversion"]);
 const COLS_KEY = "adsops:analytics:cols:v1:";
-const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-xs font-medium text-muted";
+const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-[13px] font-semibold text-muted";
 const stickyCol = "sticky left-0 z-[5] bg-paper shadow-[1px_0_0_var(--color-line)]";
 const cornerCell = "sticky left-0 top-0 z-20 bg-row-hover shadow-[1px_0_0_var(--color-line)]";
 
@@ -948,7 +948,7 @@ function PeriodSection({
   if (cols.length < 2) {
     return (
       <section className={cn(card, "flex flex-col items-start gap-3 p-5")}>
-        <h3 className="font-display text-lg font-medium">{title}</h3>
+        <h3 className="font-display text-lg font-semibold">{title}</h3>
         <p className="text-sm text-muted">Khoảng ngày đang chọn nằm trong 1 tháng. Chọn khoảng dài hơn để xem các tháng cạnh nhau.</p>
         <button type="button" onClick={onWholeWarehouse} className="h-9 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg hover:bg-accent-hover">Xem toàn kho theo tháng</button>
       </section>
@@ -990,7 +990,7 @@ function PeriodSection({
     <section className={cn(card, "flex min-w-0 flex-col gap-3 p-3 md:p-4")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <h3 className="font-display text-lg font-medium tracking-tight">{title}</h3>
+          <h3 className="font-display text-lg font-semibold tracking-tight">{title}</h3>
           <InfoPopover label="Giải thích bảng theo tháng" align="left">
             <p className="text-muted">
               {layer === "campaign" ? "Mỗi dòng một chiến dịch, cột là tháng (hoặc tuần). Dòng cuối = tổng tài khoản. Bấm tên chiến dịch để xuống nhóm. Tháng cắt theo khoảng ngày đang chọn." : "Tổng mọi chiến dịch theo tháng. Đổi sang Chiến dịch để so từng chiến dịch."}{" "}
@@ -1618,7 +1618,7 @@ function DataTable({
                 {showCampaign ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-3 py-2.5 text-muted" title={campOf(row)}><span className="line-clamp-2 [overflow-wrap:anywhere]">{campOf(row) || "—"}</span></td> : null}
                 {showAdGroup ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-3 py-2.5 text-muted" title={row.ad_group_name || ""}><span className="line-clamp-2 [overflow-wrap:anywhere]">{row.ad_group_name || "—"}</span></td> : null}
                 {shownCols.map((c) => (
-                  <td key={c.key} className={cn("h-10 whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-right tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
+                  <td key={c.key} className={cn("h-10 whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-right font-medium tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
                     {c.cell(row)}
                     {compare && DELTA_COLS.has(c.key) && compare.map.has(row.id) ? (
                       <DeltaText d={metricDelta(c.key, row.metrics, compare.map.get(row.id) || {})} className="block leading-tight" />
