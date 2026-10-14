@@ -31,7 +31,7 @@ export function RecheckButton({ clientId, onDone }: { clientId: string; onDone: 
         onClick={() => void run()}
         disabled={busy}
         title="Kiểm tra lại ngân sách và điểm tối ưu của tài khoản này ngay (chỉ đọc Google Ads)"
-        className="inline-flex h-6 items-center gap-1 rounded-full border border-line bg-paper px-2 text-xs font-medium text-muted hover:bg-inset hover:text-ink disabled:opacity-60"
+        className="inline-flex h-6 items-center gap-1 rounded-md border border-line bg-paper px-2 text-xs font-medium text-ink hover:border-line-strong hover:bg-inset disabled:opacity-60"
       >
         <RefreshCw className={cn("size-3", busy && "animate-spin")} /> {busy ? "Đang kiểm tra…" : "Kiểm tra lại"}
       </button>

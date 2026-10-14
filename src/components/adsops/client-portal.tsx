@@ -186,15 +186,15 @@ export function ClientPortal({
                   onChange={setClientId}
                 />
               </div>
-              <nav className="flex gap-1.5 overflow-x-auto rounded-full border border-line bg-slate-100 p-1 [scrollbar-width:none]" aria-label="tabs">
+              <nav className="flex gap-1 overflow-x-auto rounded-md border border-line bg-paper p-1 [scrollbar-width:none]" aria-label="tabs">
                 {(["overview", "analytics"] as const).map((id) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => setTab(id)}
                     className={cn(
-                      "inline-flex h-10 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full px-4 text-[15px] font-semibold transition-colors md:flex-none",
-                      tab === id ? "bg-accent text-white shadow-sm" : "text-slate-800 hover:bg-slate-200/70",
+                      "inline-flex h-9 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-md px-4 text-[15px] font-semibold transition-colors md:flex-none",
+                      tab === id ? "bg-accent-soft text-accent shadow-[inset_0_-2px_0_var(--color-accent)]" : "text-ink/85 hover:bg-inset hover:text-ink",
                     )}
                   >
                     {id === "overview" ? <LayoutGrid className="size-4" /> : <BarChart3 className="size-4" />}
