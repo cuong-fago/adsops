@@ -67,7 +67,7 @@ function cidOf(c: ShellClient): string {
 }
 
 function bid(micros: number | null): string {
-  return micros == null ? "" : `${moneyPlain(micros / 1_000_000)} đ`;
+  return micros == null ? "" : `${moneyPlain(micros / 1_000_000)}đ`;
 }
 
 function beforeAfter(r: ChangeRow): string {

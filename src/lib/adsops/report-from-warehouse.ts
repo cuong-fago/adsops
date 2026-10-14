@@ -93,7 +93,7 @@ function delta(cur: Win, prev: Win): Record<string, number | null> {
 
 function money(v: number | null, currency: string): string {
   if (v == null) return "—";
-  return `${Math.round(v).toLocaleString("vi-VN")} ${currency === "VND" ? "₫" : currency}`;
+  return currency === "VND" ? `${Math.round(v).toLocaleString("vi-VN")}đ` : `${Math.round(v).toLocaleString("vi-VN")} ${currency}`;
 }
 
 function pct(v: number | null): string {

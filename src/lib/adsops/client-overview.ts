@@ -283,14 +283,16 @@ export function locale(lang: Lang) {
 
 export function fmtMoney(lang: Lang, v: number | null | undefined, currency = "VND"): string {
   if (v == null || !Number.isFinite(v)) return "—";
-  return `${Math.round(v).toLocaleString(locale(lang))} ${currency === "VND" ? "₫" : currency}`;
+  // VN: 137.579.605đ (no space). EN keeps ₫.
+  if (currency === "VND") return `${Math.round(v).toLocaleString(locale(lang))}${lang === "en" ? " ₫" : "đ"}`;
+  return `${Math.round(v).toLocaleString(locale(lang))} ${currency}`;
 }
 
 /** Compact money for tight spaces: 1,2 tr / 1.2M. */
 export function fmtMoneyShort(lang: Lang, v: number | null | undefined, currency = "VND"): string {
   if (v == null || !Number.isFinite(v)) return "—";
   const abs = Math.abs(v);
-  const sym = currency === "VND" ? "₫" : ` ${currency}`;
+  const sym = currency === "VND" ? (lang === "en" ? "₫" : "đ") : ` ${currency}`;
   const opt = { maximumFractionDigits: 1 };
   if (abs >= 1e9) return `${(v / 1e9).toLocaleString(locale(lang), opt)}${lang === "en" ? "B" : " tỷ"}${sym}`;
   if (abs >= 1e6) return `${(v / 1e6).toLocaleString(locale(lang), opt)}${lang === "en" ? "M" : " tr"}${sym}`;
