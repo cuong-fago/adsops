@@ -11,17 +11,18 @@ import { SCORE_RED, scoreTone, type ScorePoint, type ScoreTone } from "@/lib/ads
 import { num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
+import { EmptyState, ErrorState, MiniBar, TableSkeleton, riskBarClass } from "@/components/adsops/ui";
 import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/adsops/account-activity";
 
 
 /** DOM id of the card (the account-strip pill scrolls here). */
 export const SCORE_CARD_ID = "optimization-score";
 
-const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
-const thNum = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-2 py-2.5 text-right text-[13px] font-medium text-muted";
+const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
+const thNum = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-right text-xs font-medium text-muted";
 const td = "border-b border-line/60 px-3 py-2.5 align-top";
 const tdNum = "border-b border-line/60 px-2 py-2.5 align-top whitespace-nowrap text-right tabular-nums";
-const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
+const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
 const nameTd = "sticky left-0 z-[5] min-w-[220px] max-w-[320px] border-b border-r border-line/60 bg-paper px-3 py-2.5 align-top";
 const nameText = "line-clamp-3 font-medium text-ink [overflow-wrap:anywhere]";
 
@@ -251,7 +252,7 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
   );
 
   return (
-    <section id={SCORE_CARD_ID} className="mb-4 flex scroll-mt-24 flex-col gap-3 rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5">
+    <section id={SCORE_CARD_ID} className="mb-4 flex scroll-mt-24 flex-col gap-4 rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold tracking-tight">Điểm tối ưu hoá</h2>
@@ -265,7 +266,7 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
           </label>
           <InactiveToggle show={act.show} onChange={act.setShow} count={act.inactiveCount} />
           {canCheck ? (
-            <button type="button" disabled={busy || !act.shown?.length} onClick={() => void checkAll()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-medium text-accent-fg shadow-sm hover:opacity-95 disabled:opacity-60">
+            <button type="button" disabled={busy || !act.shown?.length} onClick={() => void checkAll()} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-accent px-3.5 text-sm font-medium text-accent-fg hover:bg-accent-hover disabled:opacity-60">
               <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Kiểm tra tất cả tài khoản{act.shown ? ` (${act.shown.length})` : ""}
             </button>
           ) : null}
@@ -273,8 +274,8 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
       </div>
       {progress ? <p className="text-sm text-muted">{progress}</p> : null}
       {autoProgress && !busy ? <p className="text-xs text-muted">{autoProgress}</p> : null}
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
-      {!rows && !error ? <p className="py-4 text-center text-sm text-muted">Đang đọc kết quả đã lưu…</p> : null}
+      {error ? <ErrorState message={error} /> : null}
+      {!rows && !error ? <TableSkeleton rows={6} cols={6} /> : null}
       {rows ? (
         <div className="relative max-h-[60vh] overflow-auto rounded-lg border border-line">
           <table className="min-w-full border-separate border-spacing-0 text-sm">
@@ -292,13 +293,13 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
             <tbody>
               {shown.map((r) => (
                 <tr key={r.client_id}>
-                  <td className={nameTd}>
+                  <td className={cn(nameTd, riskBarClass(scoreTone(r.score) === "red" ? "red" : scoreTone(r.score) === "amber" ? "amber" : null))}>
                     <span className={nameText} title={[r.label, r.customer_id_dashed].filter(Boolean).join(" · ")}>{r.label}</span>
                     <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{r.customer_id_dashed}</span>
                     <InactiveBadge activity={act.map?.[r.client_id]} />
                   </td>
                   <td className={cn(tdNum, "font-semibold", toneText(scoreTone(r.score)))}>
-                    {r.score != null ? scorePct(r.score) : !r.checked_at ? <span className="font-normal text-subtle">Chưa kiểm tra</span> : r.error_vi ? <span className="font-normal text-danger" title={r.error_vi}>Lỗi đọc</span> : <span className="font-normal text-subtle">Google chưa có điểm</span>}
+                    {r.score != null ? <>{scorePct(r.score)}<MiniBar className="ml-auto w-16" value={r.score} tone={scoreTone(r.score) === "red" ? "danger" : scoreTone(r.score) === "amber" ? "warn" : "ok"} /></> : !r.checked_at ? <span className="font-normal text-subtle">Chưa kiểm tra</span> : r.error_vi ? <span className="font-normal text-danger" title={r.error_vi}>Lỗi đọc</span> : <span className="font-normal text-subtle">Google chưa có điểm</span>}
                   </td>
                   {deltaCell(r.d1)}
                   {deltaCell(r.d7)}
@@ -309,8 +310,8 @@ export function OptimizationScoreCard({ canCheck }: { canCheck: boolean }) {
               ))}
               {!shown.length ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-muted">
-                    {onlyLow ? "Không có tài khoản nào dưới 70% (trong các tài khoản đã kiểm tra)." : "Chưa có tài khoản."}
+                  <td colSpan={7}>
+                    <EmptyState title={onlyLow ? "Không có tài khoản nào dưới 70%" : "Chưa có tài khoản."} description={onlyLow ? "Trong các tài khoản đã kiểm tra." : undefined} />
                   </td>
                 </tr>
               ) : null}

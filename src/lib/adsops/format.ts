@@ -1,7 +1,8 @@
 export function money(value: number | null | undefined, currency = "VND") {
   if (value == null || Number.isNaN(Number(value))) return "—";
   const n = Math.round(Number(value));
-  return `${n.toLocaleString("vi-VN")} ${currency}`;
+  // VN money: 137.579.605đ (no space); other currencies keep their code.
+  return currency === "VND" ? `${n.toLocaleString("vi-VN")}đ` : `${n.toLocaleString("vi-VN")} ${currency}`;
 }
 
 export function moneyPlain(value: number | null | undefined) {
