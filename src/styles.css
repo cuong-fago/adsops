@@ -7,7 +7,7 @@
   --font-display: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Neutral palette (gray) with one brand accent (blue #1D4ED8). Linear / Vercel-style: flat cards, hairline borders. */
+  /* Neutral palette (gray) with one brand accent (Fago green from the logo, #3BB44A; darker #287B33 for text/buttons so white-on-green and green-on-white are >= 4.5:1). Linear / Vercel-style: flat cards, hairline borders. */
   --color-bg: #f8f9fb;
   --color-paper: #ffffff;
   --color-inset: #f3f4f6;
@@ -18,17 +18,19 @@
   --color-line-strong: #d1d5db;
   --color-row-hover: #f9fafb;
 
-  --color-accent: #1d4ed8;
-  --color-accent-hover: #1e40af;
-  --color-accent-2: #2563eb;
-  --color-accent-soft: #eff6ff;
-  --color-accent-border: #bfdbfe;
+  --color-brand: #3bb44a; /* logo green: fills / decoration only, 2.7:1 on white, never text */
+  --color-accent: #287b33; /* 5.3:1 on white; white text on it 5.3:1 */
+  --color-accent-hover: #236c2c; /* 6.5:1 */
+  --color-accent-2: #3bb44a;
+  --color-accent-soft: #ecf9ed;
+  --color-accent-border: #b2e6b9;
   --color-accent-fg: #ffffff;
 
   /* Semantic: text / tinted bg / border. */
-  --color-ok: #059669;
-  --color-ok-bg: #ecfdf5;
-  --color-ok-border: #a7f3d0;
+  /* Success moved to teal so it doesn't read as the green brand accent. */
+  --color-ok: #0f766e;
+  --color-ok-bg: #f0fdfa;
+  --color-ok-border: #99f6e4;
   --color-warn: #d97706;
   --color-warn-bg: #fffbeb;
   --color-warn-border: #fde68a;
@@ -112,11 +114,11 @@
 
   :focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgb(29 78 216 / 0.4);
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgb(40 123 51 / 0.45);
   }
 
   ::selection {
-    background: rgb(29 78 216 / 0.16);
+    background: rgb(59 180 74 / 0.22);
   }
 }
 

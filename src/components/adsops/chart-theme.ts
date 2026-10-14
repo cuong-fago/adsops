@@ -1,15 +1,16 @@
 /** Shared chart styling (Recharts + hand-drawn SVG). Keep colours here, not inline in JSX. */
 export const chartColors = {
-  primary: "#1d4ed8",
-  primarySoft: "#93c5fd",
+  primary: "#2b8336", // brand hue, 4.8:1 on white (logo #3bb44a is too light for a thin line)
+  brand: "#3bb44a",
+  primarySoft: "#b2e6b9",
   grid: "#f3f4f6",
   axis: "#9ca3af",
   border: "#e5e7eb",
-  ok: "#059669",
+  ok: "#0f766e",
   warn: "#d97706",
   danger: "#dc2626",
   /** Categorical series, muted, ordered by priority. */
-  series: ["#1d4ed8", "#0891b2", "#d97706", "#7c3aed", "#9ca3af"],
+  series: ["#2b8336", "#0891b2", "#d97706", "#7c3aed", "#9ca3af"],
 } as const;
 
 export const chartTheme = {
