@@ -34,17 +34,17 @@ export function NavTab({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 text-[15px] font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
-        active ? "bg-accent text-white shadow-sm" : "text-slate-800 hover:bg-slate-200/70 hover:text-slate-900",
+        "relative inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3.5 text-[15px] font-semibold transition-colors duration-150",
+        "after:pointer-events-none after:absolute after:inset-x-2 after:-bottom-[7px] after:h-0.5 after:rounded-full after:transition-colors",
+        active ? "bg-accent-soft text-accent after:bg-accent" : "text-ink/85 after:bg-transparent hover:bg-inset hover:text-ink",
       )}
     >
-      {Icon ? <Icon className={cn("size-4 shrink-0", active ? "text-white" : "text-slate-600")} /> : null}
+      {Icon ? <Icon className={cn("size-4 shrink-0", active ? "text-accent" : "text-muted")} /> : null}
       {children}
       {badge ? (
         <span
           className={cn(
-            "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold tabular-nums",
-            active ? "bg-white text-accent" : "bg-danger text-white",
+            "inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-danger px-1.5 text-[11px] font-bold tabular-nums text-white",
           )}
         >
           {badge > 99 ? "99+" : badge}

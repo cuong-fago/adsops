@@ -115,12 +115,13 @@ export function ScoreStrip({ clientId, onOpen }: { clientId: string; onOpen?: ()
   }
   const when = row?.checked_at ? ` · kiểm tra lúc ${shortSaigon(row.checked_at)}` : "";
   const cls = cn(
-    "inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-left text-xs tabular-nums [overflow-wrap:anywhere]",
-    tone === "red" ? "bg-danger-bg font-semibold text-danger" : tone === "amber" ? "bg-warn-bg font-medium text-warn" : tone === "green" ? "bg-ok-bg font-medium text-ok" : "bg-inset text-subtle",
-    onOpen ? "cursor-pointer hover:ring-1 hover:ring-line" : "",
+    "inline-flex min-h-6 max-w-full items-center gap-1.5 rounded-sm border px-2 py-0.5 text-left text-xs tabular-nums [overflow-wrap:anywhere] transition-colors",
+    tone === "red" ? "border-danger-border bg-danger-bg font-semibold text-danger" : tone === "amber" ? "border-warn-border bg-warn-bg font-medium text-warn" : tone === "green" ? "border-ok-border bg-ok-bg font-medium text-ok" : "border-line bg-inset text-muted",
+    onOpen ? "cursor-pointer hover:border-line-strong" : "",
   );
   const body = (
     <>
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone === "red" ? "bg-danger" : tone === "amber" ? "bg-warn" : tone === "green" ? "bg-ok" : "bg-subtle")} />
       <span>{text}</span>
       <span className="font-normal text-subtle">{when}{refreshing ? " · đang kiểm tra…" : ""}</span>
     </>

@@ -980,7 +980,7 @@ export function AdsOpsApp() {
           </div>
         </div>
       ) : null}
-      <header className="sticky top-0 z-40 border-b border-line bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
+      <header className="sticky top-0 z-40 border-b border-line bg-paper/95 backdrop-blur supports-[backdrop-filter]:bg-paper/85">
         <div className="mx-auto flex min-h-14 max-w-[1800px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 md:px-6 lg:px-8">
           <BrandMark product={viewer ? "AdsOps Báo cáo" : "AdsOps"} />
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-3 sm:flex-none">
@@ -999,7 +999,7 @@ export function AdsOpsApp() {
                 />
               </div>
             ) : null}
-            <span className="hidden whitespace-nowrap rounded-full bg-inset px-2.5 py-1 text-xs font-medium text-muted lg:inline">
+            <span className="hidden h-6 items-center whitespace-nowrap rounded-sm border border-line bg-inset px-2 text-xs font-medium text-muted lg:inline-flex">
               {roleVi}
               {access?.display_name && access.kind === "client" ? ` · ${access.display_name}` : ""}
             </span>
@@ -1017,18 +1017,18 @@ export function AdsOpsApp() {
           </div>
         </div>
         {access && access.role !== "pending" ? (
-          <div className="border-t border-line bg-slate-100/90">
+          <div className="border-t border-line bg-paper">
           <nav aria-label="Điều hướng" className="mx-auto flex max-w-[1800px] items-center gap-1.5 overflow-x-auto px-4 py-2 md:px-6 lg:px-8 [scrollbar-width:none]">
             {access.kind === "staff" ? (
               <>
                 <NavTab icon={TAB_ICON.overview} active={shownTab === "overview"} onClick={() => goTab("overview")}>
                   Tổng quan tài khoản
                 </NavTab>
-                {opsTabs.length || caps?.analytics || caps?.changeLog ? <span aria-hidden className="mx-1.5 h-6 w-px shrink-0 self-center bg-slate-300" /> : null}
+                {opsTabs.length || caps?.analytics || caps?.changeLog ? <span aria-hidden className="mx-1.5 h-5 w-px shrink-0 self-center bg-line-strong" /> : null}
               </>
             ) : null}
             {opsTabs.length ? (
-              <span className="hidden shrink-0 self-center pl-1 pr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 sm:inline">
+              <span className="hidden shrink-0 self-center px-1 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
                 {viewer ? "Báo cáo" : "Vận hành"}
               </span>
             ) : null}
@@ -1039,8 +1039,8 @@ export function AdsOpsApp() {
             ))}
             {caps?.analytics || caps?.changeLog ? (
               <>
-                {opsTabs.length ? <span aria-hidden className="mx-1.5 h-6 w-px shrink-0 self-center bg-slate-300" /> : null}
-                <span className="hidden shrink-0 self-center pl-1 pr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 sm:inline">
+                {opsTabs.length ? <span aria-hidden className="mx-1.5 h-5 w-px shrink-0 self-center bg-line-strong" /> : null}
+                <span className="hidden shrink-0 self-center px-1 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
                   Phân tích
                 </span>
                 {caps?.analytics ? (
@@ -1067,7 +1067,7 @@ export function AdsOpsApp() {
             {client && shownTab !== "members" && shownTab !== "overview" ? (
               <>
                 <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                  <span className="truncate text-base font-semibold tracking-tight text-ink">{client.alias || client.display_name}</span>
+                  <span className="truncate text-lg font-semibold tracking-tight text-ink">{client.alias || client.display_name}</span>
                   {client.alias ? <span className="truncate text-muted">{client.display_name}</span> : null}
                 </p>
                 <p className="mt-0.5 text-xs text-subtle tabular-nums">
@@ -1086,7 +1086,7 @@ export function AdsOpsApp() {
                       : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}
                 </p>
                 {access?.kind === "staff" ? (
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <BudgetStrip
                       key={`b-${client.client_id}-${recheckN}`}
                       clientId={client.client_id}
