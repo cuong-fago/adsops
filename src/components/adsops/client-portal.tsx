@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LogOut } from "lucide-react";
+import { BarChart3, LayoutGrid, LogOut } from "lucide-react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { ClientOverview } from "@/components/adsops/client-overview";
 import { getWorkspacePack, setMyLanguage, type AccessSnap } from "@/lib/adsops/access.functions";
@@ -186,17 +186,18 @@ export function ClientPortal({
                   onChange={setClientId}
                 />
               </div>
-              <nav className="flex gap-1 rounded-lg border border-line bg-inset p-1" aria-label="tabs">
+              <nav className="flex gap-1.5 overflow-x-auto rounded-full border border-line bg-slate-100 p-1 [scrollbar-width:none]" aria-label="tabs">
                 {(["overview", "analytics"] as const).map((id) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => setTab(id)}
                     className={cn(
-                      "h-8 flex-1 rounded-md px-4 text-sm font-medium transition-colors md:flex-none",
-                      tab === id ? "bg-paper text-ink shadow-sm" : "text-muted hover:text-ink",
+                      "inline-flex h-10 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full px-4 text-[15px] font-semibold transition-colors md:flex-none",
+                      tab === id ? "bg-accent text-white shadow-sm" : "text-slate-800 hover:bg-slate-200/70",
                     )}
                   >
+                    {id === "overview" ? <LayoutGrid className="size-4" /> : <BarChart3 className="size-4" />}
                     {t(lang, id === "overview" ? "tab_overview" : "tab_analytics")}
                   </button>
                 ))}
