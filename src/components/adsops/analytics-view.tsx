@@ -21,6 +21,8 @@ import { autoFillDeepFn, autoFillWarehouseFn, readDeepLayerFn } from "@/lib/adso
 import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
 import { cn } from "@/lib/cn";
 import { BudgetBanner } from "@/components/adsops/budget-banner";
+import { Badge, EmptyState, TableSkeleton, cardClass } from "@/components/adsops/ui";
+import { chartColors } from "@/components/adsops/chart-theme";
 
 const SUBTABS = [
   { id: "overview", label: "Tổng quan" },
@@ -69,13 +71,13 @@ function dmy(iso: string) {
 function fold(s: string) {
   return s.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
 }
-/** Subtle per-column heat tint (teal for volume, indigo for cost). Text stays ink (contrast ≥ 7:1 on every step). */
+/** Subtle per-column heat tint (brand green for volume, amber for unit cost). Text stays ink. */
 function heat(value: number, max: number, tone: "cool" | "warm" = "cool", min = 0): CSSProperties | undefined {
   if (!(value > 0) || !(max > 0)) return undefined;
   const lo = min > 0 && min < max ? min : 0;
-  const t = Math.max(0, Math.min(1, (value - lo) / (max - lo || 1)));
-  const a = 0.03 + 0.22 * t;
-  return { backgroundColor: tone === "cool" ? `rgb(13 148 136 / ${a.toFixed(3)})` : `rgb(79 70 229 / ${(a * 0.8).toFixed(3)})` };
+  const u = Math.max(0, Math.min(1, (value - lo) / (max - lo || 1)));
+  const a = 0.04 + 0.18 * u;
+  return { backgroundColor: tone === "cool" ? `rgb(40 123 51 / ${a.toFixed(3)})` : `rgb(217 119 6 / ${(a * 0.85).toFixed(3)})` };
 }
 
 function InfoPopover({ label, children, align = "right" }: { label: string; children: ReactNode; align?: "left" | "right" }) {
@@ -96,7 +98,7 @@ function InfoPopover({ label, children, align = "right" }: { label: string; chil
   }, [open]);
   return (
     <div ref={ref} className="relative inline-flex">
-      <button type="button" aria-label={label} aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex size-9 items-center justify-center rounded-full text-muted hover:bg-inset hover:text-ink">
+      <button type="button" aria-label={label} aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex size-8 items-center justify-center rounded-md text-muted hover:bg-inset hover:text-ink">
         <Info className="size-4" />
       </button>
       {open ? (
@@ -112,26 +114,11 @@ function StatusBadge({ status }: { status?: string }) {
   const code = String(status || "").toUpperCase();
   const live = code === "ENABLED" || code === "ACTIVE";
   const paused = code === "PAUSED";
-  return (
-    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", live ? "bg-ok-bg text-ok" : paused ? "bg-warn-bg text-warn" : "bg-inset text-muted")}>
-      <span className={cn("size-1.5 rounded-full", live ? "bg-ok" : paused ? "bg-warn" : "bg-subtle")} />
-      {statusVi(status)}
-    </span>
-  );
+  return <Badge tone={live ? "ok" : paused ? "warn" : "neutral"}>{statusVi(status)}</Badge>;
 }
 
 function Skeleton({ rows = 6 }: { rows?: number }) {
-  return (
-    <div className="animate-pulse space-y-2 p-1" aria-label="Đang tải">
-      <div className="h-9 rounded-md bg-inset" />
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex gap-2">
-          <div className="h-8 w-1/3 rounded bg-inset/80" />
-          <div className="h-8 flex-1 rounded bg-inset/60" />
-        </div>
-      ))}
-    </div>
-  );
+  return <TableSkeleton rows={rows} cols={5} />;
 }
 
 function Sparkline({ values, tone = "cool" }: { values: (number | null)[]; tone?: "cool" | "warm" }) {
@@ -154,12 +141,12 @@ function Sparkline({ values, tone = "cool" }: { values: (number | null)[]; tone?
     cur.push(`${(i * step).toFixed(1)},${(H - 2 - ((v - min) / span) * (H - 4)).toFixed(1)}`);
   });
   if (cur.length) segments.push(cur.join(" "));
-  const color = tone === "cool" ? "var(--color-accent)" : "var(--color-warn)";
+  const color = tone === "cool" ? chartColors.primary : chartColors.warn;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-8 w-full" aria-hidden>
       {segments.map((pts, i) =>
         pts.includes(" ") ? (
-          <polyline key={i} points={pts} fill="none" stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          <polyline key={i} points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         ) : (
           <circle key={i} cx={pts.split(",")[0]} cy={pts.split(",")[1]} r={1.4} fill={color} />
         ),
@@ -170,9 +157,9 @@ function Sparkline({ values, tone = "cool" }: { values: (number | null)[]; tone?
 
 function Segmented<T extends string>({ items, value, onChange, size = "md" }: { items: readonly { id: T; label: string }[]; value: T; onChange: (v: T) => void; size?: "sm" | "md" }) {
   return (
-    <div className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-lg border border-line bg-inset p-1 [scrollbar-width:none]" role="tablist">
+    <div className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-md border border-line bg-inset p-0.5 [scrollbar-width:none]" role="tablist">
       {items.map((item) => (
-        <button key={item.id} type="button" role="tab" aria-selected={value === item.id} onClick={() => onChange(item.id)} className={cn("shrink-0 whitespace-nowrap rounded-md font-medium transition-colors duration-150", size === "sm" ? "h-7 px-3 text-xs" : "h-8 px-3.5 text-sm", value === item.id ? "bg-paper text-ink shadow-sm" : "text-muted hover:text-ink")}>
+        <button key={item.id} type="button" role="tab" aria-selected={value === item.id} onClick={() => onChange(item.id)} className={cn("shrink-0 whitespace-nowrap rounded-md font-medium transition-colors duration-150", size === "sm" ? "h-7 px-3 text-xs" : "h-8 px-3.5 text-sm", value === item.id ? "bg-paper text-ink shadow-sheet" : "text-muted hover:text-ink")}>
           {item.label}
         </button>
       ))}
@@ -180,7 +167,7 @@ function Segmented<T extends string>({ items, value, onChange, size = "md" }: { 
   );
 }
 
-const card = "rounded-xl bg-paper shadow-sheet";
+const card = cardClass;
 
 export function AnalyticsView({
   snap,
@@ -578,7 +565,7 @@ export function AnalyticsView({
                 <li>Cột Gọi / Zalo / Facebook chat / Form map từ conversion action của tài khoản này. Secondary (page view) không lên màn.</li>
                 <li>CPC / CTR / CR / chi phí mỗi chuyển đổi tính trên mọi click. Conv = 0 → chi/conv = 0.</li>
                 <li>Ngày không có số để trống (—), không điền 0, không ngoại suy.</li>
-                <li>Màu nền ô = độ lớn trong cột (xanh: khối lượng; vàng: chi phí trên đơn vị).</li>
+                <li>Màu nền ô = độ lớn trong cột (xanh Fago: khối lượng; vàng: chi phí trên đơn vị).</li>
                 <li>Timezone {snap.timezone}.</li>
                 {snap.warehouse_start ? (
                   <li>Kho {dmy(snap.warehouse_start)} → {dmy(warehouseEnd)}{typeof snap.day_count === "number" ? ` (${snap.day_count} ngày có số)` : ""}{typeof snap.analytics_lookback_days === "number" ? ` · lần kéo đầy đủ gần nhất ${snap.analytics_lookback_days} ngày` : ""}.</li>
@@ -597,7 +584,7 @@ export function AnalyticsView({
                   type="button"
                   onClick={() => applyRange(p.start, p.end)}
                   aria-pressed={activePreset === p.id}
-                  className={cn("h-9 rounded-full border px-3 text-sm font-medium transition-colors", activePreset === p.id ? "border-transparent bg-accent text-accent-fg" : "border-line bg-paper text-ink hover:bg-inset")}
+                  className={cn("h-9 rounded-md border px-3 text-sm font-medium transition-colors", activePreset === p.id ? "border-accent-border bg-accent-soft font-semibold text-accent" : "border-line bg-paper text-ink hover:bg-inset")}
                 >
                   {p.label}
                 </button>
@@ -609,16 +596,16 @@ export function AnalyticsView({
               {draftStart && draftEnd && draftStart > draftEnd ? <span className="pb-2.5 text-xs text-danger">Ngày bắt đầu sau ngày kết thúc.</span> : null}
               {allowCompare ? (
                 <>
-                  <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={prevEqual} onChange={(e) => setPrevEqual(e.target.checked)} className="size-4 accent-accent" />So kỳ trước cùng độ dài{prevRange ? <span className="text-xs text-muted">({formatRangeShort(prevStart, prevEnd)})</span> : null}</label>
+                  <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-inset px-3 text-sm"><input type="checkbox" checked={prevEqual} onChange={(e) => setPrevEqual(e.target.checked)} className="size-4 accent-accent" />So kỳ trước cùng độ dài{prevRange ? <span className="text-xs text-muted">({formatRangeShort(prevStart, prevEnd)})</span> : null}</label>
                   {snap.week_choices.length ? (
-                    <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm">Tuần
+                    <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-inset px-3 text-sm">Tuần
                       <select value={weekN} onChange={(e) => { setWeekN(Number(e.target.value)); setMonthN(0); if (Number(e.target.value)) setTab("monthly"); }} className="h-8 bg-transparent text-sm">
                         <option value={0}>—</option>
                         {snap.week_choices.map((n) => <option key={n} value={n}>{n} tuần (T2–CN)</option>)}
                       </select>
                     </label>
                   ) : null}
-                  <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm">Các tháng trước
+                  <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-inset px-3 text-sm">Các tháng trước
                     <select value={monthN} onChange={(e) => { setMonthN(Number(e.target.value)); setWeekN(0); if (Number(e.target.value)) setTab("monthly"); }} className="h-8 bg-transparent text-sm">
                       <option value={0}>—</option>
                       {(snap.month_choices.length ? snap.month_choices : [1, 2, 3, 4, 5, 6, 7, 8, 9]).map((n) => <option key={n} value={n}>{n} tháng</option>)}
@@ -632,10 +619,10 @@ export function AnalyticsView({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Segmented items={SUBTABS} value={tab} onChange={setTab} />
             {prevNoteTop && (tab === "overview" || tableLayer === "campaign") ? (
-              <span className={cn("inline-flex items-center rounded-full px-3 py-1 text-xs font-medium", prevNoteTop.warn ? "bg-warn-bg text-warn" : "bg-inset text-muted")}>{prevNoteTop.text}</span>
+              <span className={cn("inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium", prevNoteTop.warn ? "bg-warn-bg text-warn" : "bg-inset text-muted")}>{prevNoteTop.text}</span>
             ) : null}
             {!cov.complete ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-warn-bg px-3 py-1 text-xs font-medium text-warn">Kho có số {cov.present}/{cov.present + cov.missing} ngày trong khoảng · ngày thiếu để trống</span>
+              <span className="inline-flex items-center gap-1.5 rounded-sm bg-warn-bg px-2 py-0.5 text-xs font-medium text-warn">Kho có số {cov.present}/{cov.present + cov.missing} ngày trong khoảng · ngày thiếu để trống</span>
             ) : null}
           </div>
         </div>
@@ -668,7 +655,7 @@ export function AnalyticsView({
             />
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => setOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
+              <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => setOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
             </div>
           )}
           {(() => {
@@ -834,7 +821,7 @@ function Overview({
                     <span className="text-muted">{g.label}</span>
                     <span className="font-medium tabular-nums">{convNum(v)}<span className="ml-2 text-xs font-normal text-subtle">{totalConv > 0 ? pct(share) : "—"}</span></span>
                   </div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-inset"><div className="h-full rounded-full bg-accent" style={{ width: `${(share * 100).toFixed(1)}%` }} /></div>
+                  <div className="mt-1 h-1 overflow-hidden rounded-sm bg-inset"><div className="h-full rounded-sm bg-accent" style={{ width: `${(share * 100).toFixed(1)}%` }} /></div>
                 </li>
               );
             })}
@@ -843,19 +830,19 @@ function Overview({
         <section className={cn(card, "p-4 lg:col-span-3")}>
           <div className="flex items-center justify-between">
             <h3 className="font-display text-lg font-medium tracking-tight">Chiến dịch chi nhiều nhất</h3>
-            <button type="button" onClick={onOpenCampaigns} className="inline-flex h-9 items-center gap-1 rounded-full px-3 text-sm font-medium text-accent hover:bg-inset">Xem tất cả ({campaigns.length}) <ChevronRight className="size-4" /></button>
+            <button type="button" onClick={onOpenCampaigns} className="inline-flex h-9 items-center gap-1 rounded-md px-3 text-sm font-medium text-accent hover:bg-inset">Xem tất cả ({campaigns.length}) <ChevronRight className="size-4" /></button>
           </div>
-          {top.length === 0 ? <p className="mt-3 text-sm text-muted">Không có chiến dịch có số trong khoảng này.</p> : (
+          {top.length === 0 ? <EmptyState title="Không có chiến dịch có số trong khoảng này." className="py-6" /> : (
             <ul className="mt-2 divide-y divide-line">
               {top.map((row) => (
                 <li key={row.id}>
                   <button type="button" onClick={() => onPickCampaign(row)} className="grid w-full grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 py-2.5 text-left hover:bg-inset/40">
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate font-medium" title={row.name}>{row.name}</span>
-                      {row.pmax ? <span className="shrink-0 rounded-full bg-inset px-2 py-0.5 text-[11px] font-medium text-muted">PMax</span> : null}
+                      {row.pmax ? <span className="shrink-0 rounded-sm bg-inset px-1.5 py-0.5 text-[11px] font-medium text-muted">PMax</span> : null}
                     </span>
                     <span className="text-right text-sm font-medium tabular-nums">{dongShort(row.metrics.cost || 0)}</span>
-                    <span className="h-1.5 overflow-hidden rounded-full bg-inset"><span className="block h-full rounded-full bg-accent/70" style={{ width: `${maxCost ? ((row.metrics.cost || 0) / maxCost) * 100 : 0}%` }} /></span>
+                    <span className="h-1 overflow-hidden rounded-sm bg-inset"><span className="block h-full rounded-sm bg-accent/70" style={{ width: `${maxCost ? ((row.metrics.cost || 0) / maxCost) * 100 : 0}%` }} /></span>
                     <span className="text-right text-xs text-muted tabular-nums">{convNum(row.metrics.conversions || 0)} conv · CPL {dongShort(row.metrics.cost_per_conversion || 0)}</span>
                   </button>
                 </li>
@@ -869,16 +856,17 @@ function Overview({
 }
 
 function KpiCard({ def, metrics, prev, prevIncomplete, prevLoading, values, big }: { def: KpiDef; metrics: Record<string, number>; prev?: Record<string, number>; prevIncomplete?: boolean; prevLoading?: boolean; values: (number | null)[]; big?: boolean }) {
+  // Trend / previous-period only when `prev` is passed (staff with allowCompare). Clients never get it.
   const d = prev ? metricDelta(def.id, metrics, prev) : null;
   return (
-    <div className={cn(card, "flex min-w-0 flex-col gap-1 p-3 md:p-4", big && "ring-1 ring-accent/10")}>
-      <p className="text-[13px] font-medium leading-snug text-muted" title={def.hint || def.label}>{def.label}</p>
-      <p className={cn("font-display font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]", big ? "text-2xl md:text-3xl" : "text-xl md:text-2xl")}>{def.value(metrics)}</p>
+    <div className={cn(card, "flex min-w-0 flex-col gap-1.5 p-4", big && "border-accent-border")}>
+      <p className="text-xs font-medium leading-4 text-muted" title={def.hint || def.label}>{def.label}</p>
+      <p className={cn("font-semibold tracking-tight tabular-nums leading-8 [overflow-wrap:anywhere]", big ? "text-[28px]" : "text-2xl")}>{def.value(metrics)}</p>
       <Sparkline values={values} tone={def.tone} />
       {prevLoading ? (
-        <p className="text-xs text-subtle">Đang tải kỳ trước…</p>
+        <p className="text-xs leading-4 text-subtle">Đang tải kỳ trước…</p>
       ) : prev ? (
-        <p className="flex flex-wrap items-baseline gap-x-1.5 text-xs text-muted" title={prevIncomplete ? "Kỳ trước thiếu ngày — chỉ tham khảo" : undefined}>
+        <p className="flex flex-wrap items-baseline gap-x-1.5 text-xs leading-4 text-muted" title={prevIncomplete ? "Kỳ trước thiếu ngày — chỉ tham khảo" : undefined}>
           <span className="tabular-nums">Kỳ trước {def.value(prev)}{prevIncomplete ? "*" : ""}</span>
           <DeltaText d={d} className="text-xs font-medium" />
         </p>
@@ -923,9 +911,9 @@ const scrollBox = "relative max-h-[70vh] overflow-auto overscroll-contain rounde
 /** Metric columns shown by default (the rest: "Cột" → thêm). */
 const DEFAULT_METRIC_COLS = new Set(["cost", "impressions", "clicks", "ctr", "conversions", "cpc", "cost_per_conversion"]);
 const COLS_KEY = "adsops:analytics:cols:v1:";
-const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-2.5 py-2.5 text-[13px] font-medium text-muted";
+const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-xs font-medium text-muted";
 const stickyCol = "sticky left-0 z-[5] bg-paper shadow-[1px_0_0_var(--color-line)]";
-const cornerCell = "sticky left-0 top-0 z-20 bg-inset shadow-[1px_0_0_var(--color-line)]";
+const cornerCell = "sticky left-0 top-0 z-20 bg-row-hover shadow-[1px_0_0_var(--color-line)]";
 
 function PeriodSection({
   title, cols, blocks, accountBlocks, groups, layer, onLayerChange, onPickCampaign, onWholeWarehouse, splitKnown,
@@ -962,7 +950,7 @@ function PeriodSection({
       <section className={cn(card, "flex flex-col items-start gap-3 p-5")}>
         <h3 className="font-display text-lg font-medium">{title}</h3>
         <p className="text-sm text-muted">Khoảng ngày đang chọn nằm trong 1 tháng. Chọn khoảng dài hơn để xem các tháng cạnh nhau.</p>
-        <button type="button" onClick={onWholeWarehouse} className="h-10 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg">Xem toàn kho theo tháng</button>
+        <button type="button" onClick={onWholeWarehouse} className="h-9 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg hover:bg-accent-hover">Xem toàn kho theo tháng</button>
       </section>
     );
   }
@@ -1033,7 +1021,7 @@ function PeriodSection({
             </tbody>
           </table>
         ) : campaigns.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted">Không có chiến dịch có số trong các kỳ này. Không đoán số.</p>
+          <EmptyState title="Không có chiến dịch có số trong các kỳ này." description="Không đoán số." className="py-6" />
         ) : mode === "matrix" ? (
           <table id="analytics-campaign-matrix" className="min-w-full border-separate border-spacing-0 text-left text-sm">
             {header(`${kpiMeta.label} theo chiến dịch`)}
@@ -1043,7 +1031,7 @@ function PeriodSection({
                   <td className={cn(stickyCol, "border-b border-line/60 px-3 py-1 group-hover:bg-inset")}>
                     <button type="button" onClick={() => onPickCampaign(camp.id)} className="flex min-h-10 w-full max-w-[11rem] items-center gap-2 text-left font-medium md:max-w-[22rem]" title={camp.name}>
                       <span className="truncate">{camp.name}</span>
-                      {camp.pmax ? <span className="shrink-0 rounded-full bg-inset px-1.5 text-[11px] text-muted">PMax</span> : null}
+                      {camp.pmax ? <span className="shrink-0 rounded-sm bg-inset px-1.5 text-[11px] text-muted">PMax</span> : null}
                     </button>
                   </td>
                   {cols.map((col, i) => {
@@ -1076,7 +1064,7 @@ function PeriodSection({
                   <td className={cn(stickyCol, "border-b border-line bg-inset px-3 py-1")}>
                     <button type="button" onClick={() => onPickCampaign(camp.id)} className="flex min-h-10 w-full max-w-[11rem] items-center gap-2 text-left font-semibold text-ink md:max-w-[22rem]" title={camp.name}>
                       <span className="truncate">{camp.name}</span>
-                      {camp.pmax ? <span className="shrink-0 rounded-full bg-paper px-1.5 text-[11px] text-muted">PMax</span> : null}
+                      {camp.pmax ? <span className="shrink-0 rounded-sm bg-paper px-1.5 text-[11px] text-muted">PMax</span> : null}
                     </button>
                   </td>
                   {cols.map((col) => <td key={col.id} className="border-b border-line bg-inset" />)}
@@ -1105,7 +1093,7 @@ function PeriodSection({
         )}
       </div>
       {layer === "campaign" && campaigns.length > TOP ? (
-        <button type="button" onClick={() => setShowAll((v) => !v)} className="self-start rounded-full bg-inset px-3.5 py-2 text-sm font-medium text-ink hover:bg-line">
+        <button type="button" onClick={() => setShowAll((v) => !v)} className="self-start rounded-md bg-inset px-3.5 py-2 text-sm font-medium text-ink hover:bg-line">
           {showAll ? `Chỉ hiện top ${TOP} chiến dịch` : `Xem tất cả ${campaigns.length} chiến dịch (đang hiện top ${TOP} theo chi tiêu)`}
         </button>
       ) : null}
@@ -1161,8 +1149,8 @@ function FillProgress({ label, x, y }: { label: string; x: number; y: number }) 
   return (
     <div className="rounded-md bg-inset px-4 py-3 text-sm text-muted" role="status" aria-live="polite">
       <p>{label}</p>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-line">
-        <div className={cn("h-full rounded-full bg-accent transition-all", y > 0 ? "" : "w-1/3 animate-pulse")} style={y > 0 ? { width: `${Math.max(8, pctDone)}%` } : undefined} />
+      <div className="mt-2 h-1 overflow-hidden rounded-sm bg-line">
+        <div className={cn("h-full rounded-sm bg-accent transition-all", y > 0 ? "" : "w-1/3 animate-pulse")} style={y > 0 ? { width: `${Math.max(8, pctDone)}%` } : undefined} />
       </div>
     </div>
   );
@@ -1170,8 +1158,8 @@ function FillProgress({ label, x, y }: { label: string; x: number; y: number }) 
 
 type CampaignLite = { id: string; name: string; pmax?: boolean };
 
-const selectBox = "flex h-10 min-w-0 items-center gap-2 rounded-full bg-inset pl-3.5 pr-1.5 text-sm sm:max-w-[20rem]";
-const selectEl = "h-9 min-w-0 flex-1 cursor-pointer truncate rounded-full bg-transparent pr-1 text-base font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-sm";
+const selectBox = "flex h-9 min-w-0 items-center gap-2 rounded-md border border-line bg-inset pl-3 pr-1 text-sm sm:max-w-[20rem]";
+const selectEl = "h-8 min-w-0 flex-1 cursor-pointer truncate rounded-md bg-transparent pr-1 text-base font-medium text-ink outline-none sm:text-sm";
 
 type ScopeOpt = { id: string; label: string };
 
@@ -1327,9 +1315,9 @@ function ScopeFilters({
         />
       ) : null}
       <div className="flex items-center gap-2">
-        <label className="flex h-10 items-center gap-2 rounded-full bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => onOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
+        <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => onOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
         {canClear ? (
-          <button type="button" onClick={onClear} className="inline-flex h-10 items-center gap-1 rounded-full px-3 text-sm font-medium text-accent hover:bg-inset"><X className="size-4" /> Xoá lọc</button>
+          <button type="button" onClick={onClear} className="inline-flex h-9 items-center gap-1 rounded-md px-3 text-sm font-medium text-accent hover:bg-inset"><X className="size-4" /> Xoá lọc</button>
         ) : null}
       </div>
     </div>
@@ -1542,14 +1530,14 @@ function DataTable({
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative flex min-w-0 flex-1 items-center sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 size-4 text-subtle" />
-          <input type="search" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} placeholder={`Tìm ${firstLabel.toLowerCase()}…`} className="h-9 w-full rounded-full border border-line bg-bg pl-9 pr-3 text-sm text-ink placeholder:text-subtle" />
+          <input type="search" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} placeholder={`Tìm ${firstLabel.toLowerCase()}…`} className="h-9 w-full rounded-md border border-line bg-bg pl-9 pr-3 text-sm text-ink placeholder:text-subtle" />
         </label>
         <span className="text-xs text-muted tabular-nums">
           {countLabel}
           {canDrill ? " · bấm tên để xuống tầng dưới" : ""}
         </span>
         <div ref={colsRef} className="relative ml-auto">
-          <button type="button" onClick={() => setColsOpen((v) => !v)} aria-expanded={colsOpen} aria-haspopup="true" className={cn("inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium", colsOpen ? "bg-ink text-paper" : "bg-inset text-ink hover:bg-line")}>
+          <button type="button" onClick={() => setColsOpen((v) => !v)} aria-expanded={colsOpen} aria-haspopup="true" className={cn("inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium", colsOpen ? "bg-ink text-paper" : "border border-line bg-paper text-ink hover:bg-inset")}>
             <Columns3 className="size-4" /> Cột <span className="text-xs tabular-nums opacity-70">{onCount}/{optCols.length}</span>
           </button>
           {colsOpen ? (
@@ -1607,30 +1595,30 @@ function DataTable({
           <tbody>
             {visible.map((row) => (
               <tr key={row.id} className="group">
-                <td className={cn(stickyCol, "border-b border-line/60 px-3 py-2 group-hover:bg-inset")}>
+                <td className={cn(stickyCol, "border-b border-line/60 px-3 py-2.5 group-hover:bg-row-hover")}>
                   {canDrill ? (
                     <button type="button" onClick={() => onDrill(row)} className="flex min-h-9 w-full max-w-[12rem] items-center gap-2 text-left font-medium text-ink hover:text-accent hover:underline md:max-w-[22rem]" title={row.name}>
                       <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">{row.name}</span>
-                      {compare && !compare.partial && !compare.map.has(row.id) ? <span className="shrink-0 rounded-full bg-ok-bg px-1.5 text-[11px] font-medium text-ok">mới</span> : null}
-                      {row.pmax ? <span className="shrink-0 rounded-full bg-inset px-1.5 text-[11px] font-medium text-muted">PMax</span> : null}
+                      {compare && !compare.partial && !compare.map.has(row.id) ? <span className="shrink-0 rounded-sm bg-ok-bg px-1.5 text-[11px] font-medium text-ok">mới</span> : null}
+                      {row.pmax ? <span className="shrink-0 rounded-sm bg-inset px-1.5 text-[11px] font-medium text-muted">PMax</span> : null}
                       <ChevronRight className="size-3.5 shrink-0 text-subtle" />
                     </button>
                   ) : (
                     <div className="flex min-h-9 max-w-[12rem] flex-col justify-center md:max-w-[22rem]" title={row.name}>
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span className="line-clamp-2 min-w-0 font-medium [overflow-wrap:anywhere]">{row.name}</span>
-                        {compare && !compare.partial && !compare.map.has(row.id) ? <span className="shrink-0 rounded-full bg-ok-bg px-1.5 text-[11px] font-medium text-ok">mới</span> : null}
+                        {compare && !compare.partial && !compare.map.has(row.id) ? <span className="shrink-0 rounded-sm bg-ok-bg px-1.5 text-[11px] font-medium text-ok">mới</span> : null}
                       </span>
                       {(layer === "search_term" || layer === "keyword") && !showCampaign && !showAdGroup && contextLine(row) ? <span className="truncate text-xs text-subtle" title={contextLine(row)}>{contextLine(row)}</span> : null}
                     </div>
                   )}
                 </td>
-                {showStatus ? <td className="border-b border-line/60 px-2.5 py-2"><StatusBadge status={row.status} /></td> : null}
-                {showMatchCol ? <td className="whitespace-nowrap border-b border-line/60 px-2.5 py-2 text-muted">{row.match_type_label || row.match_type || "—"}</td> : null}
-                {showCampaign ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-2.5 py-2 text-muted" title={campOf(row)}><span className="line-clamp-2 [overflow-wrap:anywhere]">{campOf(row) || "—"}</span></td> : null}
-                {showAdGroup ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-2.5 py-2 text-muted" title={row.ad_group_name || ""}><span className="line-clamp-2 [overflow-wrap:anywhere]">{row.ad_group_name || "—"}</span></td> : null}
+                {showStatus ? <td className="border-b border-line/60 px-3 py-2.5"><StatusBadge status={row.status} /></td> : null}
+                {showMatchCol ? <td className="whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-muted">{row.match_type_label || row.match_type || "—"}</td> : null}
+                {showCampaign ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-3 py-2.5 text-muted" title={campOf(row)}><span className="line-clamp-2 [overflow-wrap:anywhere]">{campOf(row) || "—"}</span></td> : null}
+                {showAdGroup ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-3 py-2.5 text-muted" title={row.ad_group_name || ""}><span className="line-clamp-2 [overflow-wrap:anywhere]">{row.ad_group_name || "—"}</span></td> : null}
                 {shownCols.map((c) => (
-                  <td key={c.key} className={cn("whitespace-nowrap border-b border-line/60 px-2.5 py-2 text-right tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
+                  <td key={c.key} className={cn("h-10 whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-right tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
                     {c.cell(row)}
                     {compare && DELTA_COLS.has(c.key) && compare.map.has(row.id) ? (
                       <DeltaText d={metricDelta(c.key, row.metrics, compare.map.get(row.id) || {})} className="block leading-tight" />
@@ -1661,15 +1649,15 @@ function DataTable({
 
       <div className="flex flex-wrap items-center gap-2">
         {!query && filtered.length > TOP ? (
-          <button type="button" onClick={() => { setShowAll((v) => !v); setPage(0); }} className="rounded-full bg-inset px-3.5 py-2 text-sm font-medium text-ink hover:bg-line">
+          <button type="button" onClick={() => { setShowAll((v) => !v); setPage(0); }} className="rounded-md bg-inset px-3.5 py-2 text-sm font-medium text-ink hover:bg-line">
             {showAll ? `Chỉ hiện top ${TOP}` : `Xem tất cả ${filtered.length} dòng (đang hiện top ${TOP} theo sắp xếp)`}
           </button>
         ) : null}
         {paginate ? (
           <div className="ml-auto flex items-center gap-1 text-sm">
-            <button type="button" disabled={safePage === 0} onClick={() => setPage(safePage - 1)} className="h-9 rounded-full px-3 hover:bg-inset disabled:opacity-40">← Trước</button>
+            <button type="button" disabled={safePage === 0} onClick={() => setPage(safePage - 1)} className="h-9 rounded-md px-3 hover:bg-inset disabled:opacity-40">← Trước</button>
             <span className="tabular-nums text-muted">Trang {safePage + 1}/{pages}</span>
-            <button type="button" disabled={safePage >= pages - 1} onClick={() => setPage(safePage + 1)} className="h-9 rounded-full px-3 hover:bg-inset disabled:opacity-40">Sau →</button>
+            <button type="button" disabled={safePage >= pages - 1} onClick={() => setPage(safePage + 1)} className="h-9 rounded-md px-3 hover:bg-inset disabled:opacity-40">Sau →</button>
           </div>
         ) : null}
       </div>

@@ -65,7 +65,7 @@ export function InfoTip({ lang, id, className }: { lang: Lang; id: MetricId; cla
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className="inline-flex size-6 items-center justify-center rounded-full text-subtle hover:bg-inset hover:text-ink"
+        className="inline-flex size-6 items-center justify-center rounded-md text-subtle hover:bg-inset hover:text-ink"
       >
         <Info className="size-3.5" />
       </button>
@@ -204,7 +204,7 @@ export function ClientOverview({
                 type="button"
                 onClick={() => pick(p.id)}
                 className={cn(
-                  "h-10 shrink-0 rounded-full px-3.5 text-sm font-medium transition-colors",
+                  "h-10 shrink-0 rounded-md px-3.5 text-sm font-medium transition-colors",
                   preset === p.id ? "bg-accent text-accent-fg" : "bg-inset text-ink hover:bg-line",
                 )}
               >
@@ -215,7 +215,7 @@ export function ClientOverview({
               type="button"
               onClick={() => setPreset("custom")}
               className={cn(
-                "h-10 shrink-0 rounded-full px-3.5 text-sm font-medium transition-colors",
+                "h-10 shrink-0 rounded-md px-3.5 text-sm font-medium transition-colors",
                 preset === "custom" ? "bg-accent text-accent-fg" : "bg-inset text-ink hover:bg-line",
               )}
             >
@@ -252,7 +252,7 @@ export function ClientOverview({
               </label>
               <button
                 type="submit"
-                className="col-span-2 h-11 rounded-full bg-accent px-5 text-sm font-medium text-accent-fg sm:col-span-1"
+                className="col-span-2 h-10 rounded-md bg-accent px-5 text-sm font-medium text-accent-fg sm:col-span-1"
               >
                 {t(lang, "apply")}
               </button>
@@ -315,7 +315,7 @@ export function ClientOverview({
                 })}
               </div>
               {tt.conversions > 0 ? (
-                <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-inset">
+                <div className="mt-2 flex h-1 overflow-hidden rounded-sm bg-inset">
                   {convTypes.map((k) =>
                     tt[k] > 0 ? (
                       <span key={k} style={{ width: `${(tt[k] / tt.conversions) * 100}%`, background: CONV_COLORS[k] }} />
@@ -350,7 +350,7 @@ export function ClientOverview({
                   type="button"
                   onClick={() => setMetric(m)}
                   className={cn(
-                    "h-9 shrink-0 rounded-full px-3 text-xs font-medium transition-colors",
+                    "h-9 shrink-0 rounded-md px-3 text-xs font-medium transition-colors",
                     metric === m ? "bg-ink text-paper" : "bg-inset text-ink hover:bg-line",
                   )}
                 >
@@ -443,7 +443,7 @@ export function ClientOverview({
                       <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                         <span
                           className={cn(
-                            "rounded-full px-2 py-0.5 font-medium",
+                            "rounded-sm px-2 py-0.5 font-medium",
                             code === "ENABLED" ? "bg-ok-bg text-ok" : code === "PAUSED" ? "bg-warn-bg text-warn" : "bg-inset text-muted",
                           )}
                         >
