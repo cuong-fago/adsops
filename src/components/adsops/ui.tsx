@@ -109,3 +109,32 @@ export function ErrorState({ title = "Không tải được dữ liệu", messag
     </div>
   );
 }
+
+/** 4px in-cell bar (0–1). Tone follows the semantic palette. */
+export function MiniBar({ value, tone = "accent", className }: { value: number | null | undefined; tone?: Tone; className?: string }) {
+  if (value == null || !Number.isFinite(value)) return null;
+  const w = Math.max(0, Math.min(1, value)) * 100;
+  const fill = tone === "danger" ? "bg-danger" : tone === "warn" ? "bg-warn" : tone === "ok" ? "bg-ok" : tone === "neutral" ? "bg-subtle" : "bg-accent";
+  return (
+    <span aria-hidden className={cn("mt-1 block h-1 w-full max-w-[9rem] overflow-hidden rounded-sm bg-inset", className)}>
+      <span className={cn("block h-full rounded-sm", fill)} style={{ width: `${w.toFixed(1)}%` }} />
+    </span>
+  );
+}
+
+/** 3px left accent bar for risky rows (apply to the first, sticky cell). */
+export function riskBarClass(level: "red" | "amber" | null | undefined): string {
+  return level === "red" ? "shadow-[inset_3px_0_0_var(--color-danger)]" : level === "amber" ? "shadow-[inset_3px_0_0_var(--color-warn)]" : "";
+}
+
+/** Coloured text with a 6px status dot (no background), for dense table cells. */
+export function DotText({ tone = "neutral", children, className, title }: { tone?: Tone; children: ReactNode; className?: string; title?: string }) {
+  const s = BADGE[tone];
+  const text = tone === "danger" ? "text-danger font-semibold" : tone === "warn" ? "text-warn font-medium" : tone === "ok" ? "text-ink" : tone === "accent" ? "text-accent" : "text-muted";
+  return (
+    <span title={title} className={cn("inline-flex items-center gap-1.5 tabular-nums", text, className)}>
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", s.dot)} />
+      {children}
+    </span>
+  );
+}

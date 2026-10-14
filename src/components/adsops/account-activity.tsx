@@ -71,7 +71,7 @@ export function InactiveToggle({ show, onChange, count, className }: { show: boo
 export function InactiveBadge({ activity }: { activity: AccountActivity | undefined }) {
   if (activity?.systemic) {
     return (
-      <span className="mt-0.5 inline-flex rounded-full bg-warn-bg px-2 py-0.5 text-[11px] font-medium text-warn" title={[activity.systemic, activity.error].filter(Boolean).join("\n")}>
+      <span className="mt-1 inline-flex h-5 items-center rounded-sm bg-warn-bg px-1.5 text-[11px] font-medium text-warn" title={[activity.systemic, activity.error].filter(Boolean).join("\n")}>
         Lỗi chung MCC — không ẩn
       </span>
     );
@@ -79,7 +79,7 @@ export function InactiveBadge({ activity }: { activity: AccountActivity | undefi
   if (activity?.state !== "inactive") return null;
   const tip = [activity.google_status ? `Google: ${activity.google_status}` : "", activity.error || ""].filter(Boolean).join("\n");
   return (
-    <span className="mt-0.5 inline-flex rounded-full bg-inset px-2 py-0.5 text-[11px] font-medium text-muted" title={tip || undefined}>
+    <span className="mt-1 inline-flex h-5 items-center rounded-sm bg-inset px-1.5 text-[11px] font-medium text-muted" title={tip || undefined}>
       Không hoạt động · {activity.reason}
     </span>
   );

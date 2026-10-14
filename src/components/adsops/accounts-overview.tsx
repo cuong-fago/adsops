@@ -11,15 +11,16 @@ import { num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
 import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/adsops/account-activity";
+import { Badge, DotText, EmptyState, ErrorState, MiniBar, TableSkeleton, riskBarClass, type Tone } from "@/components/adsops/ui";
 
 
 type Level = "red" | "amber" | "ok" | "none";
 
 const STALE_LOG_MS = 6 * 60 * 60 * 1000;
 
-const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
+const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
 const td = "border-b border-line/60 px-3 py-2.5 align-top";
-const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
+const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
 const nameTd = "sticky left-0 z-[5] min-w-[220px] max-w-[320px] border-b border-r border-line/60 bg-paper px-3 py-2.5 align-top";
 
 function saigonYmd(d: Date): string {
@@ -69,6 +70,14 @@ function urgency(r: OverviewRow): number {
 }
 
 const toneCls: Record<Level, string> = { red: "text-danger font-semibold", amber: "text-warn font-medium", ok: "text-ink", none: "text-subtle" };
+const levelTone: Record<Level, Tone> = { red: "danger", amber: "warn", ok: "ok", none: "neutral" };
+/** Worst level across budget / score / keyword optimisation, for the row's left accent bar. */
+function rowRisk(r: OverviewRow): "red" | "amber" | null {
+  const lv = [budgetLevel(r), scoreLevel(r), optLevel(r)];
+  return lv.includes("red") ? "red" : lv.includes("amber") ? "amber" : null;
+}
+/** Budget days → 0–1 for the in-cell bar (14+ days = full). */
+const RUNWAY_FULL_DAYS = 14;
 
 function latest(...v: Array<string | null>): string | null {
   const xs = v.filter((x): x is string => Boolean(x)).sort();
@@ -312,7 +321,18 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
     else if (w.runway_days != null) main = `${num(w.runway_days, 1)} ngày`;
     else main = "—";
     const end = w.expiring && w.budget_end ? ` · hết hạn ${w.budget_end.slice(8, 10)}/${w.budget_end.slice(5, 7)}` : "";
-    return <span className={cn("tabular-nums", toneCls[budgetLevel(r)], w.kind === "no_budget" && "font-normal text-muted")}>{main}{end}</span>;
+    const lv = budgetLevel(r);
+    if (!w.checked_at) return <span className="text-subtle">—</span>;
+    return (
+      <span className="block">
+        {lv === "red" || lv === "amber" ? (
+          <Badge tone={levelTone[lv]}>{main}{end}</Badge>
+        ) : (
+          <DotText tone={w.kind === "no_budget" || w.kind === "error" ? "neutral" : levelTone[lv]} title={w.kind === "error" ? "Chưa kiểm tra được" : undefined}>{main}{end}</DotText>
+        )}
+        {w.runway_days != null ? <MiniBar value={w.runway_days / RUNWAY_FULL_DAYS} tone={levelTone[lv]} /> : null}
+      </span>
+    );
   };
 
   const scoreCell = (r: OverviewRow) => {
@@ -321,13 +341,14 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
     if (s.score == null) return <span className="text-subtle">{s.error_vi ? "Chưa đọc được" : "Google chưa có điểm"}</span>;
     const d = s.d1 == null ? null : s.d1 * 100;
     return (
-      <span className="tabular-nums">
-        <span className={toneCls[scoreLevel(r)]}>{scorePct(s.score)}</span>
+      <span className="block tabular-nums">
+        {scoreLevel(r) === "red" || scoreLevel(r) === "amber" ? <Badge tone={levelTone[scoreLevel(r)]}>{scorePct(s.score)}</Badge> : <DotText tone={levelTone[scoreLevel(r)]}>{scorePct(s.score)}</DotText>}
         {d != null ? (
           <span className={cn("ml-1.5 text-xs", d > 0.05 ? "text-ok" : d < -0.05 ? "text-danger" : "text-muted")}>
             {Math.abs(d) < 0.05 ? "= 0" : `${d > 0 ? "▲" : "▼"} ${num(Math.abs(d), 1)}`} điểm / 1 ngày
           </span>
         ) : null}
+        <MiniBar value={s.score} tone={levelTone[scoreLevel(r)]} />
       </span>
     );
   };
@@ -338,21 +359,21 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
       (r.change_pulled_at ? `Nhật ký cập nhật lúc ${formatSaigon(r.change_pulled_at)}` : "Chưa kéo nhật ký tối ưu") +
       ". Phủ định trong danh sách dùng chung được ghi nhận theo lúc AdsOps phát hiện.";
     const failed = r.change_last_ok === false ? (
-      <span className="mt-0.5 block text-xs font-medium text-danger" title={`${r.change_last_at ? formatSaigon(r.change_last_at) + ": " : ""}${r.change_last_error || "Lỗi không rõ"}`}>
+      <span className="mt-1 inline-flex h-5 items-center rounded-sm bg-danger-bg px-1.5 text-[11px] font-medium text-danger" title={`${r.change_last_at ? formatSaigon(r.change_last_at) + ": " : ""}${r.change_last_error || "Lỗi không rõ"}`}>
         Lỗi cập nhật nhật ký
       </span>
     ) : null;
     if (d == null) {
       return (
         <span title={tip}>
-          <span className={toneCls[optLevel(r)]}>{r.change_pulled_at ? "Chưa ghi nhận trong 30 ngày" : "—"}</span>
+          {r.change_pulled_at ? <Badge tone={levelTone[optLevel(r)]}>Chưa ghi nhận trong 30 ngày</Badge> : <span className="text-subtle">—</span>}
           {failed}
         </span>
       );
     }
     return (
       <span className="tabular-nums" title={tip}>
-        <span className={toneCls[optLevel(r)]}>{d === 0 ? "Hôm nay" : `${d} ngày trước`}</span>
+        {optLevel(r) === "red" || optLevel(r) === "amber" ? <Badge tone={levelTone[optLevel(r)]}>{d === 0 ? "Hôm nay" : `${d} ngày trước`}</Badge> : <DotText tone={levelTone[optLevel(r)]}>{d === 0 ? "Hôm nay" : `${d} ngày trước`}</DotText>}
         <span className="block text-xs text-subtle">{dmy(r.last_opt_at as string)}</span>
         {r.change_pulled_at ? <span className="block text-[11px] text-subtle">nhật ký {formatSaigon(r.change_pulled_at)}</span> : null}
         {failed}
@@ -361,7 +382,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
   };
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5">
+    <section className="flex flex-col gap-4 rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold tracking-tight">Tổng quan tài khoản</h2>
@@ -391,13 +412,13 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
         <div className="flex flex-wrap items-center gap-2 text-sm">
           {scoped ? (
             <>
-              <span className="inline-flex items-center rounded-full bg-accent-soft px-3 py-1 font-medium text-ink [overflow-wrap:anywhere]">Chỉ tài khoản: {selectedRow.label}</span>
-              <button type="button" onClick={() => setScopeAll(true)} className="inline-flex h-7 items-center rounded-full border border-line px-3 text-xs font-medium text-muted hover:bg-inset hover:text-ink">
+              <span className="inline-flex min-h-7 items-center rounded-sm border border-accent-border bg-accent-soft px-2 py-0.5 font-medium text-accent [overflow-wrap:anywhere]">Chỉ tài khoản: {selectedRow.label}</span>
+              <button type="button" onClick={() => setScopeAll(true)} className="inline-flex h-7 items-center rounded-md border border-line bg-paper px-2.5 text-xs font-medium text-ink hover:bg-inset">
                 Xem tất cả tài khoản ({allCount})
               </button>
             </>
           ) : (
-            <button type="button" onClick={() => setScopeAll(false)} className="inline-flex h-7 items-center rounded-full border border-line px-3 text-xs font-medium text-muted hover:bg-inset hover:text-ink [overflow-wrap:anywhere]">
+            <button type="button" onClick={() => setScopeAll(false)} className="inline-flex min-h-7 items-center rounded-md border border-line bg-paper px-2.5 text-xs font-medium text-ink hover:bg-inset [overflow-wrap:anywhere]">
               Chỉ tài khoản đang chọn: {selectedRow.label}
             </button>
           )}
@@ -421,28 +442,28 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                 onClick={() => pickTile(id)}
                 title={id === "all" ? "Hiện tất cả" : on ? "Bấm lần nữa để bỏ lọc" : "Chỉ hiện các tài khoản này"}
                 className={cn(
-                  "cursor-pointer rounded-lg border px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-inset/60",
-                  on ? "border-accent bg-accent-soft ring-1 ring-accent" : "border-line",
+                  "cursor-pointer rounded-xl border bg-paper px-3.5 py-3 text-left transition-colors hover:border-line-strong hover:bg-row-hover",
+                  on ? "border-accent bg-accent-soft shadow-[inset_0_-2px_0_var(--color-accent)] hover:bg-accent-soft" : "border-line",
                 )}
               >
-                <p className="text-xs text-muted">{label}</p>
-                <p className={cn("text-xl font-semibold tabular-nums", warn && n > 0 ? "text-danger" : "text-ink")}>{n}</p>
+                <p className={cn("text-xs font-medium", on ? "text-accent" : "text-muted")}>{label}</p>
+                <p className={cn("mt-0.5 text-[28px] font-semibold leading-8 tracking-tight tabular-nums", warn && n > 0 ? "text-danger" : "text-ink")}>{n}</p>
               </button>
             );
           })}
         </div>
       ) : null}
       {logProgress ? <p className="text-xs text-muted">{logProgress}</p> : null}
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
-      {!rows && !error ? <p className="py-4 text-center text-sm text-muted">Đang đọc số đã lưu…</p> : null}
+      {error ? <ErrorState message={error} /> : null}
+      {!rows && !error ? <TableSkeleton rows={8} cols={6} /> : null}
       {rows ? (
         <>
         {tile !== "all" ? (
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="inline-flex items-center rounded-full bg-accent-soft px-3 py-1 font-medium text-ink">
+            <span className="inline-flex h-7 items-center rounded-sm border border-accent-border bg-accent-soft px-2 font-medium text-accent">
               Đang lọc: {TILE_LABEL[tile]} ({shown.length})
             </span>
-            <button type="button" onClick={() => pickTile("all")} className="inline-flex h-7 items-center rounded-full border border-line px-3 text-xs font-medium text-muted hover:bg-inset hover:text-ink">
+            <button type="button" onClick={() => pickTile("all")} className="inline-flex h-7 items-center rounded-md border border-line bg-paper px-2.5 text-xs font-medium text-ink hover:bg-inset">
               Xem tất cả
             </button>
           </div>
@@ -456,15 +477,15 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                 {head("score", "Điểm tối ưu")}
                 {head("opt", "Tối ưu từ khoá gần nhất")}
                 {head("checked", "Kiểm tra lúc")}
-                <th className="sticky top-0 z-10 border-b border-line bg-inset px-2 py-2.5"><span className="sr-only">Kiểm tra lại</span></th>
+                <th className="sticky top-0 z-10 border-b border-line bg-row-hover px-2 py-2.5"><span className="sr-only">Kiểm tra lại</span></th>
               </tr>
             </thead>
             <tbody>
               {shown.map((r) => {
                 const checked = latest(r.runway.checked_at, r.score.checked_at);
                 return (
-                  <tr key={r.client_id} className="hover:bg-inset/50">
-                    <td className={nameTd}>
+                  <tr key={r.client_id}>
+                    <td className={cn(nameTd, riskBarClass(rowRisk(r)))}>
                       <button
                         type="button"
                         onClick={() => onOpenAccount(r.client_id)}
@@ -487,7 +508,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                         onClick={() => void recheckOne(r.client_id)}
                         title="Kiểm tra lại ngân sách và điểm tối ưu ngay (chỉ đọc Google Ads)"
                         aria-label={`Kiểm tra lại ${r.label}`}
-                        className="inline-flex size-8 items-center justify-center rounded-full border border-line text-muted hover:bg-inset hover:text-ink disabled:opacity-60"
+                        className="inline-flex size-8 items-center justify-center rounded-md border border-line bg-paper text-muted hover:border-line-strong hover:bg-inset hover:text-ink disabled:opacity-60"
                       >
                         <RefreshCw className={cn("size-3.5", rowState[r.client_id]?.busy && "animate-spin")} />
                       </button>
@@ -500,8 +521,11 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
               })}
               {!shown.length ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted">
-                    {tile !== "all" ? `Không có tài khoản nào: ${TILE_LABEL[tile]}.` : "Chưa có tài khoản."}
+                  <td colSpan={6}>
+                    <EmptyState
+                      title={tile !== "all" ? `Không có tài khoản nào: ${TILE_LABEL[tile]}.` : "Chưa có tài khoản."}
+                      action={tile !== "all" ? <button type="button" onClick={() => pickTile("all")} className="inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset">Xem tất cả</button> : undefined}
+                    />
                   </td>
                 </tr>
               ) : null}

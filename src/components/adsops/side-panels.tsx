@@ -117,7 +117,7 @@ function tone(status: string) {
 function StatusChip({ value, label }: { value: string; label?: string }) {
   if (!value) return null;
   return (
-    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", tone(value))}>
+    <span className={cn("inline-flex h-5 items-center rounded-sm px-1.5 text-xs font-medium", tone(value))}>
       {label || value}
     </span>
   );
@@ -128,7 +128,7 @@ function FileLink({ href, label }: { href?: string; label: string }) {
   return (
     <a
       href={href}
-      className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg"
+      className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg hover:bg-accent-hover"
     >
       <Download className="size-4" />
       {label}
@@ -294,7 +294,7 @@ export function ReportPanel({
                 type="button"
                 onClick={() => void refreshKpis()}
                 disabled={busy}
-                className="inline-flex h-11 items-center rounded-full bg-accent px-4 text-sm font-medium text-accent-fg disabled:opacity-60"
+                className="inline-flex h-9 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg hover:bg-accent-hover disabled:opacity-60"
               >
                 {busy ? "Đang kéo 5 KPI…" : "Kéo lại 5 KPI"}
               </button>
@@ -375,27 +375,28 @@ export function AlertsPanel({ data }: { data: AnyRec | null }) {
   return (
     <div className="flex flex-col gap-4">
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
-        <h2 className="font-display text-xl font-medium tracking-tight">Cảnh báo Guard</h2>
+        <h2 className="text-lg font-semibold tracking-tight">Cảnh báo Guard</h2>
         <p className="mt-1 text-sm text-muted">
           {txt(data.overall_label)}. Stale / conv = 0 / coverage — không gồm ngân sách 1 ngày.
         </p>
         {alerts.length === 0 ? (
-          <p className="mt-4 rounded-md bg-ok-bg px-4 py-3 text-sm text-ok">
+          <p className="mt-4 flex items-center gap-2 rounded-md border border-ok-border bg-ok-bg px-4 py-3 text-sm font-medium text-ok">
+            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-ok" />
             Không có phiếu Guard trên khách này.
           </p>
         ) : (
           <ul className="mt-4 space-y-3">
             {alerts.map((a, i) => (
-              <li key={txt(a.code) || i} className="rounded-md bg-danger-bg px-4 py-3">
-                <p className="font-medium">{txt(a.title)}</p>
-                <p className="mt-1 text-sm">{txt(a.message)}</p>
+              <li key={txt(a.code) || i} className="rounded-md border border-danger-border bg-paper px-4 py-3 shadow-[inset_3px_0_0_var(--color-danger)]">
+                <p className="flex items-center gap-2 font-semibold text-ink"><span aria-hidden className="size-1.5 shrink-0 rounded-full bg-danger" />{txt(a.title)}</p>
+                <p className="mt-1 text-sm text-muted">{txt(a.message)}</p>
               </li>
             ))}
           </ul>
         )}
       </section>
       <section className="rounded-xl bg-paper p-5 shadow-sheet">
-        <h3 className="font-display text-lg font-medium tracking-tight">Nhật ký xuất</h3>
+        <h3 className="text-base font-semibold tracking-tight">Nhật ký xuất</h3>
         <p className="mt-1 text-sm text-muted">Chỉ file của khách đang chọn. Chọn A không thấy số B.</p>
         <ul className="mt-3 divide-y divide-line text-sm">
           {journal.map((row, i) => (
@@ -756,10 +757,10 @@ export function FinalPanel({
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-sm">
           <StatusChip value={`Guard ${txt(tab0.guard || "")}`} />
-          <span className="rounded-full bg-inset px-2.5 py-0.5 text-xs">
+          <span className="inline-flex h-5 items-center rounded-sm bg-inset px-1.5 text-xs">
             Coverage ST {pct(Number(tab0.search_term_coverage || 0))}
           </span>
-          <span className="rounded-full bg-inset px-2.5 py-0.5 text-xs">{txt(tab0.source_flag)}</span>
+          <span className="inline-flex h-5 items-center rounded-sm bg-inset px-1.5 text-xs">{txt(tab0.source_flag)}</span>
         </div>
         {txt(tab0.hold_note) ? (
           <p className="mt-3 rounded-md bg-warn-bg px-4 py-3 text-sm text-warn">{txt(tab0.hold_note)}</p>
@@ -1262,8 +1263,8 @@ function SecretField({
 
 function Empty({ children }: { children: string }) {
   return (
-    <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
-      {children}
+    <section className="flex flex-col items-center gap-1 rounded-xl bg-paper px-5 py-10 text-center shadow-sheet">
+      <p className="text-sm font-semibold text-ink">{children}</p>
     </section>
   );
 }

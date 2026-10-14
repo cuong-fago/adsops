@@ -11,16 +11,17 @@ import { money, num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
 import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/adsops/account-activity";
+import { Badge, EmptyState, ErrorState, MiniBar, TableSkeleton, riskBarClass, type Tone } from "@/components/adsops/ui";
 
 
-const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
+const th = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
 const td = "border-b border-line/60 px-3 py-2.5 align-top";
 /** Numeric columns: tighter padding so the table fits. */
-const tdNum = "border-b border-line/60 px-2 py-2 align-top whitespace-nowrap text-right tabular-nums";
-const thNum = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-inset px-2 py-2.5 text-right text-[13px] font-medium text-muted";
+const tdNum = "border-b border-line/60 px-3 py-2.5 align-top whitespace-nowrap text-right tabular-nums";
+const thNum = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-right text-xs font-medium text-muted";
 /** Account column: wraps (long tokens too), stays visible while scrolling right. */
-const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-inset px-3 py-2.5 text-left text-[13px] font-medium text-muted";
-const nameTd = "sticky left-0 z-[5] min-w-[220px] max-w-[320px] border-b border-r border-line/60 px-3 py-2 align-top";
+const nameTh = "sticky left-0 top-0 z-30 min-w-[220px] max-w-[320px] border-b border-r border-line bg-row-hover px-3 py-2.5 text-left text-xs font-medium text-muted";
+const nameTd = "sticky left-0 z-[5] min-w-[220px] max-w-[320px] border-b border-r border-line/60 bg-paper px-3 py-2.5 align-top";
 const nameText = "line-clamp-3 font-medium text-ink [overflow-wrap:anywhere]";
 
 type SortKey = "runway" | "account" | "remaining" | "avg";
@@ -41,35 +42,31 @@ function dateVi(local: string | null): string {
 }
 
 function StatusCell({ r }: { r: RunwayRow }) {
-  const pill = (cls: string, text: string, title?: string) => (
-    <span title={title} className={cn("inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", cls)}>
-      {text}
-    </span>
-  );
+  const pill = (tone: Tone, text: string, title?: string) => <Badge tone={tone} title={title}>{text}</Badge>;
   const main = (() => {
     switch (r.status) {
       case "red":
-        return pill("bg-danger-bg font-semibold text-danger", "Còn dưới 3 ngày");
+        return pill("danger", "Còn dưới 3 ngày");
       case "amber":
-        return pill("bg-warn-bg text-warn", "Còn 3–7 ngày");
+        return pill("warn", "Còn 3–7 ngày");
       case "ok":
-        return pill("bg-ok-bg text-ok", "Đủ chạy");
+        return pill("ok", "Đủ chạy");
       case "infinite":
-        return pill("bg-inset text-muted", "Không giới hạn");
+        return pill("neutral", "Không giới hạn");
       case "no_spend":
-        return pill("bg-inset text-muted", "Không tiêu");
+        return pill("neutral", "Không tiêu");
       case "no_budget":
-        return pill("bg-inset text-subtle", "Google không cung cấp số dư");
+        return pill("neutral", "Google không cung cấp số dư");
       case "error":
-        return pill("bg-danger-bg text-danger", "Lỗi kiểm tra", r.error_vi || "");
+        return pill("danger", "Lỗi kiểm tra", r.error_vi || "");
       default:
-        return pill("bg-inset text-subtle", "Chưa kiểm tra");
+        return pill("neutral", "Chưa kiểm tra");
     }
   })();
   return (
     <div className="flex flex-col items-start gap-1">
       {main}
-      {r.expiring && r.budget_end ? pill("bg-danger-bg text-danger", `Ngân sách hết hạn ${dateVi(r.budget_end)}`) : null}
+      {r.expiring && r.budget_end ? pill("danger", `Ngân sách hết hạn ${dateVi(r.budget_end)}`) : null}
       {r.status === "error" && r.error_vi ? <span className="max-w-[16rem] truncate text-xs text-danger" title={r.error_vi}>{r.error_vi}</span> : null}
     </div>
   );
@@ -252,7 +249,7 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
   const cur = (r: RunwayRow, v: number | null) => (v == null ? "—" : money(v, r.currency || "VND"));
 
   return (
-    <section id={BUDGET_CARD_ID} className="mb-4 flex scroll-mt-24 flex-col gap-3 rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5">
+    <section id={BUDGET_CARD_ID} className="mb-4 flex scroll-mt-24 flex-col gap-4 rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold tracking-tight">Ngân sách còn lại</h2>
@@ -274,7 +271,7 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
               type="button"
               disabled={busy || !act.shown?.length}
               onClick={() => void checkAll()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-medium text-accent-fg shadow-sm hover:opacity-95 disabled:opacity-60"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-accent px-3.5 text-sm font-medium text-accent-fg hover:bg-accent-hover disabled:opacity-60"
             >
               <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Kiểm tra tất cả tài khoản{act.shown ? ` (${act.shown.length})` : ""}
             </button>
@@ -282,8 +279,8 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
         </div>
       </div>
       {progress ? <p className="text-sm text-muted">{progress}</p> : null}
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
-      {!rows && !error ? <p className="py-4 text-center text-sm text-muted">Đang đọc kết quả đã lưu…</p> : null}
+      {error ? <ErrorState message={error} /> : null}
+      {!rows && !error ? <TableSkeleton rows={6} cols={6} /> : null}
       {rows ? (
         <div className="relative max-h-[60vh] overflow-auto rounded-lg border border-line">
           <table className="min-w-full border-separate border-spacing-0 text-sm">
@@ -303,8 +300,8 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
             </thead>
             <tbody>
               {shown.map((r) => (
-                <tr key={r.client_id} className={cn(r.status === "red" && "bg-danger-bg/40")}>
-                  <td className={cn(nameTd, r.status === "red" ? "bg-[color-mix(in_srgb,var(--color-danger-bg)_40%,var(--color-paper))]" : "bg-paper")}>
+                <tr key={r.client_id}>
+                  <td className={cn(nameTd, riskBarClass(r.status === "red" || r.expiring ? "red" : r.status === "amber" ? "amber" : null))}>
                     <span className={nameText} title={[r.label, r.customer_id_dashed].filter(Boolean).join(" · ")}>{r.label}</span>
                     <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{r.customer_id_dashed}</span>
                     <InactiveBadge activity={act.map?.[r.client_id]} />
@@ -321,6 +318,7 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
                   </td>
                   <td className={cn(tdNum, "font-semibold", r.status === "red" && "text-danger", r.status === "amber" && "text-warn")}>
                     {r.runway_days != null ? num(r.runway_days, 1) : r.status === "infinite" ? "Không giới hạn" : r.status === "no_spend" ? "không tiêu" : "—"}
+                    {r.runway_days != null ? <MiniBar className="ml-auto w-16" value={r.runway_days / 14} tone={r.status === "red" ? "danger" : r.status === "amber" ? "warn" : "ok"} /> : null}
                   </td>
                   <td className={cn(td, "whitespace-nowrap text-muted")}>{r.budget_end ? dateVi(r.budget_end) : r.kind === "account_budget" ? "Không hết hạn" : "—"}</td>
                   <td className={td}><StatusCell r={r} /></td>
@@ -329,8 +327,8 @@ export function BudgetRunwayCard({ canCheck }: { canCheck: boolean }) {
               ))}
               {!shown.length ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-6 text-center text-sm text-muted">
-                    {onlyRed ? "Không có tài khoản nào dưới 3 ngày (trong các tài khoản đã kiểm tra)." : "Chưa có tài khoản."}
+                  <td colSpan={10}>
+                    <EmptyState title={onlyRed ? "Không có tài khoản nào dưới 3 ngày" : "Chưa có tài khoản."} description={onlyRed ? "Trong các tài khoản đã kiểm tra." : undefined} />
                   </td>
                 </tr>
               ) : null}
