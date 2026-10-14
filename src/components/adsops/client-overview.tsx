@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { chartColors, chartTheme } from "@/components/adsops/chart-theme";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import { metricText, statusText, t, type Lang, type MetricId } from "@/lib/adsops/client-i18n";
 import {
@@ -39,11 +40,11 @@ const PRESETS: { id: PresetId; key: Parameters<typeof t>[1] }[] = [
 ];
 
 const CONV_COLORS: Record<string, string> = {
-  conv_call: "#0f766e",
-  conv_zalo: "#0284c7",
-  conv_form: "#d97706",
-  conv_facebook_chat: "#7c3aed",
-  conv_other: "#94a3b8",
+  conv_call: chartColors.series[0],
+  conv_zalo: chartColors.series[1],
+  conv_form: chartColors.series[2],
+  conv_facebook_chat: chartColors.series[3],
+  conv_other: chartColors.series[4],
 };
 
 type TrendMetric = "cost" | "clicks" | "impressions" | "conversions" | "ctr" | "cpc" | "cost_per_conversion";
@@ -360,11 +361,11 @@ export function ClientOverview({
             <div className="h-56 md:h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={false} minTickGap={18} />
+                  <CartesianGrid {...chartTheme.grid} />
+                  <XAxis dataKey="label" tick={chartTheme.axisTick} {...chartTheme.axis} minTickGap={18} />
                   <YAxis
                     width={56}
-                    tick={{ fontSize: 11, fill: "#64748b" }}
+                    tick={chartTheme.axisTick}
                     tickLine={false}
                     axisLine={false}
                     tickFormatter={(v: number) =>
@@ -381,15 +382,17 @@ export function ClientOverview({
                       const d = p?.[0]?.payload as DayPoint | undefined;
                       return d ? fmtDay(d.date) : "";
                     }}
-                    contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", background: "#ffffff", fontSize: 12 }}
+                    contentStyle={chartTheme.tooltip.contentStyle} labelStyle={chartTheme.tooltip.labelStyle}
                   />
                   {metric === "cost" || metric === "clicks" || metric === "impressions" || metric === "conversions" ? (
-                    <Bar dataKey={metric} fill="#0f766e" radius={[3, 3, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+                    <Bar dataKey={metric} fill={chartColors.primary} radius={chartTheme.bar.radius} maxBarSize={chartTheme.bar.maxBarSize} isAnimationActive={false} />
                   ) : (
                     <Line
                       dataKey={metric}
-                      stroke="#0f766e"
-                      strokeWidth={2}
+                      type={chartTheme.line.type}
+                      stroke={chartColors.primary}
+                      strokeWidth={chartTheme.line.strokeWidth}
+                      activeDot={chartTheme.line.activeDot}
                       dot={false}
                       connectNulls={false}
                       isAnimationActive={false}
@@ -404,16 +407,16 @@ export function ClientOverview({
                 <div className="h-44 md:h-56">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={false} minTickGap={18} />
-                      <YAxis width={56} allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={false} />
+                      <CartesianGrid {...chartTheme.grid} />
+                      <XAxis dataKey="label" tick={chartTheme.axisTick} {...chartTheme.axis} minTickGap={18} />
+                      <YAxis width={56} allowDecimals={false} tick={chartTheme.axisTick} {...chartTheme.axis} />
                       <Tooltip
                         formatter={(v, name) => [fmtNum(lang, v == null ? null : Number(v)), metricText(lang, name as MetricId).label]}
                         labelFormatter={(_, p) => {
                           const d = p?.[0]?.payload as DayPoint | undefined;
                           return d ? fmtDay(d.date) : "";
                         }}
-                        contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", background: "#ffffff", fontSize: 12 }}
+                        contentStyle={chartTheme.tooltip.contentStyle} labelStyle={chartTheme.tooltip.labelStyle}
                       />
                       {convTypes.map((k) => (
                         <Bar key={k} dataKey={k} stackId="c" fill={CONV_COLORS[k]} maxBarSize={28} isAnimationActive={false} />

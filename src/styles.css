@@ -7,35 +7,62 @@
   --font-display: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Cool neutral palette (slate) with one brand accent (Fago teal). */
-  --color-bg: #f8fafc;
+  /* Neutral palette (gray) with one brand accent (blue #1D4ED8). Linear / Vercel-style: flat cards, hairline borders. */
+  --color-bg: #f8f9fb;
   --color-paper: #ffffff;
-  --color-inset: #f1f5f9;
-  --color-ink: #0f172a;
-  --color-muted: #475569;
-  --color-subtle: #64748b;
-  --color-line: #e2e8f0;
-  --color-line-strong: #cbd5e1;
-  --color-accent: #0f766e;
-  --color-accent-2: #0891b2;
-  --color-accent-soft: #e6f6f4;
+  --color-inset: #f3f4f6;
+  --color-ink: #111827;
+  --color-muted: #6b7280;
+  --color-subtle: #9ca3af;
+  --color-line: #e5e7eb;
+  --color-line-strong: #d1d5db;
+  --color-row-hover: #f9fafb;
+
+  --color-accent: #1d4ed8;
+  --color-accent-hover: #1e40af;
+  --color-accent-2: #2563eb;
+  --color-accent-soft: #eff6ff;
+  --color-accent-border: #bfdbfe;
   --color-accent-fg: #ffffff;
-  --color-danger: #b91c1c;
-  --color-danger-bg: #fef2f2;
-  --color-warn: #b45309;
-  --color-warn-bg: #fffbeb;
-  --color-ok: #047857;
+
+  /* Semantic: text / tinted bg / border. */
+  --color-ok: #059669;
   --color-ok-bg: #ecfdf5;
-  --color-row-hover: #f6f9fb;
+  --color-ok-border: #a7f3d0;
+  --color-warn: #d97706;
+  --color-warn-bg: #fffbeb;
+  --color-warn-border: #fde68a;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
 
+  /* Radius: badge 4 · button/input 6 · card 8 (rounded-xl = card). */
   --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
 
-  /* Cards: hairline ring + soft lift. */
-  --shadow-sheet: 0 0 0 1px rgb(15 23 42 / 0.07), 0 1px 2px rgb(15 23 42 / 0.04), 0 6px 16px -6px rgb(15 23 42 / 0.08);
+  /* Type scale (size / line-height). */
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-base: 15px;
+  --text-base--line-height: 22px;
+  --text-lg: 17px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 32px;
+  --text-3xl: 28px;
+  --text-3xl--line-height: 32px;
+
+  /* Cards: 1px border + barely-there lift. Popovers get a real shadow. */
+  --shadow-sheet: 0 0 0 1px #e5e7eb, 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-pop: 0 0 0 1px #e5e7eb, 0 4px 12px rgb(0 0 0 / 0.08);
 }
 
 @layer base {
@@ -60,7 +87,10 @@
     cursor: pointer;
   }
 
-  table {
+  table,
+  .tabular-nums,
+  time,
+  data {
     font-variant-numeric: tabular-nums;
   }
 
@@ -81,12 +111,12 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgb(29 78 216 / 0.4);
   }
 
   ::selection {
-    background: rgb(15 118 110 / 0.18);
+    background: rgb(29 78 216 / 0.16);
   }
 }
 
