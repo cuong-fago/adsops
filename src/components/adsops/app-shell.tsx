@@ -35,6 +35,15 @@ import { pullAnalyticsWarehouseFn, pullDeepChunkFn } from "@/lib/adsops/connect.
 import { MODULE_CAPABILITY, ROLE_LABEL_VI, formatSaigon } from "@/lib/adsops/permissions.types";
 import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/cn";
+import {
+  BarChart3, Bell, BookOpen, CheckCircle2, Database, FileText, History, LayoutGrid, Lightbulb, ShieldCheck, Tags, Users,
+  type LucideIcon,
+} from "lucide-react";
+
+const TAB_ICON: Partial<Record<string, LucideIcon>> = {
+  overview: LayoutGrid, final: CheckCircle2, proposals: Lightbulb, classify: Tags, guard: ShieldCheck, alerts: Bell,
+  report: FileText, hub: Database, sop: BookOpen, members: Users, analytics: BarChart3, changelog: History,
+};
 
 type ClientRow = {
   client_id: string;
@@ -667,6 +676,10 @@ export function AdsOpsApp() {
   const shownKey = TAB_DATA_KEY[shownTab];
   const shownKnown = Boolean(shownKey && shownKey in packRec);
   const shownPresent = tabHasData(shownTab);
+  // Cảnh báo badge: alerts already in the loaded pack (no extra query); every listed alert is a red one.
+  const alertCount = Array.isArray((pack?.alerts as { alerts?: unknown[] } | null | undefined)?.alerts)
+    ? ((pack?.alerts as { alerts: unknown[] }).alerts.length)
+    : 0;
   const opsTabs = OPS_TABS.filter((t) => tabAllowed(access, t.id) && tabHasData(t.id));
   const opsTabIds = opsTabs.map((t) => t.id).join(",");
   const roleVi = access ? ROLE_LABEL_VI[access.role] || "" : "";
@@ -1004,45 +1017,47 @@ export function AdsOpsApp() {
           </div>
         </div>
         {access && access.role !== "pending" ? (
-          <nav aria-label="Điều hướng" className="mx-auto flex max-w-[1800px] items-end gap-1 overflow-x-auto px-4 md:px-6 lg:px-8 [scrollbar-width:none]">
+          <div className="border-t border-line bg-slate-100/90">
+          <nav aria-label="Điều hướng" className="mx-auto flex max-w-[1800px] items-center gap-1.5 overflow-x-auto px-4 py-2 md:px-6 lg:px-8 [scrollbar-width:none]">
             {access.kind === "staff" ? (
               <>
-                <NavTab active={shownTab === "overview"} onClick={() => goTab("overview")}>
+                <NavTab icon={TAB_ICON.overview} active={shownTab === "overview"} onClick={() => goTab("overview")}>
                   Tổng quan tài khoản
                 </NavTab>
-                {opsTabs.length || caps?.analytics || caps?.changeLog ? <span aria-hidden className="mx-2 h-5 w-px shrink-0 self-center bg-line" /> : null}
+                {opsTabs.length || caps?.analytics || caps?.changeLog ? <span aria-hidden className="mx-1.5 h-6 w-px shrink-0 self-center bg-slate-300" /> : null}
               </>
             ) : null}
             {opsTabs.length ? (
-              <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
+              <span className="hidden shrink-0 self-center pl-1 pr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 sm:inline">
                 {viewer ? "Báo cáo" : "Vận hành"}
               </span>
             ) : null}
             {opsTabs.map((item) => (
-              <NavTab key={item.id} active={shownTab === item.id} onClick={() => goTab(item.id)}>
+              <NavTab key={item.id} icon={TAB_ICON[item.id]} badge={item.id === "alerts" ? alertCount : undefined} active={shownTab === item.id} onClick={() => goTab(item.id)}>
                 {item.label}
               </NavTab>
             ))}
             {caps?.analytics || caps?.changeLog ? (
               <>
-                {opsTabs.length ? <span aria-hidden className="mx-2 h-5 w-px shrink-0 self-center bg-line" /> : null}
-                <span className="hidden shrink-0 self-center pr-2 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
+                {opsTabs.length ? <span aria-hidden className="mx-1.5 h-6 w-px shrink-0 self-center bg-slate-300" /> : null}
+                <span className="hidden shrink-0 self-center pl-1 pr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 sm:inline">
                   Phân tích
                 </span>
                 {caps?.analytics ? (
-                  <NavTab active={shownTab === "analytics"} onClick={() => goTab("analytics")}>
+                  <NavTab icon={TAB_ICON.analytics} active={shownTab === "analytics"} onClick={() => goTab("analytics")}>
                     Phân tích
                     {firing ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger" /> : null}
                   </NavTab>
                 ) : null}
                 {caps?.changeLog ? (
-                  <NavTab active={shownTab === "changelog"} onClick={() => goTab("changelog")}>
+                  <NavTab icon={TAB_ICON.changelog} active={shownTab === "changelog"} onClick={() => goTab("changelog")}>
                     Nhật ký tối ưu
                   </NavTab>
                 ) : null}
               </>
             ) : null}
           </nav>
+          </div>
         ) : null}
       </header>
 
