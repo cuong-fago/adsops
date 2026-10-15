@@ -151,5 +151,29 @@ export async function withPulledMccClients(
     by.set(r.id, row);
     clients.push(row);
   }
+  // Facebook (Meta) ad accounts synced by meta-ads.server.ts (platform 'facebook', id fb_<id>).
+  try {
+    const fb = await sql<{ id: string; display_name: string; external_id: string | null; status: string | null; alias: string | null }>`
+      select id, display_name, external_id, status, alias from ad_accounts where platform = 'facebook'
+    `;
+    for (const r of fb) {
+      if (!/^fb_\d+$/.test(r.id)) continue;
+      if (allowed !== "all" && !allowed.has(r.id)) continue;
+      const prev = by.get(r.id);
+      const row = {
+        ...(prev || {}),
+        client_id: r.id,
+        display_name: r.display_name || prev?.display_name || r.id,
+        customer_id_dashed: `act_${r.external_id || r.id.slice(3)} · Facebook`,
+        status: r.status || undefined,
+        adapter: "live",
+        alias: (r.alias || "").trim() || prev?.alias || undefined,
+        platform: "facebook" as const,
+      };
+      by.set(r.id, row);
+    }
+  } catch {
+    /* alias column / table missing: skip Facebook */
+  }
   return { ...dir, clients: [...by.values()] };
 }

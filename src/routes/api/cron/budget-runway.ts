@@ -38,9 +38,14 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const { checkBudgetRunway, runwayCronQueue } = await import("@/lib/adsops/budget-runway.server");
   const { checkOptimizationScore, scoreCronQueue } = await import("@/lib/adsops/optimization-score.server");
   const { checkSharedSetCounts } = await import("@/lib/adsops/change-log.server");
+  // Facebook (Meta) runs alongside the Google phases: account sync + 35-day insights + runway/10-day spend.
+  const { refreshAllMeta, metaConfigured } = await import("@/lib/adsops/meta-ads.server");
+  const metaRun = metaConfigured()
+    ? refreshAllMeta(started + SPEND_MS).catch((e: unknown) => ({ ok: false, accounts: 0, done: 0, inserted: 0, errors: [e instanceof Error ? e.message : String(e)] }))
+    : Promise.resolve(null);
   const { resolveAdsConfig } = await import("@/lib/adsops/google-ads.server");
   const cfg = await resolveAdsConfig();
-  if (!cfg.ready) return Response.json({ ok: false, error: "google ads not configured" }, { status: 503, headers });
+  if (!cfg.ready) return Response.json({ ok: false, error: "google ads not configured", meta: await metaRun }, { status: 503, headers });
 
   // Once a day: customer_client.status for every MCC (read-only, one query per MCC).
   const { refreshMccStatusIfStale } = await import("@/lib/adsops/account-activity.server");
@@ -84,9 +89,11 @@ async function handle({ request }: { request: Request }): Promise<Response> {
     }
   };
   await Promise.all([runwayLoop, scoreWorker(), scoreWorker(), scoreWorker(), scoreWorker()]);
+  const meta = await metaRun;
   return Response.json(
     {
       ok: true,
+      meta,
       total: queue.length,
       active: runwayQueue.length,
       spend10_checked: spend10.length,

@@ -5,6 +5,7 @@ import { ClientOverview } from "@/components/adsops/client-overview";
 import { getWorkspacePack, setMyLanguage, type AccessSnap } from "@/lib/adsops/access.functions";
 import type { AnalyticsSnap } from "@/lib/adsops/analytics";
 import { isLang, t, type Lang } from "@/lib/adsops/client-i18n";
+import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
 import { AccountPicker } from "@/components/adsops/account-picker";
 import { fmtDay } from "@/lib/adsops/client-overview";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
@@ -208,7 +209,9 @@ export function ClientPortal({
       </header>
 
       <main className="mx-auto max-w-[1800px] px-4 py-4 md:px-6 lg:px-8 md:py-6">
-        {!clients.length ? (
+        {clients.length && clientId.startsWith("fb_") ? (
+          <MetaAnalyticsView key={clientId} clientId={clientId} allowCompare={false} lang={lang} />
+        ) : !clients.length ? (
           <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
             {t(lang, "no_accounts")}
           </section>

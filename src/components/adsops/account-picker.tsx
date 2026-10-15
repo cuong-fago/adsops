@@ -10,7 +10,22 @@ type PickerClient = {
   customer_id_dashed?: string | null;
   alias?: string | null;
   mcc_id_dashed?: string | null;
+  platform?: "google" | "facebook";
 };
+
+function PlatformBadge({ id, platform }: { id: string; platform?: string }) {
+  const fb = platform === "facebook" || id.startsWith("fb_");
+  return (
+    <span
+      className={cn(
+        "mr-2 inline-flex h-5 items-center rounded px-1.5 align-middle text-[11px] font-semibold",
+        fb ? "bg-[#e7f0fd] text-[#1d4ed8]" : "bg-inset text-muted",
+      )}
+    >
+      {fb ? "Facebook" : "Google"}
+    </span>
+  );
+}
 
 /** Type-to-filter account picker. A native select cannot filter while open. */
 export function AccountPicker({
@@ -96,7 +111,7 @@ export function AccountPicker({
       />
       {compact ? null : (
         <p className="truncate text-xs font-normal text-ink">
-          {selected ? accountOptionLabel(selected) : "Chưa chọn tài khoản"}
+          {selected ? <><PlatformBadge id={selected.client_id} platform={selected.platform} />{accountOptionLabel(selected)}</> : "Chưa chọn tài khoản"}
         </p>
       )}
       {open ? (
@@ -121,6 +136,7 @@ export function AccountPicker({
                   )}
                   onClick={() => choose(c.client_id)}
                 >
+                  <PlatformBadge id={c.client_id} platform={c.platform} />
                   {accountOptionLabel(c)}
                   {isInactive(activity, c.client_id) ? <span className="ml-2"><InactiveBadge activity={activity?.[c.client_id]} /></span> : null}
                 </button>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
+import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
 import { ClassifyView } from "@/components/adsops/classify-view";
 import { ClientPortal } from "@/components/adsops/client-portal";
 import type { PacePreview } from "@/components/adsops/budget-banner";
@@ -782,6 +783,9 @@ export function AdsOpsApp() {
           {warehouseMsg ? <span className="text-sm text-muted">{warehouseMsg}</span> : null}
         </div>
       ) : null;
+      if (clientId.startsWith("fb_")) {
+        return <MetaAnalyticsView key={clientId} clientId={clientId} allowCompare={Boolean(access.caps.compare && access.kind === "staff")} />;
+      }
       if (analyticsLoading && analytics === undefined) {
         return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở Phân tích…</p>;
       }
