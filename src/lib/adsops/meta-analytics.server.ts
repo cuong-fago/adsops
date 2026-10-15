@@ -3,7 +3,7 @@ import { getSql } from "@/lib/db";
 import { addDaysYmd } from "./warehouse.server.ts";
 import type { Json, MetaAnalytics, MetaMetrics, MetaRow } from "./meta-ads.types.ts";
 
-type Raw = { spend: unknown; impressions: unknown; clicks: unknown; leads: unknown; messages: unknown; lead_rows: unknown; msg_rows: unknown };
+type Raw = { spend: unknown; impressions: unknown; clicks: unknown; leads: unknown; messages: unknown; lead_rows: unknown; msg_rows: unknown; follows: unknown; follow_rows: unknown; page_eng: unknown; page_eng_rows: unknown };
 const n = (v: unknown) => { const x = Number(v ?? 0); return Number.isFinite(x) ? x : 0; };
 const iso = (v: unknown) => (v == null ? null : (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10));
 
@@ -13,15 +13,30 @@ function metrics(r: Raw | undefined): MetaMetrics {
   const clicks = n(r?.clicks);
   const leads = n(r?.lead_rows) > 0 ? n(r?.leads) : null;
   const messages = n(r?.msg_rows) > 0 ? n(r?.messages) : null;
+  const follows = n(r?.follow_rows) > 0 ? n(r?.follows) : null;
   return {
     spend, impressions, clicks, leads, messages,
     ctr: impressions > 0 ? clicks / impressions : null,
     cpc: clicks > 0 ? spend / clicks : null,
     cpl: leads && leads > 0 ? spend / leads : null,
+    follows,
+    cost_per_follow: follows && follows > 0 ? spend / follows : null,
+    page_engagement: n(r?.page_eng_rows) > 0 ? n(r?.page_eng) : null,
   };
 }
+/** Sum of one action_type (or the first present of several) from the stored actions jsonb; NULL when absent. */
+const act = (types: string[]) => {
+  const list = types.map((x) => `'${x}'`).join(",");
+  return `(select sum((a->>'value')::numeric) from jsonb_array_elements(case when jsonb_typeof(actions) = 'array' then actions else '[]'::jsonb end) a where a->>'action_type' in (${list}))`;
+};
+// Page likes = follows in the new Pages experience. "like" is what Meta returns (verified on Topwin);
+// follow types only if "like" is absent, so they are never double counted.
+const FOLLOW_EXPR = `coalesce(${act(["like"])}, ${act(["onsite_conversion.page_like", "follow", "onsite_conversion.follow"])})`;
+const PAGE_ENG_EXPR = act(["page_engagement"]);
 const AGG = `sum(spend) as spend, sum(impressions) as impressions, sum(clicks) as clicks,
-  sum(leads) as leads, count(leads) as lead_rows, sum(messages) as messages, count(messages) as msg_rows`;
+  sum(leads) as leads, count(leads) as lead_rows, sum(messages) as messages, count(messages) as msg_rows,
+  sum(${FOLLOW_EXPR}) as follows, count(${FOLLOW_EXPR}) as follow_rows,
+  sum(${PAGE_ENG_EXPR}) as page_eng, count(${PAGE_ENG_EXPR}) as page_eng_rows`;
 
 export async function readMetaAnalytics(clientId: string, start: string, end: string, withPrev: boolean): Promise<MetaAnalytics> {
   const sql = await getSql();
