@@ -152,6 +152,11 @@ export async function withPulledMccClients(
     clients.push(row);
   }
   // Facebook (Meta) ad accounts synced by meta-ads.server.ts (platform 'facebook', id fb_<id>).
+  // No Facebook account stored yet (before the first cron): pull the list once, now.
+  if (allowed === "all") {
+    const { ensureMetaAccounts } = await import("./meta-ads.server.ts");
+    await ensureMetaAccounts().catch(() => null);
+  }
   try {
     const fb = await sql<{ id: string; display_name: string; external_id: string | null; status: string | null; alias: string | null }>`
       select id, display_name, external_id, status, alias from ad_accounts where platform = 'facebook'

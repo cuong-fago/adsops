@@ -32,6 +32,7 @@ import {
 } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
 import { GoogleAdsAdminCard } from "./google-ads-admin-card";
+import { MetaAdminCard } from "./meta-admin-card";
 
 type Caps = { grant?: boolean; requestGrant?: boolean };
 
@@ -55,6 +56,7 @@ export function PermissionsPanel({ caps, readOnly }: { caps: Caps; readOnly?: bo
     return (
       <div className="flex flex-col gap-4">
         <GoogleAdsAdminCard readOnly={false} />
+        <MetaAdminCard />
         <AdminPermissions />
       </div>
     );
