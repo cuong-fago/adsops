@@ -129,10 +129,11 @@ export async function syncMetaInsights(clientId: string, tz = "Asia/Ho_Chi_Minh"
   const until = ymdInTz(tz);
   const since = addDaysYmd(until, -(INSIGHT_DAYS - 1));
   const range = JSON.stringify({ since, until });
-  const levels: Array<{ level: "account" | "campaign" | "adset"; fields: string }> = [
+  const levels: Array<{ level: "account" | "campaign" | "adset" | "ad"; fields: string }> = [
     { level: "account", fields: INSIGHT_FIELDS },
     { level: "campaign", fields: `campaign_id,campaign_name,${INSIGHT_FIELDS}` },
     { level: "adset", fields: `campaign_id,campaign_name,adset_id,adset_name,${INSIGHT_FIELDS}` },
+    { level: "ad", fields: `campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,${INSIGHT_FIELDS}` },
   ];
   const sql = await getSql();
   let total = 0;
@@ -141,17 +142,17 @@ export async function syncMetaInsights(clientId: string, tz = "Asia/Ho_Chi_Minh"
     await sql.query(`delete from meta_insights_daily where client_id = $1 and level = $2 and date between $3 and $4`, [clientId, level, since, until]);
     for (const r of data) {
       const actions = (Array.isArray(r.actions) ? r.actions : []) as Action[];
-      const objectId = level === "account" ? acc : level === "campaign" ? String(r.campaign_id || "") : String(r.adset_id || "");
+      const objectId = level === "account" ? acc : level === "campaign" ? String(r.campaign_id || "") : level === "adset" ? String(r.adset_id || "") : String(r.ad_id || "");
       if (!objectId) continue;
       await sql.query(
-        `insert into meta_insights_daily (client_id, level, object_id, date, campaign_id, campaign_name, adset_id, adset_name, spend, impressions, clicks, leads, messages, actions)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        `insert into meta_insights_daily (client_id, level, object_id, date, campaign_id, campaign_name, adset_id, adset_name, spend, impressions, clicks, leads, messages, actions, ad_id, ad_name)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          on conflict (client_id, level, object_id, date) do update set spend = excluded.spend, impressions = excluded.impressions,
            clicks = excluded.clicks, leads = excluded.leads, messages = excluded.messages, actions = excluded.actions,
-           campaign_name = excluded.campaign_name, adset_name = excluded.adset_name, pulled_at = now()`,
+           campaign_name = excluded.campaign_name, adset_name = excluded.adset_name, ad_name = excluded.ad_name, pulled_at = now()`,
         [clientId, level, objectId, String(r.date_start || ""), r.campaign_id ? String(r.campaign_id) : null, r.campaign_name ? String(r.campaign_name) : null,
           r.adset_id ? String(r.adset_id) : null, r.adset_name ? String(r.adset_name) : null, num(r.spend), num(r.impressions), num(r.clicks),
-          leadsOf(actions), messagesOf(actions), JSON.stringify(actions)],
+          leadsOf(actions), messagesOf(actions), JSON.stringify(actions), r.ad_id ? String(r.ad_id) : null, r.ad_name ? String(r.ad_name) : null],
       );
       total += 1;
     }
@@ -238,7 +239,8 @@ export async function refreshMetaAccount(clientId: string): Promise<{ ok: boolea
     await syncMetaAccounts([a]);
     await syncMetaInsights(clientId, a.timezone_name);
     await deriveMetaChecks(clientId, a.timezone_name);
-    return { ok: true, error_vi: null };
+    const st = await syncMetaStructure(clientId).catch((e: unknown) => (e instanceof Error ? e.message : String(e)));
+    return { ok: true, error_vi: typeof st === "string" ? `Cấu trúc: ${st}` : null };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await recordError(clientId, msg);
@@ -266,6 +268,7 @@ export async function refreshAllMeta(deadline: number): Promise<{ ok: boolean; a
       try {
         await syncMetaInsights(id, a.timezone_name);
         await deriveMetaChecks(id, a.timezone_name);
+        await syncMetaStructure(id).catch((e: unknown) => errors.push(`${a.account_id} cấu trúc: ${e instanceof Error ? e.message : String(e)}`));
         done += 1;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -333,4 +336,44 @@ export async function ensureMetaAccounts(timeoutMs = 8000): Promise<void> {
     listMetaAccounts().then((a) => syncMetaAccounts(a)),
     new Promise((r) => setTimeout(r, timeoutMs)),
   ]).catch(() => null);
+}
+
+const CAMPAIGN_FIELDS = "id,name,objective,status,effective_status,buying_type,daily_budget,lifetime_budget,bid_strategy,start_time,stop_time";
+const ADSET_FIELDS =
+  "id,name,campaign_id,status,effective_status,optimization_goal,billing_event,bid_strategy,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,promoted_object,destination_type";
+const AD_FIELDS =
+  "id,name,campaign_id,adset_id,status,effective_status,preview_shareable_link,creative{id,title,body,thumbnail_url,image_url,call_to_action_type,effective_object_story_id,object_story_spec,asset_feed_spec{titles,bodies,call_to_action_types}}";
+
+/**
+ * Campaign / adset / ad config (GET only). Each level replaces the stored rows, so expired
+ * thumbnail URLs are overwritten on every sync and removed objects drop out.
+ */
+export async function syncMetaStructure(clientId: string): Promise<{ campaigns: number; adsets: number; ads: number }> {
+  const acc = fbAccountId(clientId);
+  const sql = await getSql();
+  const levels = [
+    { level: "campaign", edge: "campaigns", fields: CAMPAIGN_FIELDS },
+    { level: "adset", edge: "adsets", fields: ADSET_FIELDS },
+    { level: "ad", edge: "ads", fields: AD_FIELDS },
+  ] as const;
+  const counts: Record<string, number> = {};
+  for (const { level, edge, fields } of levels) {
+    const rows = await graphGet(`act_${acc}/${edge}`, { fields, limit: level === "ad" ? "100" : "200" }, 30);
+    await sql.query(`delete from meta_objects where client_id = $1 and level = $2`, [clientId, level]);
+    for (const r of rows) {
+      const id = String(r.id || "");
+      if (!id) continue;
+      const { id: _i, name, status, effective_status, campaign_id, adset_id, ...config } = r;
+      await sql.query(
+        `insert into meta_objects (client_id, level, object_id, campaign_id, adset_id, name, status, effective_status, config)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         on conflict (client_id, level, object_id) do update set campaign_id = excluded.campaign_id, adset_id = excluded.adset_id,
+           name = excluded.name, status = excluded.status, effective_status = excluded.effective_status, config = excluded.config, pulled_at = now()`,
+        [clientId, level, id, campaign_id ? String(campaign_id) : level === "campaign" ? id : null, adset_id ? String(adset_id) : level === "adset" ? id : null,
+          name ? String(name) : null, status ? String(status) : null, effective_status ? String(effective_status) : null, JSON.stringify(config)],
+      );
+    }
+    counts[level] = rows.length;
+  }
+  return { campaigns: counts.campaign || 0, adsets: counts.adset || 0, ads: counts.ad || 0 };
 }
