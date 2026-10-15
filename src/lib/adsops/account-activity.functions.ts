@@ -9,7 +9,8 @@ export const readAccountActivityFn = createServerFn({ method: "POST" })
   .middleware([principalMiddleware])
   .handler(async ({ context }): Promise<ActivityRead> => {
     const ctx = context.access;
-    if (ctx.principal.role === "pending") return { accounts: {} };
+    // Staff lists only: client portals keep showing every account they were granted.
+    if (ctx.principal.role === "pending" || ctx.principal.kind !== "staff") return { accounts: {} };
     const { loadWorkspaceDirectory } = await import("./access.server");
     const { withPulledMccClients } = await import("./mcc-import.server");
     const { canSeeAccount } = await import("./permissions.server");

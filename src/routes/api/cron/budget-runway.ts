@@ -6,7 +6,13 @@ import { createFileRoute } from "@tanstack/react-router";
  * for roster + MCC-pulled accounts, least recently checked first, inside a time
  * budget. Auth: `Authorization: Bearer $CRON_SECRET` (refuses without it).
  */
+/** Runway + score window (after the spend pass). */
 const BUDGET_MS = 45_000;
+/** Spend pass: every account, read-only, 8 at a time. ~150 accounts take well under a minute. */
+const SPEND_MS = 200_000;
+const SPEND_CONCURRENCY = 8;
+/** Hard stop below Vercel's 300 s maxDuration (vite.config.ts functionRules). */
+const HARD_STOP_MS = 285_000;
 
 function authorized(request: Request): boolean {
   const secret = process.env.CRON_SECRET?.trim();
@@ -42,17 +48,22 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const roster = (await listRosterAccounts()).filter((c) => (c.adapter || "live") === "live");
   // cronAccounts adds MCC-pulled Neon accounts to the file roster.
   const queue = await runwayCronQueue(await cronAccounts(roster));
-  // Runway still runs for every account (its spend figure is how an account becomes active again);
-  // score and shared-list counts skip known-inactive accounts.
+  // 10-day spend for EVERY account (hidden ones too: one cheap read-only query each, at most once
+  // per 20 h). This is how an account is hidden after 10 days without spend and comes back on spend.
+  const { refreshSpend10 } = await import("@/lib/adsops/spend10.server");
+  const spend10 = await refreshSpend10(queue, cfg, { deadline: started + SPEND_MS, n: SPEND_CONCURRENCY }).catch(() => []);
+  const phaseStart = Date.now();
+  // Everything else (runway, score, shared-list counts) skips hidden accounts to save quota.
   const { activeOnly } = await import("@/lib/adsops/account-activity.server");
   const activeSet = new Set(await activeOnly(queue));
-  const scoreQueue = await scoreCronQueue(queue.filter((id) => activeSet.has(id)));
+  const runwayQueue = queue.filter((id) => activeSet.has(id));
+  const scoreQueue = await scoreCronQueue(runwayQueue);
   const results: Array<{ client_id: string; ok: boolean; status: string }> = [];
   const scores: Array<{ client_id: string; ok: boolean }> = [];
-  const inTime = () => Date.now() - started < BUDGET_MS;
+  const inTime = () => Date.now() - phaseStart < BUDGET_MS && Date.now() - started < HARD_STOP_MS;
   // Runway (+ shared list counts), oldest first, one account at a time.
   const runwayLoop = (async () => {
-    for (const id of queue) {
+    for (const id of runwayQueue) {
       if (!inTime()) break;
       const r = await checkBudgetRunway(id, cfg);
       results.push({ client_id: id, ok: r.ok, status: r.status });
@@ -77,6 +88,9 @@ async function handle({ request }: { request: Request }): Promise<Response> {
     {
       ok: true,
       total: queue.length,
+      active: runwayQueue.length,
+      spend10_checked: spend10.length,
+      spend10_ms: phaseStart - started,
       done: results.length,
       remaining: queue.length - results.length,
       mcc_status: mccStatus,

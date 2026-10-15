@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
-import { recheckAccountFn } from "@/lib/adsops/recheck.functions";
+import { recheckAccountFn, recheckSpend10Fn } from "@/lib/adsops/recheck.functions";
 import { readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-overview.functions";
 import { autoPullChangeLogFn, checkSharedCountsFn } from "@/lib/adsops/change-log.functions";
 import { OPT_AMBER_DAYS, OPT_RED_DAYS } from "@/lib/adsops/accounts-overview.types";
@@ -10,7 +10,7 @@ import { refreshAccountScoreFn } from "@/lib/adsops/optimization-score.functions
 import { num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
-import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/adsops/account-activity";
+import { InactiveBadge, InactiveToggle, invalidateActivity, useActiveFilter } from "@/components/adsops/account-activity";
 import { Badge, DotText, EmptyState, ErrorState, MiniBar, TableSkeleton, riskBarClass, type Tone } from "@/components/adsops/ui";
 
 
@@ -154,6 +154,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
   }
   async function recheckOne(id: string) {
     await recheck(id);
+    invalidateActivity();
     if (mounted.current) setEpoch((n) => n + 1);
   }
   async function recheckAll(ids: string[]) {
@@ -172,8 +173,19 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
       if (done % 12 === 0 && mounted.current) setEpoch((n) => n + 1);
     });
     if (!mounted.current) return;
+    // Hidden accounts too: only their 10-day spend check, so any that started spending come back.
+    const shownSet = new Set(ids);
+    const hidden = (rows || []).map((r) => r.client_id).filter((id) => !shownSet.has(id) && act.map?.[id]?.state === "inactive");
+    let back = "";
+    if (hidden.length && mounted.current) {
+      setBulk(`Đang kiểm tra chi tiêu 10 ngày của ${hidden.length} tài khoản đã ẩn…`);
+      const r = await recheckSpend10Fn({ data: { clientIds: hidden } }).catch(() => null);
+      back = r ? ` · đã ẩn: kiểm tra chi tiêu ${r.checked}/${hidden.length}${r.failed ? `, ${r.failed} lỗi` : ""}` : " · đã ẩn: không kiểm tra được chi tiêu";
+    }
+    if (!mounted.current) return;
     setBulk("");
-    setRowState((s) => ({ ...s, __summary: { busy: false, msg: `Xong ${done}/${ids.length}${skipped ? ` · ${skipped} vừa kiểm tra, bỏ qua` : ""}${failed ? ` · ${failed} lỗi` : ""}.`, tone: "muted" } }));
+    invalidateActivity();
+    setRowState((s) => ({ ...s, __summary: { busy: false, msg: `Xong ${done}/${ids.length}${skipped ? ` · ${skipped} vừa kiểm tra, bỏ qua` : ""}${failed ? ` · ${failed} lỗi` : ""}${back}.`, tone: "muted" } }));
     setEpoch((n) => n + 1);
   }
   const [logProgress, setLogProgress] = useState("");

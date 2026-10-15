@@ -10,7 +10,7 @@
  */
 import { getSql } from "@/lib/db";
 import {
-  INACTIVE_GOOGLE, REASON_GOOGLE, REASON_NO_SPEND, REASON_UNREADABLE, errorKind, type AccountActivity,
+  INACTIVE_GOOGLE, REASON_GOOGLE, REASON_NO_SPEND, REASON_NO_SPEND_10, REASON_UNREADABLE, SPEND10_FRESH_MS, errorKind, type AccountActivity,
 } from "./account-activity.types.ts";
 
 const DAY = 86_400_000;
@@ -24,6 +24,7 @@ export async function readActivity(ids: string[]): Promise<Map<string, AccountAc
   const runway = new Map<string, { avg: number | null; err: string | null }>();
   const score = new Map<string, string | null>();
   const wh = new Map<string, number | null>();
+  const s10 = new Map<string, { micros: number | null; last: string | null; at: string | null; err: string | null }>();
   if (uniq.length) {
     const sql = await getSql();
     await sql
@@ -36,6 +37,16 @@ export async function readActivity(ids: string[]): Promise<Map<string, AccountAc
           if (x.google_status) status.set(x.id, x.google_status.toUpperCase());
           if (x.manager_customer_id) mccOf.set(x.id, x.manager_customer_id);
         }
+      })
+      .catch(() => null);
+    // 10-day spend (migration 0016; ignored if the columns are not there yet).
+    await sql
+      .query<{ id: string; m: string | number | null; last: Date | string | null; at: Date | string | null; err: string | null }>(
+        `select id, spend10_micros as m, spend10_last_date as last, spend10_checked_at as at, spend10_error as err from ad_accounts where id = any($1::text[])`,
+        [uniq],
+      )
+      .then((r) => {
+        for (const x of r) s10.set(x.id, { micros: x.m == null ? null : Number(x.m), last: x.last ? isoOf(x.last).slice(0, 10) : null, at: x.at ? isoOf(x.at) : null, err: x.err });
       })
       .catch(() => null);
     await sql
@@ -107,10 +118,18 @@ export async function readActivity(ids: string[]): Promise<Map<string, AccountAc
     const spends = [rw?.avg ?? null, wh.has(id) ? (wh.get(id) as number | null) : null].filter((v): v is number => v != null);
     const spendKnown = spends.length > 0;
     const spent = spends.some((v) => v > 0);
-    const base = { google_status: gs, avg7: rw?.avg ?? null, error: err, systemic };
+    const sp = s10.get(id);
+    const base = {
+      google_status: gs, avg7: rw?.avg ?? null, error: err, systemic,
+      spend10: sp?.micros != null ? sp.micros / 1e6 : null, spend10_last_date: sp?.last ?? null, spend10_checked_at: sp?.at ?? null,
+    };
+    // 10-day rule: a fresh, successful check decides (spend > 0 → shown, 0 → hidden).
+    const s10Fresh = Boolean(sp?.at && !sp.err && sp.micros != null && Date.now() - Date.parse(sp.at) < SPEND10_FRESH_MS);
     let act: AccountActivity;
     if ((gs && INACTIVE_GOOGLE.has(gs)) || kind === "not_enabled") act = { ...base, state: "inactive", reason: REASON_GOOGLE };
     else if (systemic) act = { ...base, state: "unknown", reason: null };
+    else if (s10Fresh && (sp!.micros as number) > 0) act = { ...base, state: "active", reason: null };
+    else if (s10Fresh) act = { ...base, state: "inactive", reason: REASON_NO_SPEND_10 };
     else if (kind === "no_access" && !spent) act = { ...base, state: "inactive", reason: REASON_GOOGLE };
     else if (spendKnown && !spent) act = { ...base, state: "inactive", reason: REASON_NO_SPEND };
     else if (!spendKnown && rw?.err && score.get(id)) act = { ...base, state: "inactive", reason: REASON_UNREADABLE };
@@ -151,6 +170,11 @@ export async function refreshMccStatusIfStale(cfg: import("./google-ads.server.t
   const { importMccAccounts } = await import("./mcc-import.server.ts");
   const listed = await listAllMccChildren(cfg);
   const ads = listed.children.filter((c) => !c.manager && c.customer_id !== c.mcc_customer_id);
-  await importMccAccounts(ads.map((c) => ({ customer_id: c.customer_id, display_name: c.name, status: c.status, manager_customer_id: c.mcc_customer_id })));
+  const imported = await importMccAccounts(ads.map((c) => ({ customer_id: c.customer_id, display_name: c.name, status: c.status, manager_customer_id: c.mcc_customer_id })));
+  // Newly discovered accounts: evaluate the 10-day spend rule now.
+  if (imported.inserted.length) {
+    const { refreshSpend10 } = await import("./spend10.server.ts");
+    await refreshSpend10(imported.inserted, cfg, { force: true, deadline: Date.now() + 10_000 }).catch(() => null);
+  }
   return { ran: true, accounts: ads.length, errors: listed.errors.length };
 }
