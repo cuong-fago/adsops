@@ -34,12 +34,15 @@ export const recheckAccountFn = createServerFn({ method: "POST" })
     const { checkBudgetRunway } = await import("./budget-runway.server");
     const { checkOptimizationScore } = await import("./optimization-score.server");
     const { checkSharedSetCounts } = await import("./change-log.server");
+    const { checkSpend10 } = await import("./spend10.server");
     const cfg = await resolveAdsConfig();
     if (!cfg.ready) return { state: "done", runway_ok: false, score_ok: false, error_vi: "Chưa cấu hình Google Ads API." };
     const [r, s] = await Promise.all([
       checkBudgetRunway(data.clientId, cfg, { keepOnError: true }).catch((e: unknown) => ({ ok: false, error_vi: e instanceof Error ? e.message : String(e) })),
       checkOptimizationScore(data.clientId, cfg).catch((e: unknown) => ({ ok: false, error_vi: e instanceof Error ? e.message : String(e) })),
       checkSharedSetCounts(data.clientId, cfg).catch(() => null),
+      // Re-evaluates the 10-day spend rule (hide / bring back).
+      checkSpend10(data.clientId, cfg).catch(() => null),
     ]);
     const errs = [!r.ok ? `Ngân sách: ${r.error_vi || "lỗi"}` : "", !s.ok ? `Điểm tối ưu: ${s.error_vi || "lỗi"}` : ""].filter(Boolean);
     return { state: "done", runway_ok: r.ok, score_ok: s.ok, error_vi: errs.length ? errs.join(" · ") : null };

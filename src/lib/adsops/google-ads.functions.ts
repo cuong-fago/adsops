@@ -139,6 +139,11 @@ export const pullMccAccounts = createServerFn({ method: "POST" })
           manager_customer_id: c.mcc_customer_id,
         })),
       );
+      // New accounts get the 10-day spend check right away (spend → shown, none → hidden). Read-only.
+      if (imported.inserted.length) {
+        const { refreshSpend10 } = await import("./spend10.server.ts");
+        await refreshSpend10(imported.inserted, cfg, { force: true, deadline: Date.now() + 20_000 }).catch(() => null);
+      }
       const summary = summarizeMccs(managerCustomerIds(cfg), g.dashedId, listed.children, listed.errors);
       const ok = ads.length > 0 || listed.errors.length < managerCustomerIds(cfg).length;
       const msg = `${summary}. Đã thêm ${imported.inserted.length} tài khoản mới (không đổi tên tắt). Tải lại trang để thấy trên danh sách đầu trang.`;

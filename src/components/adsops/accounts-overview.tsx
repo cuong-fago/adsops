@@ -10,7 +10,7 @@ import { refreshAccountScoreFn } from "@/lib/adsops/optimization-score.functions
 import { num } from "@/lib/adsops/format";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
-import { InactiveBadge, InactiveToggle, useActiveFilter } from "@/components/adsops/account-activity";
+import { InactiveBadge, InactiveToggle, invalidateActivity, useActiveFilter } from "@/components/adsops/account-activity";
 import { Badge, DotText, EmptyState, ErrorState, MiniBar, TableSkeleton, riskBarClass, type Tone } from "@/components/adsops/ui";
 
 
@@ -154,6 +154,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
   }
   async function recheckOne(id: string) {
     await recheck(id);
+    invalidateActivity();
     if (mounted.current) setEpoch((n) => n + 1);
   }
   async function recheckAll(ids: string[]) {
@@ -173,6 +174,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
     });
     if (!mounted.current) return;
     setBulk("");
+    invalidateActivity();
     setRowState((s) => ({ ...s, __summary: { busy: false, msg: `Xong ${done}/${ids.length}${skipped ? ` · ${skipped} vừa kiểm tra, bỏ qua` : ""}${failed ? ` · ${failed} lỗi` : ""}.`, tone: "muted" } }));
     setEpoch((n) => n + 1);
   }

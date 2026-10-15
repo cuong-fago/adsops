@@ -13,6 +13,11 @@ function loadActivity(): Promise<Record<string, AccountActivity>> {
   return cache.p;
 }
 
+/** Drop the cached activity so the next read sees fresh hide / re-include decisions (after a recheck). */
+export function invalidateActivity() {
+  cache = null;
+}
+
 /** client_id → activity (null while loading; then unknown accounts are simply absent). */
 export function useAccountActivity(): Record<string, AccountActivity> | null {
   const [map, setMap] = useState<Record<string, AccountActivity> | null>(null);
@@ -63,7 +68,9 @@ export function InactiveToggle({ show, onChange, count, className }: { show: boo
   return (
     <label className={cn("inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-line bg-paper px-3 text-sm", className)}>
       <input type="checkbox" checked={show} onChange={(e) => onChange(e.target.checked)} className="accent-[var(--color-accent)]" />
-      Hiện cả tài khoản không hoạt động ({count})
+      <span title="Ẩn: không chi tiêu 10 ngày (tự hiện lại khi có chi tiêu), hoặc Google tạm ngưng / đã huỷ. Không xoá dữ liệu.">
+        Đã ẩn {count} tài khoản không hoạt động · hiện
+      </span>
     </label>
   );
 }
