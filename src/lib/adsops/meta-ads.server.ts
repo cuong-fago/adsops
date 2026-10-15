@@ -277,3 +277,60 @@ export async function refreshAllMeta(deadline: number): Promise<{ ok: boolean; a
   await Promise.all([worker(), worker(), worker()]);
   return { ok: errors.length === 0, accounts: accounts.length, done, inserted: inserted.length, errors };
 }
+
+export type MetaStatus = {
+  token: "missing" | "valid" | "invalid";
+  /** Token length only (never the value): a 10-char value usually means "[REDACTED]" was saved. */
+  token_length: number;
+  error: string | null;
+  accounts_visible: number | null;
+  accounts_in_db: number | null;
+  insights_rows: number | null;
+  last_checked: string | null;
+  tables_ok: boolean;
+};
+
+/** Admin diagnostic. One GET to /me/adaccounts; the token is never returned. */
+export async function metaStatus(): Promise<MetaStatus> {
+  const raw = process.env.META_SYSTEM_USER_TOKEN?.trim() || "";
+  const out: MetaStatus = { token: raw ? "valid" : "missing", token_length: raw.length, error: null, accounts_visible: null, accounts_in_db: null, insights_rows: null, last_checked: null, tables_ok: false };
+  if (raw) {
+    try {
+      out.accounts_visible = (await listMetaAccounts()).length;
+    } catch (e) {
+      out.token = "invalid";
+      out.error = e instanceof Error ? e.message.replace(raw, "***") : String(e);
+    }
+  }
+  try {
+    const sql = await getSql();
+    const a = await sql`select count(*)::int as n from ad_accounts where platform = 'facebook'`;
+    const s = await sql`select count(*)::int as n, max(checked_at) as t from meta_account_state`;
+    const i = await sql`select count(*)::int as n from meta_insights_daily`;
+    out.accounts_in_db = Number(a[0]?.n ?? 0);
+    out.insights_rows = Number(i[0]?.n ?? 0);
+    const t = s[0]?.t as unknown;
+    out.last_checked = t ? (t instanceof Date ? t.toISOString() : String(t)) : null;
+    out.tables_ok = true;
+  } catch (e) {
+    out.error = out.error || `DB: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  return out;
+}
+
+/**
+ * First-load bootstrap: when no Facebook account is in ad_accounts yet, pull the account list once
+ * (one cheap GET, lock 10 min) so accounts show before the first daily cron. Insights stay for cron/recheck.
+ */
+export async function ensureMetaAccounts(timeoutMs = 8000): Promise<void> {
+  if (!metaConfigured()) return;
+  const sql = await getSql();
+  const have = await sql`select 1 from ad_accounts where platform = 'facebook' limit 1`.catch(() => null);
+  if (!have || have.length) return;
+  const { acquireLock } = await import("./warehouse.server.ts");
+  if (!(await acquireLock("meta:bootstrap", 600))) return;
+  await Promise.race([
+    listMetaAccounts().then((a) => syncMetaAccounts(a)),
+    new Promise((r) => setTimeout(r, timeoutMs)),
+  ]).catch(() => null);
+}

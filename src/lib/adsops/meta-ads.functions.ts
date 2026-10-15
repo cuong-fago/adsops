@@ -26,3 +26,27 @@ export const readMetaAnalyticsFn = createServerFn({ method: "POST" })
     const { readMetaAnalytics } = await import("./meta-analytics.server");
     return readMetaAnalytics(data.clientId, data.start, data.end, ctx.principal.kind === "staff");
   });
+
+export type { MetaStatus } from "./meta-ads.server.ts";
+
+/** Admin: Meta token status (valid / invalid / missing, visible account count). Never returns the token. */
+export const getMetaStatusFn = createServerFn({ method: "GET" })
+  .middleware([principalMiddleware])
+  .handler(async ({ context }) => {
+    const { assertEffectiveAdmin } = await import("./permissions.server");
+    assertEffectiveAdmin(context.access);
+    const { metaStatus } = await import("./meta-ads.server.ts");
+    return metaStatus();
+  });
+
+/** Admin: pull Facebook accounts + insights now (same as the daily cron's Meta phase). */
+export const syncMetaNowFn = createServerFn({ method: "POST" })
+  .middleware([principalMiddleware])
+  .handler(async ({ context }) => {
+    const { assertEffectiveAdmin } = await import("./permissions.server");
+    assertEffectiveAdmin(context.access);
+    const { acquireLock } = await import("./warehouse.server");
+    if (!(await acquireLock("meta:sync-now", 60))) return { ok: false, accounts: 0, done: 0, inserted: 0, errors: ["Đang kéo, thử lại sau 1 phút."] };
+    const { refreshAllMeta } = await import("./meta-ads.server.ts");
+    return refreshAllMeta(Date.now() + 50_000);
+  });
