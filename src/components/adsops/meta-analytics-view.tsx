@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, ChevronRight, ExternalLink } from "lucide-react";
+import { adsetSummary, budgetOf, campaignMeta, creativeOf, statusVi } from "@/lib/adsops/meta-structure";
 import { readMetaAnalyticsFn, type MetaAnalytics, type MetaMetrics, type MetaRow } from "@/lib/adsops/meta-ads.functions";
 import { fmtDay, fmtMoney, fmtMoneyShort, fmtNum, fmtPct, fmtRange } from "@/lib/adsops/client-overview";
 import type { Lang } from "@/lib/adsops/client-i18n";
@@ -129,8 +130,33 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
               </ResponsiveContainer>
             </div>
           </Card>
-          <RowsTable title={tx.campaigns} rows={data.campaigns} fmt={fmt} tx={tx} />
-          <RowsTable title={tx.adsets} rows={data.adsets} fmt={fmt} tx={tx} withCampaign />
+          <RowsTable
+            title={tx.campaigns}
+            rows={data.campaigns}
+            fmt={fmt}
+            tx={tx}
+            extra={[
+              { head: "Mục tiêu", cell: (r) => campaignMeta(r.config).objective },
+              { head: "Trạng thái", cell: (r) => <StatusDot s={r.effective_status || r.status} /> },
+              { head: "Loại mua", cell: (r) => campaignMeta(r.config).buying_type },
+              { head: "Ngân sách", cell: (r) => budgetText(r, cur, lang) },
+            ]}
+          />
+          <RowsTable
+            title={tx.adsets}
+            rows={data.adsets}
+            fmt={fmt}
+            tx={tx}
+            extra={[
+              { head: tx.campaign, cell: (r) => r.campaign_name, muted: true },
+              { head: "Trạng thái", cell: (r) => <StatusDot s={r.effective_status || r.status} /> },
+              { head: "Nhắm mục tiêu", cell: (r) => adsetSummary(r.config, cur, (v) => fmtMoney(lang, v, cur)).short, muted: true },
+              { head: "Ngân sách", cell: (r) => budgetText(r, cur, lang) },
+            ]}
+            expand={(r) => <TargetingDetail lines={adsetSummary(r.config, cur, (v) => fmtMoney(lang, v, cur)).lines} />}
+          />
+          <AdsTable rows={data.ads} fmt={fmt} tx={tx} />
+          {!data.structure_pulled_at ? <p className="text-xs text-muted">Chưa kéo cấu trúc chiến dịch (mục tiêu, nhắm mục tiêu, mẫu quảng cáo). Bấm “Kiểm tra lại” hoặc chờ lần đồng bộ hằng ngày.</p> : null}
         </>
       )}
     </div>
@@ -159,16 +185,48 @@ function Kpi({ label, value, prev, delta: dl }: { label: string; value: string; 
   );
 }
 
+type Extra = { head: string; cell: (r: MetaRow) => ReactNode; muted?: boolean };
+type Fmt = (k: KpiKey, v: number | null | undefined) => string;
+const METRIC_COLS = ["spend", "impressions", "clicks", "ctr", "cpc", "leads", "messages", "cpl"] as const satisfies readonly (keyof MetaMetrics)[];
+
+function budgetText(r: MetaRow, cur: string, lang: Lang): string | null {
+  const b = budgetOf(r.config, cur);
+  return b ? `${fmtMoney(lang, b.value, cur)}${b.kind === "daily" ? "/ngày" : " trọn đời"}` : null;
+}
+
+function StatusDot({ s }: { s: string | null | undefined }) {
+  if (!s) return null;
+  const tone = s === "ACTIVE" ? "ok" : s === "DISAPPROVED" || s === "WITH_ISSUES" ? "danger" : s.includes("PAUSED") ? "neutral" : "warn";
+  return <Badge tone={tone}>{statusVi(s)}</Badge>;
+}
+
+function TargetingDetail({ lines }: { lines: Array<{ label: string; value: string }> }) {
+  if (!lines.length) return <p className="text-sm text-muted">Chưa có dữ liệu nhắm mục tiêu.</p>;
+  return (
+    <dl className="grid gap-x-6 gap-y-1.5 text-sm md:grid-cols-[12rem_1fr]">
+      {lines.map((l, i) => (
+        <Fragment key={i}>
+          <dt className="text-muted">{l.label}</dt>
+          <dd className="text-ink [overflow-wrap:anywhere]">{l.value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
 function RowsTable({
-  title, rows, fmt, tx, withCampaign = false,
+  title, rows, fmt, tx, extra = [], expand,
 }: {
   title: string;
   rows: MetaRow[];
-  fmt: (k: KpiKey, v: number | null | undefined) => string;
+  fmt: Fmt;
   tx: (typeof L)[Lang];
-  withCampaign?: boolean;
+  extra?: Extra[];
+  expand?: (r: MetaRow) => ReactNode;
 }) {
-  const cols = ["spend", "impressions", "clicks", "ctr", "cpc", "leads", "messages", "cpl"] as const satisfies readonly (keyof MetaMetrics)[];
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const span = 1 + extra.length + METRIC_COLS.length;
   return (
     <Card className="overflow-hidden">
       <p className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">{title} <span className="font-normal text-muted">({rows.length})</span></p>
@@ -178,18 +236,86 @@ function RowsTable({
             <thead className="bg-inset text-xs text-muted">
               <tr>
                 <th className="px-4 py-2 text-left font-medium">{tx.name}</th>
-                {withCampaign ? <th className="px-3 py-2 text-left font-medium">{tx.campaign}</th> : null}
-                {cols.map((c) => <th key={c} className="px-3 py-2 text-right font-medium">{tx[c]}</th>)}
+                {extra.map((e) => <th key={e.head} className="px-3 py-2 text-left font-medium">{e.head}</th>)}
+                {METRIC_COLS.map((c) => <th key={c} className="px-3 py-2 text-right font-medium">{tx[c]}</th>)}
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t border-line">
-                  <td className="max-w-[22rem] truncate px-4 py-2 text-ink" title={r.name}>{r.name}</td>
-                  {withCampaign ? <td className="max-w-[16rem] truncate px-3 py-2 text-muted" title={r.campaign_name || ""}>{r.campaign_name || ""}</td> : null}
-                  {cols.map((c) => <td key={c} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink">{fmt(c, r[c])}</td>)}
-                </tr>
+                <Fragment key={r.id}>
+                  <tr className="border-t border-line">
+                    <td className="max-w-[22rem] px-4 py-2 text-ink" title={r.name}>
+                      {expand ? (
+                        <button type="button" onClick={() => toggle(r.id)} aria-expanded={open.has(r.id)} className="inline-flex max-w-full items-center gap-1 text-left hover:text-accent">
+                          <ChevronRight className={cn("size-4 shrink-0 transition-transform", open.has(r.id) && "rotate-90")} />
+                          <span className="truncate">{r.name}</span>
+                        </button>
+                      ) : <span className="block truncate">{r.name}</span>}
+                    </td>
+                    {extra.map((e) => (
+                      <td key={e.head} className={cn("max-w-[18rem] truncate px-3 py-2", e.muted ? "text-muted" : "text-ink")}>{e.cell(r)}</td>
+                    ))}
+                    {METRIC_COLS.map((c) => <td key={c} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink">{fmt(c, r[c])}</td>)}
+                  </tr>
+                  {expand && open.has(r.id) ? (
+                    <tr className="bg-inset/50"><td colSpan={span} className="px-10 py-3">{expand(r)}</td></tr>
+                  ) : null}
+                </Fragment>
               ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="px-4 py-6 text-sm text-muted">{tx.none}</p>
+      )}
+    </Card>
+  );
+}
+
+function AdsTable({ rows, fmt, tx }: { rows: MetaRow[]; fmt: Fmt; tx: (typeof L)[Lang] }) {
+  return (
+    <Card className="overflow-hidden">
+      <p className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">Quảng cáo <span className="font-normal text-muted">({rows.length})</span></p>
+      {rows.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-inset text-xs text-muted">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium">Mẫu</th>
+                <th className="px-3 py-2 text-left font-medium">Quảng cáo</th>
+                <th className="px-3 py-2 text-left font-medium">Nội dung</th>
+                <th className="px-3 py-2 text-left font-medium">Nút</th>
+                {METRIC_COLS.map((c) => <th key={c} className="px-3 py-2 text-right font-medium">{tx[c]}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const c = creativeOf(r.config);
+                return (
+                  <tr key={r.id} className="border-t border-line align-top">
+                    <td className="px-4 py-2">
+                      {c.thumb ? (
+                        <img src={c.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="size-16 rounded-md border border-line object-cover" />
+                      ) : <div className="size-16 rounded-md bg-inset" />}
+                    </td>
+                    <td className="min-w-[12rem] max-w-[16rem] px-3 py-2">
+                      <p className="truncate font-medium text-ink" title={r.name}>{r.name}</p>
+                      <p className="truncate text-xs text-muted" title={r.adset_name || ""}>{r.adset_name || ""}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <StatusDot s={r.effective_status || r.status} />
+                        {c.post_url ? <a href={c.post_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-xs font-medium text-accent hover:underline">Bài viết <ExternalLink className="size-3" /></a> : null}
+                        {c.preview_url ? <a href={c.preview_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-xs font-medium text-accent hover:underline">Xem trước <ExternalLink className="size-3" /></a> : null}
+                      </div>
+                    </td>
+                    <td className="min-w-[16rem] max-w-[26rem] px-3 py-2">
+                      {c.title ? <p className="line-clamp-1 font-medium text-ink" title={c.title}>{c.title}</p> : null}
+                      {c.body ? <p className="line-clamp-3 whitespace-pre-line text-muted" title={c.body}>{c.body}</p> : null}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-ink">{c.cta || ""}</td>
+                    {METRIC_COLS.map((k) => <td key={k} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink">{fmt(k, r[k])}</td>)}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

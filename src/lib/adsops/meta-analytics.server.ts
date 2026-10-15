@@ -1,7 +1,7 @@
 /** Read Facebook analytics from Neon (no API call). */
 import { getSql } from "@/lib/db";
 import { addDaysYmd } from "./warehouse.server.ts";
-import type { MetaAnalytics, MetaMetrics, MetaRow } from "./meta-ads.types.ts";
+import type { Json, MetaAnalytics, MetaMetrics, MetaRow } from "./meta-ads.types.ts";
 
 type Raw = { spend: unknown; impressions: unknown; clicks: unknown; leads: unknown; messages: unknown; lead_rows: unknown; msg_rows: unknown };
 const n = (v: unknown) => { const x = Number(v ?? 0); return Number.isFinite(x) ? x : 0; };
@@ -31,15 +31,42 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
     `select date, ${AGG} from meta_insights_daily where client_id = $1 and level = 'account' and date between $2 and $3 group by date order by date`,
     [clientId, start, end],
   );
-  const rowsAt = async (level: "campaign" | "adset"): Promise<MetaRow[]> => {
-    const r = await sql.query<Raw & { id: string; name: string | null; campaign_name: string | null }>(
-      `select object_id as id, max(${level === "campaign" ? "campaign_name" : "adset_name"}) as name, max(campaign_name) as campaign_name, ${AGG}
+  type Obj = { object_id: string; name: string | null; status: string | null; effective_status: string | null; config: unknown; pulled_at: unknown };
+  const objs = await sql.query<Obj & { level: string }>(
+    `select level, object_id, name, status, effective_status, config, pulled_at from meta_objects where client_id = $1`, [clientId],
+  ).catch(() => [] as Array<Obj & { level: string }>);
+  const objBy = new Map(objs.map((o) => [`${o.level}:${o.object_id}`, o]));
+  const cfg = (v: unknown): { [k: string]: Json } | null => {
+    if (!v) return null;
+    if (typeof v === "string") { try { return JSON.parse(v) as { [k: string]: Json }; } catch { return null; } }
+    return v as { [k: string]: Json };
+  };
+  const rowsAt = async (level: "campaign" | "adset" | "ad"): Promise<MetaRow[]> => {
+    const nameCol = level === "campaign" ? "campaign_name" : level === "adset" ? "adset_name" : "ad_name";
+    const r = await sql.query<Raw & { id: string; name: string | null; campaign_name: string | null; adset_name: string | null }>(
+      `select object_id as id, max(${nameCol}) as name, max(campaign_name) as campaign_name, max(adset_name) as adset_name, ${AGG}
          from meta_insights_daily where client_id = $1 and level = $2 and date between $3 and $4
         group by object_id order by sum(spend) desc`,
       [clientId, level, start, end],
     );
-    return r.map((x) => ({ id: x.id, name: x.name || x.id, campaign_name: level === "adset" ? x.campaign_name : null, ...metrics(x) }));
+    return r.map((x) => {
+      const o = objBy.get(`${level}:${x.id}`);
+      return {
+        id: x.id,
+        name: o?.name || x.name || x.id,
+        campaign_name: level === "campaign" ? null : x.campaign_name,
+        adset_name: level === "ad" ? x.adset_name : null,
+        status: o?.status ?? null,
+        effective_status: o?.effective_status ?? null,
+        config: cfg(o?.config),
+        ...metrics(x),
+      };
+    });
   };
+  const pulled = objs.reduce<string | null>((m, o) => {
+    const s = o.pulled_at ? (o.pulled_at instanceof Date ? o.pulled_at.toISOString() : String(o.pulled_at)) : null;
+    return s && (!m || s > m) ? s : m;
+  }, null);
   const days = Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1;
   const prevRange = withPrev ? { start: addDaysYmd(start, -days), end: addDaysYmd(start, -1) } : null;
   const span = (await sql.query<{ a: unknown; b: unknown }>(`select min(date) as a, max(date) as b from meta_insights_daily where client_id = $1 and level = 'account'`, [clientId]))[0];
@@ -58,6 +85,8 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
     daily: daily.map((d) => ({ date: iso(d.date) as string, ...metrics(d) })),
     campaigns: await rowsAt("campaign"),
     adsets: await rowsAt("adset"),
+    ads: await rowsAt("ad"),
+    structure_pulled_at: pulled,
     state: st ? { account_status: st.account_status, checked_at: st.checked_at ? (st.checked_at instanceof Date ? st.checked_at.toISOString() : String(st.checked_at)) : null, error: st.error } : null,
   };
 }

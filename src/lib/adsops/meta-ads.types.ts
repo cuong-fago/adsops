@@ -1,3 +1,4 @@
+export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 /** Facebook analytics read model. Missing values stay null (shown blank / "—"), never 0. */
 export type MetaMetrics = {
   spend: number;
@@ -12,7 +13,16 @@ export type MetaMetrics = {
   cpl: number | null;
 };
 export type MetaDay = MetaMetrics & { date: string };
-export type MetaRow = MetaMetrics & { id: string; name: string; campaign_name?: string | null };
+export type MetaRow = MetaMetrics & {
+  id: string;
+  name: string;
+  campaign_name?: string | null;
+  adset_name?: string | null;
+  /** From meta_objects (structure sync); null when not synced yet. */
+  status?: string | null;
+  effective_status?: string | null;
+  config?: { [k: string]: Json } | null;
+};
 export type MetaAnalytics = {
   client_id: string;
   currency: string;
@@ -27,5 +37,7 @@ export type MetaAnalytics = {
   daily: MetaDay[];
   campaigns: MetaRow[];
   adsets: MetaRow[];
+  ads: MetaRow[];
+  structure_pulled_at: string | null;
   state: { account_status: number | null; checked_at: string | null; error: string | null } | null;
 };
