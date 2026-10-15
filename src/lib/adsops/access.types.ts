@@ -20,6 +20,8 @@ export type AccessClient = {
   mcc_id_dashed?: string | null;
   status?: string;
   adapter?: string;
+  /** Ad platform; absent = Google. */
+  platform?: "google" | "facebook";
 };
 
 export type AccessSnap = {

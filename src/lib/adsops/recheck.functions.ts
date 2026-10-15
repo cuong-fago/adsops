@@ -30,6 +30,11 @@ export const recheckAccountFn = createServerFn({ method: "POST" })
     if (!(await acquireLock(`${data.clientId}:recheck`, 120))) {
       return { state: "cooldown", runway_ok: null, score_ok: null, error_vi: null };
     }
+    if (data.clientId.startsWith("fb_")) {
+      const { refreshMetaAccount } = await import("./meta-ads.server");
+      const m = await refreshMetaAccount(data.clientId);
+      return { state: "done", runway_ok: m.ok, score_ok: null, error_vi: m.error_vi };
+    }
     const { resolveAdsConfig } = await import("./google-ads.server");
     const { checkBudgetRunway } = await import("./budget-runway.server");
     const { checkOptimizationScore } = await import("./optimization-score.server");
@@ -66,11 +71,23 @@ export const recheckSpend10Fn = createServerFn({ method: "POST" })
     const ctx = context.access;
     const { ForbiddenError, canSeeAccount } = await import("./permissions.server");
     if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");
-    const ids = data.clientIds.filter((id) => canSeeAccount(ctx, id));
+    const visible = data.clientIds.filter((id) => canSeeAccount(ctx, id));
+    const fbIds = visible.filter((id) => id.startsWith("fb_"));
+    const ids = visible.filter((id) => !id.startsWith("fb_"));
+    const { acquireLock } = await import("./warehouse.server");
+    const fbOut = { checked: 0, failed: 0, skipped: 0 };
+    const fbRun = (async () => {
+      if (!fbIds.length) return;
+      const { refreshMetaAccount } = await import("./meta-ads.server");
+      for (const id of fbIds) {
+        if (!(await acquireLock(`${id}:recheck`, 120))) { fbOut.skipped += 1; continue; }
+        const r = await refreshMetaAccount(id).catch(() => null);
+        if (r?.ok) fbOut.checked += 1; else fbOut.failed += 1;
+      }
+    })();
     const { resolveAdsConfig } = await import("./google-ads.server");
     const cfg = await resolveAdsConfig();
-    if (!cfg.ready) return { checked: 0, skipped: ids.length, failed: 0 };
-    const { acquireLock } = await import("./warehouse.server");
+    if (!cfg.ready) { await fbRun; return { checked: fbOut.checked, skipped: ids.length + fbOut.skipped, failed: fbOut.failed }; }
     const { checkSpend10 } = await import("./spend10.server");
     const deadline = Date.now() + 50_000;
     let next = 0;
@@ -85,5 +102,7 @@ export const recheckSpend10Fn = createServerFn({ method: "POST" })
     };
     await Promise.all(Array.from({ length: 8 }, worker));
     out.skipped += Math.max(0, ids.length - next);
+    await fbRun;
+    out.checked += fbOut.checked; out.failed += fbOut.failed; out.skipped += fbOut.skipped;
     return out;
   });
