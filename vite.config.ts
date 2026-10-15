@@ -202,6 +202,13 @@ export default defineConfig(({ command, isPreview }) => ({
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
             serverDir: "./server",
+            // Daily cron spend-checks every ad account (hidden ones too): give that one route
+            // Vercel's 300 s limit (fluid compute). Everything else keeps the default.
+            vercel: {
+              functionRules: {
+                "/api/cron/budget-runway": { maxDuration: 300 },
+              },
+            },
             // AdsOps data lives in server-data/adsops and is copied into the
             // function by scripts/bundle-adsops-data.mjs (never public/).
           }),
