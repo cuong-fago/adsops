@@ -11,6 +11,11 @@ export type MetaMetrics = {
   ctr: number | null;
   cpc: number | null;
   cpl: number | null;
+  /** Page likes/follows from ads (action_type "like"; "follow" types as fallback); null when none. */
+  follows: number | null;
+  cost_per_follow: number | null;
+  /** action_type "page_engagement"; null when none. */
+  page_engagement: number | null;
 };
 export type MetaDay = MetaMetrics & { date: string };
 export type MetaRow = MetaMetrics & {

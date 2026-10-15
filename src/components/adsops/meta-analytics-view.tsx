@@ -20,13 +20,14 @@ function daysAgo(n: number): string {
 }
 
 const PRESETS = [7, 14, 30, 90] as const;
-type KpiKey = "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "leads" | "messages" | "cpl";
+type KpiKey = "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "leads" | "messages" | "cpl" | "follows" | "cost_per_follow" | "page_engagement";
 /** Lower is better for cost metrics (delta colour flips). */
-const LOWER_BETTER: Partial<Record<KpiKey, true>> = { cpc: true, cpl: true };
+const LOWER_BETTER: Partial<Record<KpiKey, true>> = { cpc: true, cpl: true, cost_per_follow: true };
 
 const L = {
   vi: {
     spend: "Chi tiêu", impressions: "Hiển thị", clicks: "Click", ctr: "CTR", cpc: "CPC", leads: "Leads", messages: "Tin nhắn", cpl: "CPL",
+    follows: "Lượt theo dõi Trang", cost_per_follow: "Chi phí / theo dõi", page_engagement: "Tương tác Trang",
     days: (n: number) => `${n} ngày`, compare: "So kỳ trước", campaigns: "Chiến dịch", adsets: "Nhóm quảng cáo", campaign: "Chiến dịch", name: "Tên",
     daily: "Chi tiêu theo ngày", loading: "Đang tải Facebook Ads…", empty: "Chưa có dữ liệu Facebook Ads trong khoảng này.",
     emptyHint: "Dữ liệu kéo mỗi ngày qua cron (35 ngày gần nhất). Không đoán số: ô trống nghĩa là Meta không báo.",
@@ -34,6 +35,7 @@ const L = {
   },
   en: {
     spend: "Spend", impressions: "Impressions", clicks: "Clicks", ctr: "CTR", cpc: "CPC", leads: "Leads", messages: "Messages", cpl: "CPL",
+    follows: "Page follows", cost_per_follow: "Cost / follow", page_engagement: "Page engagement",
     days: (n: number) => `${n} days`, compare: "Compare previous", campaigns: "Campaigns", adsets: "Ad sets", campaign: "Campaign", name: "Name",
     daily: "Daily spend", loading: "Loading Facebook Ads…", empty: "No Facebook Ads data in this range.",
     emptyHint: "Pulled daily by cron (last 35 days). Blank cells mean Meta did not report a value.",
@@ -66,7 +68,7 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
   const cur = data?.currency || "VND";
   const fmt = (k: KpiKey, v: number | null | undefined): string => {
     if (v == null) return "";
-    if (k === "spend" || k === "cpc" || k === "cpl") return fmtMoney(lang, v, cur);
+    if (k === "spend" || k === "cpc" || k === "cpl" || k === "cost_per_follow") return fmtMoney(lang, v, cur);
     if (k === "ctr") return fmtPct(lang, v);
     return fmtNum(lang, v);
   };
@@ -111,8 +113,8 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
       ) : (
         <>
           {data.state?.error ? <ErrorState title={tx.err} message={data.state.error} /> : null}
-          <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8", loading && "opacity-60")}>
-            {(["spend", "impressions", "clicks", "ctr", "cpc", "leads", "messages", "cpl"] as const).map((k) => (
+          <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8", loading && "opacity-60")}>
+            {kpiOrder(data).map((k) => (
               <Kpi key={k} label={tx[k]} value={fmt(k, data.totals[k])} prev={showPrev ? fmt(k, data.prev![k]) : null} delta={showPrev ? delta(data.totals[k], data.prev![k], k) : null} />
             ))}
           </div>
@@ -187,7 +189,24 @@ function Kpi({ label, value, prev, delta: dl }: { label: string; value: string; 
 
 type Extra = { head: string; cell: (r: MetaRow) => ReactNode; muted?: boolean };
 type Fmt = (k: KpiKey, v: number | null | undefined) => string;
-const METRIC_COLS = ["spend", "impressions", "clicks", "ctr", "cpc", "leads", "messages", "cpl"] as const satisfies readonly (keyof MetaMetrics)[];
+const ALL_COLS = ["spend", "impressions", "clicks", "ctr", "cpc", "follows", "cost_per_follow", "page_engagement", "leads", "messages", "cpl"] as const satisfies readonly (keyof MetaMetrics)[];
+/** Core columns always; result columns only when some row in this table has a value (blank otherwise). */
+const CORE = new Set<KpiKey>(["spend", "impressions", "clicks", "ctr", "cpc"]);
+const colsFor = (rows: MetaRow[]) => ALL_COLS.filter((c) => CORE.has(c) || rows.some((r) => r[c] != null));
+
+/**
+ * KPI cards: core always; result metrics only if reported. Follow metrics lead when the account
+ * runs engagement/follow campaigns (or has follows but no leads); otherwise leads lead.
+ */
+function kpiOrder(d: MetaAnalytics): KpiKey[] {
+  const t = d.totals;
+  const engagement = d.campaigns.some((c) => String(c.config?.objective || "").includes("ENGAGEMENT") || String(c.config?.objective || "") === "PAGE_LIKES");
+  const followFirst = t.follows != null && (engagement || t.leads == null);
+  const follow: KpiKey[] = ["follows", "cost_per_follow", "page_engagement"];
+  const lead: KpiKey[] = ["leads", "cpl", "messages"];
+  const results = (followFirst ? [...follow, ...lead] : [...lead, ...follow]).filter((k) => t[k] != null || (k === "leads" && t.follows == null));
+  return [...(followFirst ? ["spend", ...results.slice(0, 2), "impressions", "clicks", "ctr", "cpc", ...results.slice(2)] : ["spend", "impressions", "clicks", "ctr", "cpc", ...results])] as KpiKey[];
+}
 
 function budgetText(r: MetaRow, cur: string, lang: Lang): string | null {
   const b = budgetOf(r.config, cur);
@@ -226,7 +245,8 @@ function RowsTable({
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const span = 1 + extra.length + METRIC_COLS.length;
+  const cols = colsFor(rows);
+  const span = 1 + extra.length + cols.length;
   return (
     <Card className="overflow-hidden">
       <p className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">{title} <span className="font-normal text-muted">({rows.length})</span></p>
@@ -237,7 +257,7 @@ function RowsTable({
               <tr>
                 <th className="px-4 py-2 text-left font-medium">{tx.name}</th>
                 {extra.map((e) => <th key={e.head} className="px-3 py-2 text-left font-medium">{e.head}</th>)}
-                {METRIC_COLS.map((c) => <th key={c} className="px-3 py-2 text-right font-medium">{tx[c]}</th>)}
+                {cols.map((c) => <th key={c} className="px-3 py-2 text-right font-medium">{tx[c]}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -255,7 +275,7 @@ function RowsTable({
                     {extra.map((e) => (
                       <td key={e.head} className={cn("max-w-[18rem] truncate px-3 py-2", e.muted ? "text-muted" : "text-ink")}>{e.cell(r)}</td>
                     ))}
-                    {METRIC_COLS.map((c) => <td key={c} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink">{fmt(c, r[c])}</td>)}
+                    {cols.map((c) => <td key={c} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink">{fmt(c, r[c])}</td>)}
                   </tr>
                   {expand && open.has(r.id) ? (
                     <tr className="bg-inset/50"><td colSpan={span} className="px-10 py-3">{expand(r)}</td></tr>
@@ -273,6 +293,7 @@ function RowsTable({
 }
 
 function AdsTable({ rows, fmt, tx }: { rows: MetaRow[]; fmt: Fmt; tx: (typeof L)[Lang] }) {
+  const cols = colsFor(rows);
   return (
     <Card className="overflow-hidden">
       <p className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">Quảng cáo <span className="font-normal text-muted">({rows.length})</span></p>
@@ -285,7 +306,7 @@ function AdsTable({ rows, fmt, tx }: { rows: MetaRow[]; fmt: Fmt; tx: (typeof L)
                 <th className="px-3 py-2 text-left font-medium">Quảng cáo</th>
                 <th className="px-3 py-2 text-left font-medium">Nội dung</th>
                 <th className="px-3 py-2 text-left font-medium">Nút</th>
-                {METRIC_COLS.map((c) => <th key={c} className="px-3 py-2 text-right font-medium">{tx[c]}</th>)}
+                {cols.map((c) => <th key={c} className="px-3 py-2 text-right font-medium">{tx[c]}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -312,7 +333,7 @@ function AdsTable({ rows, fmt, tx }: { rows: MetaRow[]; fmt: Fmt; tx: (typeof L)
                       {c.body ? <p className="line-clamp-3 whitespace-pre-line text-muted" title={c.body}>{c.body}</p> : null}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-ink">{c.cta || ""}</td>
-                    {METRIC_COLS.map((k) => <td key={k} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink">{fmt(k, r[k])}</td>)}
+                    {cols.map((k) => <td key={k} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink">{fmt(k, r[k])}</td>)}
                   </tr>
                 );
               })}
