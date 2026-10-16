@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowDown, ArrowUp, BarChart3, ChevronRight, ExternalLink } from "lucide-react";
-import { adsetSummary, budgetOf, campaignMeta, creativeOf, statusVi } from "@/lib/adsops/meta-structure";
+import { STATUS_ORDER, adsetSummary, budgetOf, campaignMeta, creativeOf, statusVi } from "@/lib/adsops/meta-structure";
 import { readMetaAnalyticsFn, type MetaAnalytics, type MetaMetrics, type MetaRow } from "@/lib/adsops/meta-ads.functions";
 import { fmtDay, fmtMoney, fmtMoneyShort, fmtNum, fmtPct, fmtRange } from "@/lib/adsops/client-overview";
 import type { Lang } from "@/lib/adsops/client-i18n";
@@ -332,6 +332,42 @@ function useVisibleWidth() {
 /** Sticky-left first column: opaque background + divider so scrolled cells don't show through. */
 const STICKY = "sticky left-0 z-10 shadow-[inset_-1px_0_0_var(--color-line)]";
 
+/** "" = no status stored (structure not synced yet). */
+const statusKey = (r: MetaRow) => r.effective_status || r.status || "";
+
+/** Multi-select status filter state; empty set = Tất cả. */
+function useStatusFilter(rows: MetaRow[]) {
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rows) m.set(statusKey(r), (m.get(statusKey(r)) || 0) + 1);
+    const rank = (k: string) => { const i = STATUS_ORDER.indexOf(k); return i < 0 ? (k ? 900 : 999) : i; };
+    return [...m.entries()].sort((a, b) => rank(a[0]) - rank(b[0]));
+  }, [rows]);
+  const shown = useMemo(() => (sel.size ? rows.filter((r) => sel.has(statusKey(r))) : rows), [rows, sel]);
+  const toggle = (k: string) => setSel((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  return { sel, counts, shown, toggle, clear: () => setSel(new Set()) };
+}
+
+function StatusChips({ f }: { f: ReturnType<typeof useStatusFilter> }) {
+  if (!f.counts.length && !f.sel.size) return null;
+  const chip = (on: boolean) =>
+    cn(
+      "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors",
+      on ? "border-accent bg-accent-soft text-accent" : "border-line bg-paper text-muted hover:border-line-strong hover:text-ink",
+    );
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Lọc theo trạng thái">
+      <button type="button" aria-pressed={!f.sel.size} onClick={f.clear} className={chip(!f.sel.size)}>Tất cả</button>
+      {f.counts.map(([k, n]) => (
+        <button key={k || "none"} type="button" aria-pressed={f.sel.has(k)} onClick={() => f.toggle(k)} className={chip(f.sel.has(k))}>
+          {k ? statusVi(k) : "Chưa có trạng thái"} <span className="tabular-nums text-subtle">{n}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function RowsTable({
   title, rows, fmt, tx, extra = [], expand, compare = false,
 }: {
@@ -343,16 +379,22 @@ function RowsTable({
   expand?: (r: MetaRow) => ReactNode;
   compare?: boolean;
 }) {
-  const { sorted, sort, click } = useSorted(rows, compare);
+  const sf = useStatusFilter(rows);
+  const { sorted, sort, click } = useSorted(sf.shown, compare);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const cols = colsFor(rows);
+  const cols = colsFor(sf.shown);
   const span = 1 + extra.length + cols.length;
   const { ref: scrollRef, w: visibleW } = useVisibleWidth();
   return (
     <Card className="overflow-hidden">
-      <p className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">{title} <span className="font-normal text-muted">({rows.length})</span></p>
-      {rows.length ? (
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+        <p className="mr-2 text-sm font-semibold text-ink">
+          {title} <span className="font-normal text-muted">({sf.sel.size ? `${sf.shown.length}/${rows.length}` : rows.length})</span>
+        </p>
+        <StatusChips f={sf} />
+      </div>
+      {sf.shown.length ? (
         <div ref={scrollRef} className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-inset text-xs text-muted">
@@ -394,7 +436,7 @@ function RowsTable({
           </table>
         </div>
       ) : (
-        <p className="px-4 py-6 text-sm text-muted">{tx.none}</p>
+        <p className="px-4 py-6 text-sm text-muted">{rows.length ? "Không có dòng khớp bộ lọc." : tx.none}</p>
       )}
     </Card>
   );
@@ -449,13 +491,16 @@ function AdsTable({
     () => [...adsets].filter((a) => !filter.campaign || a.campaign_id === filter.campaign).sort((a, b) => a.name.localeCompare(b.name, "vi")),
     [adsets, filter.campaign],
   );
-  const shown = useMemo(
+  const byParent = useMemo(
     () => rows.filter((r) => (!filter.campaign || r.campaign_id === filter.campaign) && (!filter.adset || r.adset_id === filter.adset)),
     [rows, filter],
   );
+  // Status counts follow the campaign / ad set filter.
+  const sf = useStatusFilter(byParent);
+  const shown = sf.shown;
   const cols = colsFor(shown);
   const { sorted, sort, click } = useSorted(shown, compare);
-  const filtered = Boolean(filter.campaign || filter.adset);
+  const filtered = Boolean(filter.campaign || filter.adset || sf.sel.size);
   return (
     <Card id="meta-ads-table" className="overflow-hidden scroll-mt-4">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
@@ -485,8 +530,10 @@ function AdsTable({
           </select>
         </label>
         {filtered ? (
-          <button type="button" onClick={() => setFilter({ campaign: "", adset: "" })} className="text-xs font-medium text-accent hover:underline">Bỏ lọc</button>
+          <button type="button" onClick={() => { setFilter({ campaign: "", adset: "" }); sf.clear(); }} className="text-xs font-medium text-accent hover:underline">Bỏ lọc</button>
         ) : null}
+        <div className="basis-full" />
+        <StatusChips f={sf} />
       </div>
       {shown.length ? (
         <div className="overflow-x-auto">
