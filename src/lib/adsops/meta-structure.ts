@@ -13,10 +13,12 @@ export const OBJECTIVE_VI: Record<string, string> = {
   VIDEO_VIEWS: "Lượt xem video", APP_INSTALLS: "Lượt cài ứng dụng", PRODUCT_CATALOG_SALES: "Doanh số danh mục", STORE_VISITS: "Lượt ghé cửa hàng",
 };
 export const STATUS_VI: Record<string, string> = {
-  ACTIVE: "Đang chạy", PAUSED: "Tạm dừng", DELETED: "Đã xoá", ARCHIVED: "Lưu trữ", IN_PROCESS: "Đang xử lý", WITH_ISSUES: "Có vấn đề",
-  CAMPAIGN_PAUSED: "Chiến dịch tạm dừng", ADSET_PAUSED: "Nhóm tạm dừng", DISAPPROVED: "Bị từ chối", PENDING_REVIEW: "Đang duyệt",
-  PREAPPROVED: "Đã duyệt trước", PENDING_BILLING_INFO: "Chờ thanh toán",
+  ACTIVE: "Đang chạy", PAUSED: "Tạm dừng", CAMPAIGN_PAUSED: "Chiến dịch tạm dừng", ADSET_PAUSED: "Nhóm tạm dừng",
+  ARCHIVED: "Lưu trữ", DELETED: "Đã xoá", PENDING_REVIEW: "Đang xét duyệt", DISAPPROVED: "Bị từ chối",
+  PENDING_BILLING_INFO: "Lỗi thanh toán", WITH_ISSUES: "Có vấn đề", IN_PROCESS: "Đang chờ", PREAPPROVED: "Đã duyệt trước",
 };
+/** Display order for status filters. */
+export const STATUS_ORDER = Object.keys(STATUS_VI);
 const BUYING_VI: Record<string, string> = { AUCTION: "Đấu giá", RESERVED: "Đặt trước (Phạm vi & tần suất)" };
 const GOAL_VI: Record<string, string> = {
   LEAD_GENERATION: "Khách hàng tiềm năng", QUALITY_LEAD: "Khách hàng tiềm năng chất lượng", CONVERSATIONS: "Cuộc trò chuyện",
