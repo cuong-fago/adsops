@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowDown, ArrowUp, BarChart3, ChevronRight, ExternalLink } from "lucide-react";
 import { adsetSummary, budgetOf, campaignMeta, creativeOf, statusVi } from "@/lib/adsops/meta-structure";
@@ -162,7 +162,15 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
               { head: "Nhắm mục tiêu", cell: (r) => adsetSummary(r.config, cur, (v) => fmtMoney(lang, v, cur)).short, muted: true },
               { head: "Ngân sách", cell: (r) => budgetText(r, cur, lang) },
             ]}
-            expand={(r) => <TargetingDetail lines={adsetSummary(r.config, cur, (v) => fmtMoney(lang, v, cur)).lines} />}
+            expand={(r) => (
+              <>
+                <p className="mb-2 truncate text-sm font-semibold text-ink" title={`${r.name}${r.campaign_name ? ` · Chiến dịch: ${r.campaign_name}` : ""}`}>
+                  Nhắm mục tiêu · {r.name}
+                  {r.campaign_name ? <span className="font-normal text-muted"> · Chiến dịch: {r.campaign_name}</span> : null}
+                </p>
+                <TargetingDetail lines={adsetSummary(r.config, cur, (v) => fmtMoney(lang, v, cur)).lines} />
+              </>
+            )}
           />
           <AdsTable rows={data.ads} fmt={fmt} tx={tx} compare={Boolean(showPrev)} />
           {!data.structure_pulled_at ? <p className="text-xs text-muted">Chưa kéo cấu trúc chiến dịch (mục tiêu, nhắm mục tiêu, mẫu quảng cáo). Bấm “Kiểm tra lại” hoặc chờ lần đồng bộ hằng ngày.</p> : null}
@@ -300,6 +308,23 @@ function RowTag({ tag }: { tag?: MetaRow["tag"] }) {
   return null;
 }
 
+/** Visible width of a horizontal scroll container (for panels pinned to its left edge). */
+function useVisibleWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setW(el.clientWidth));
+    ro.observe(el);
+    setW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  return { ref, w };
+}
+/** Sticky-left first column: opaque background + divider so scrolled cells don't show through. */
+const STICKY = "sticky left-0 z-10 shadow-[inset_-1px_0_0_var(--color-line)]";
+
 function RowsTable({
   title, rows, fmt, tx, extra = [], expand, compare = false,
 }: {
@@ -316,15 +341,16 @@ function RowsTable({
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const cols = colsFor(rows);
   const span = 1 + extra.length + cols.length;
+  const { ref: scrollRef, w: visibleW } = useVisibleWidth();
   return (
     <Card className="overflow-hidden">
       <p className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">{title} <span className="font-normal text-muted">({rows.length})</span></p>
       {rows.length ? (
-        <div className="overflow-x-auto">
+        <div ref={scrollRef} className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-inset text-xs text-muted">
               <tr>
-                <th className="px-4 py-2 text-left font-medium">{tx.name}</th>
+                <th className={cn(STICKY, "bg-inset px-4 py-2 text-left font-medium")}>{tx.name}</th>
                 {extra.map((e) => <th key={e.head} className="px-3 py-2 text-left font-medium">{e.head}</th>)}
                 {cols.map((c) => <MetricHead key={c} k={c} label={tx[c]} sort={sort} click={click} compare={compare} />)}
               </tr>
@@ -333,7 +359,7 @@ function RowsTable({
               {sorted.map((r) => (
                 <Fragment key={r.id}>
                   <tr className="border-t border-line">
-                    <td className="max-w-[22rem] px-4 py-2 text-ink" title={r.name}>
+                    <td className={cn(STICKY, "max-w-[22rem] bg-paper px-4 py-2 text-ink")} title={r.name}>
                       {expand ? (
                         <button type="button" onClick={() => toggle(r.id)} aria-expanded={open.has(r.id)} className="inline-flex max-w-full items-center gap-1 text-left hover:text-accent">
                           <ChevronRight className={cn("size-4 shrink-0 transition-transform", open.has(r.id) && "rotate-90")} />
@@ -348,7 +374,12 @@ function RowsTable({
                     {cols.map((c) => <MetricCell key={c} r={r} k={c} fmt={fmt} compare={compare} />)}
                   </tr>
                   {expand && open.has(r.id) ? (
-                    <tr className="bg-inset/50"><td colSpan={span} className="px-10 py-3">{expand(r)}</td></tr>
+                    <tr className="border-t border-line bg-inset">
+                      <td colSpan={span} className="p-0">
+                        {/* Pinned to the visible area: stays readable while the table scrolls sideways. */}
+                        <div className="sticky left-0 bg-inset px-10 py-3" style={visibleW ? { width: visibleW } : undefined}>{expand(r)}</div>
+                      </td>
+                    </tr>
                   ) : null}
                 </Fragment>
               ))}
@@ -373,8 +404,8 @@ function AdsTable({ rows, fmt, tx, compare = false }: { rows: MetaRow[]; fmt: Fm
           <table className="w-full text-sm">
             <thead className="bg-inset text-xs text-muted">
               <tr>
-                <th className="px-4 py-2 text-left font-medium">Mẫu</th>
-                <th className="px-3 py-2 text-left font-medium">Quảng cáo</th>
+                <th className="sticky left-0 z-10 w-24 min-w-24 bg-inset px-4 py-2 text-left font-medium">Mẫu</th>
+                <th className="sticky left-24 z-10 bg-inset px-3 py-2 text-left font-medium shadow-[inset_-1px_0_0_var(--color-line)]">Quảng cáo</th>
                 <th className="px-3 py-2 text-left font-medium">Nội dung</th>
                 <th className="px-3 py-2 text-left font-medium">Nút</th>
                 {cols.map((c) => <MetricHead key={c} k={c} label={tx[c]} sort={sort} click={click} compare={compare} />)}
@@ -385,12 +416,12 @@ function AdsTable({ rows, fmt, tx, compare = false }: { rows: MetaRow[]; fmt: Fm
                 const c = creativeOf(r.config);
                 return (
                   <tr key={r.id} className="border-t border-line align-top">
-                    <td className="px-4 py-2">
+                    <td className="sticky left-0 z-10 w-24 min-w-24 bg-paper px-4 py-2">
                       {c.thumb ? (
                         <img src={c.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="size-16 rounded-md border border-line object-cover" />
                       ) : <div className="size-16 rounded-md bg-inset" />}
                     </td>
-                    <td className="min-w-[12rem] max-w-[16rem] px-3 py-2">
+                    <td className="sticky left-24 z-10 min-w-[12rem] max-w-[16rem] bg-paper px-3 py-2 shadow-[inset_-1px_0_0_var(--color-line)]">
                       <p className="flex min-w-0 items-center font-medium text-ink" title={r.name}><span className="truncate">{r.name}</span><RowTag tag={r.tag} /></p>
                       <p className="truncate text-xs text-muted" title={r.adset_name || ""}>{r.adset_name || ""}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
