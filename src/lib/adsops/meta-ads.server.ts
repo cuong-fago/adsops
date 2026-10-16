@@ -407,7 +407,7 @@ const CAMPAIGN_FIELDS = "id,name,objective,status,effective_status,buying_type,d
 const ADSET_FIELDS =
   "id,name,campaign_id,status,effective_status,optimization_goal,billing_event,bid_strategy,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,promoted_object,destination_type";
 const AD_FIELDS =
-  "id,name,campaign_id,adset_id,status,effective_status,preview_shareable_link,creative{id,title,body,thumbnail_url,image_url,call_to_action_type,effective_object_story_id,object_story_spec,asset_feed_spec{titles,bodies,call_to_action_types}}";
+  "id,name,campaign_id,adset_id,status,effective_status,preview_shareable_link,creative{id,title,body,thumbnail_url,image_url,call_to_action_type,effective_object_story_id,object_story_spec,asset_feed_spec{titles,bodies,descriptions,call_to_action_types,link_urls}}";
 
 /**
  * Campaign / adset / ad config (GET only). Each level replaces the stored rows, so expired

@@ -63,10 +63,10 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
     if (typeof v === "string") { try { return JSON.parse(v) as { [k: string]: Json }; } catch { return null; } }
     return v as { [k: string]: Json };
   };
-  type Agg = Raw & { id: string; name: string | null; campaign_name: string | null; adset_name: string | null };
+  type Agg = Raw & { id: string; name: string | null; campaign_name: string | null; adset_name: string | null; campaign_id: string | null; adset_id: string | null };
   const aggAt = (level: string, a: string, b: string, nameCol: string) =>
     sql.query<Agg>(
-      `select object_id as id, max(${nameCol}) as name, max(campaign_name) as campaign_name, max(adset_name) as adset_name, ${AGG}
+      `select object_id as id, max(${nameCol}) as name, max(campaign_name) as campaign_name, max(adset_name) as adset_name, max(campaign_id) as campaign_id, max(adset_id) as adset_id, ${AGG}
          from meta_insights_daily where client_id = $1 and level = $2 and date between $3 and $4
         group by object_id having sum(spend) > 0 or sum(impressions) > 0 order by sum(spend) desc`,
       [clientId, level, a, b],
@@ -87,6 +87,8 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
         name: o?.name || x.name || x.id,
         campaign_name: level === "campaign" ? null : x.campaign_name,
         adset_name: level === "ad" ? x.adset_name : null,
+        campaign_id: x.campaign_id,
+        adset_id: x.adset_id,
         status: o?.status ?? null,
         effective_status: o?.effective_status ?? null,
         config: cfg(o?.config),

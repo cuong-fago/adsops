@@ -23,6 +23,8 @@ export type MetaRow = MetaMetrics & {
   name: string;
   campaign_name?: string | null;
   adset_name?: string | null;
+  campaign_id?: string | null;
+  adset_id?: string | null;
   /** From meta_objects (structure sync); null when not synced yet. */
   status?: string | null;
   effective_status?: string | null;
