@@ -40,6 +40,13 @@ const AGG = `sum(spend) as spend, sum(impressions) as impressions, sum(clicks) a
 
 export async function readMetaAnalytics(clientId: string, start: string, end: string, withPrev: boolean): Promise<MetaAnalytics> {
   const sql = await getSql();
+  const days = Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1;
+  const prevRange = withPrev ? { start: addDaysYmd(start, -days), end: addDaysYmd(start, -1) } : null;
+  const { metaHistoryFrom } = await import("./meta-ads.server.ts");
+  const historyFrom = await metaHistoryFrom(clientId).catch(() => null);
+  // Covered = Meta was actually asked for every day of the previous period (not "min date with spend").
+  const prevCovered = prevRange ? Boolean(historyFrom && historyFrom <= prevRange.start) : null;
+  const usePrev = prevRange && prevCovered ? prevRange : null;
   const sum = async (a: string, b: string) =>
     (await sql.query<Raw>(`select ${AGG} from meta_insights_daily where client_id = $1 and level = 'account' and date between $2 and $3`, [clientId, a, b]))[0];
   const daily = await sql.query<Raw & { date: unknown }>(
@@ -56,16 +63,25 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
     if (typeof v === "string") { try { return JSON.parse(v) as { [k: string]: Json }; } catch { return null; } }
     return v as { [k: string]: Json };
   };
-  const rowsAt = async (level: "campaign" | "adset" | "ad"): Promise<MetaRow[]> => {
-    const nameCol = level === "campaign" ? "campaign_name" : level === "adset" ? "adset_name" : "ad_name";
-    const r = await sql.query<Raw & { id: string; name: string | null; campaign_name: string | null; adset_name: string | null }>(
+  type Agg = Raw & { id: string; name: string | null; campaign_name: string | null; adset_name: string | null };
+  const aggAt = (level: string, a: string, b: string, nameCol: string) =>
+    sql.query<Agg>(
       `select object_id as id, max(${nameCol}) as name, max(campaign_name) as campaign_name, max(adset_name) as adset_name, ${AGG}
          from meta_insights_daily where client_id = $1 and level = $2 and date between $3 and $4
-        group by object_id order by sum(spend) desc`,
-      [clientId, level, start, end],
+        group by object_id having sum(spend) > 0 or sum(impressions) > 0 order by sum(spend) desc`,
+      [clientId, level, a, b],
     );
-    return r.map((x) => {
+  const rowsAt = async (level: "campaign" | "adset" | "ad"): Promise<MetaRow[]> => {
+    const nameCol = level === "campaign" ? "campaign_name" : level === "adset" ? "adset_name" : "ad_name";
+    const r = await aggAt(level, start, end, nameCol);
+    const prevRows = usePrev ? await aggAt(level, usePrev.start, usePrev.end, nameCol) : null;
+    const prevBy = new Map((prevRows || []).map((x) => [x.id, x]));
+    const curIds = new Set(r.map((x) => x.id));
+    const gone = (prevRows || []).filter((x) => !curIds.has(x.id));
+    return [...r, ...gone].map((x) => {
       const o = objBy.get(`${level}:${x.id}`);
+      const isGone = !curIds.has(x.id);
+      const pv = prevBy.get(x.id);
       return {
         id: x.id,
         name: o?.name || x.name || x.id,
@@ -74,7 +90,8 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
         status: o?.status ?? null,
         effective_status: o?.effective_status ?? null,
         config: cfg(o?.config),
-        ...metrics(x),
+        ...(isGone ? metrics(undefined) : metrics(x)),
+        ...(usePrev ? { prev: pv ? metrics(pv) : null, tag: isGone ? ("gone" as const) : pv ? null : ("new" as const) } : {}),
       };
     });
   };
@@ -82,8 +99,6 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
     const s = o.pulled_at ? (o.pulled_at instanceof Date ? o.pulled_at.toISOString() : String(o.pulled_at)) : null;
     return s && (!m || s > m) ? s : m;
   }, null);
-  const days = Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1;
-  const prevRange = withPrev ? { start: addDaysYmd(start, -days), end: addDaysYmd(start, -1) } : null;
   const span = (await sql.query<{ a: unknown; b: unknown }>(`select min(date) as a, max(date) as b from meta_insights_daily where client_id = $1 and level = 'account'`, [clientId]))[0];
   const st = (await sql.query<{ account_status: number | null; checked_at: unknown; error: string | null; currency: string | null }>(
     `select account_status, checked_at, error, currency from meta_account_state where client_id = $1`, [clientId],
@@ -95,8 +110,10 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
     data_through: iso(span?.b),
     warehouse_start: iso(span?.a),
     totals: metrics(await sum(start, end)),
-    prev: prevRange ? metrics(await sum(prevRange.start, prevRange.end)) : null,
+    prev: usePrev ? metrics(await sum(usePrev.start, usePrev.end)) : null,
     prev_range: prevRange,
+    prev_covered: prevCovered,
+    history_from: historyFrom,
     daily: daily.map((d) => ({ date: iso(d.date) as string, ...metrics(d) })),
     campaigns: await rowsAt("campaign"),
     adsets: await rowsAt("adset"),
