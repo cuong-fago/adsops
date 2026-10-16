@@ -31,16 +31,21 @@ const BID_VI: Record<string, string> = {
   LOWEST_COST_WITH_MIN_ROAS: "ROAS tối thiểu", TARGET_COST: "Chi phí mục tiêu",
 };
 const CTA_VI: Record<string, string> = {
-  LEARN_MORE: "Tìm hiểu thêm", SIGN_UP: "Đăng ký", CONTACT_US: "Liên hệ", MESSAGE_PAGE: "Gửi tin nhắn", SEND_MESSAGE: "Gửi tin nhắn",
-  WHATSAPP_MESSAGE: "Gửi WhatsApp", CALL_NOW: "Gọi ngay", SHOP_NOW: "Mua ngay", BOOK_TRAVEL: "Đặt ngay", GET_QUOTE: "Nhận báo giá",
-  APPLY_NOW: "Đăng ký ngay", SUBSCRIBE: "Đăng ký theo dõi", DOWNLOAD: "Tải xuống", GET_OFFER: "Nhận ưu đãi", ORDER_NOW: "Đặt hàng",
-  LIKE_PAGE: "Thích trang", WATCH_MORE: "Xem thêm", NO_BUTTON: "Không nút", GET_DIRECTIONS: "Chỉ đường", BUY_NOW: "Mua ngay",
+  LEARN_MORE: "Tìm hiểu thêm", BOOK_TRAVEL: "Đặt ngay", BOOK_NOW: "Đặt ngay", SHOP_NOW: "Mua ngay", BUY_NOW: "Mua ngay",
+  SIGN_UP: "Đăng ký", CONTACT_US: "Liên hệ", MESSAGE_PAGE: "Gửi tin nhắn", SEND_MESSAGE: "Gửi tin nhắn",
+  INSTAGRAM_MESSAGE: "Gửi tin nhắn", WHATSAPP_MESSAGE: "Gửi tin nhắn", CALL_NOW: "Gọi ngay", APPLY_NOW: "Ứng tuyển",
+  GET_OFFER: "Nhận ưu đãi", SUBSCRIBE: "Đăng ký theo dõi", DOWNLOAD: "Tải xuống", WATCH_MORE: "Xem thêm", NO_BUTTON: "Không có nút",
+  GET_QUOTE: "Nhận báo giá", ORDER_NOW: "Đặt hàng", LIKE_PAGE: "Thích trang", GET_DIRECTIONS: "Chỉ đường",
+  VISIT_PROFILE: "Xem trang cá nhân", SEE_MORE: "Xem thêm", CONTACT: "Liên hệ", SEND_UPDATES: "Nhận cập nhật",
 };
+/** Platform note for message CTAs. */
+const CTA_NOTE: Record<string, string> = { MESSAGE_PAGE: "Messenger", SEND_MESSAGE: "Messenger", INSTAGRAM_MESSAGE: "Instagram", WHATSAPP_MESSAGE: "WhatsApp" };
+const humanize = (s: string) => s.toLowerCase().split("_").map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(" ");
 const PLATFORM_VI: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", audience_network: "Audience Network", messenger: "Messenger", threads: "Threads" };
 const lab = (m: Record<string, string>, v: unknown): string | null => { const s = str(v); return s ? m[s] || s : null; };
 export const objectiveVi = (v: unknown) => lab(OBJECTIVE_VI, v);
 export const statusVi = (v: unknown) => lab(STATUS_VI, v);
-export const ctaVi = (v: unknown) => lab(CTA_VI, v);
+export const ctaVi = (v: unknown): string | null => { const s = str(v); return s ? CTA_VI[s] || humanize(s) : null; };
 
 /** Graph budgets are in the currency's minor unit; VND (and other zero-decimal currencies) have none. */
 const ZERO_DEC = new Set(["VND", "JPY", "KRW", "IDR", "CLP", "COP", "HUF", "ISK", "PYG", "TWD"]);
@@ -180,25 +185,34 @@ export type CreativeView = {
   thumb: string | null;
   body: string | null;
   title: string | null;
+  /** Vietnamese CTA label; null = Meta gave no CTA. */
   cta: string | null;
+  cta_note: string | null;
+  link: string | null;
   post_url: string | null;
   preview_url: string | null;
 };
-/** Creative fields with fallbacks into object_story_spec / asset_feed_spec. */
+/** Creative fields with fallbacks into object_story_spec / asset_feed_spec (dynamic creative / Advantage+). */
 export function creativeOf(cfgIn: unknown): CreativeView {
   const cfg = obj(cfgIn);
   const c = obj(cfg?.creative);
   const oss = obj(c?.object_story_spec);
   const link = obj(oss?.link_data);
   const video = obj(oss?.video_data);
+  const photo = obj(oss?.photo_data);
   const feed = obj(c?.asset_feed_spec);
-  const firstText = (v: unknown) => str(obj(arr(v)[0])?.text);
+  const firstText = (v: unknown) => arr(v).map((x) => str(obj(x)?.text)?.trim()).find((x) => x) || null;
   const story = str(c?.effective_object_story_id);
+  const ctaType =
+    str(c?.call_to_action_type) || str(obj(link?.call_to_action)?.type) || str(obj(video?.call_to_action)?.type) || str(arr(feed?.call_to_action_types)[0]);
+  const clean = (s: string | null) => (s ? s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim() || null : null);
   return {
     thumb: str(c?.thumbnail_url) || str(c?.image_url) || str(video?.image_url) || str(link?.picture),
-    body: str(c?.body) || str(link?.message) || str(video?.message) || firstText(feed?.bodies),
-    title: str(c?.title) || str(link?.name) || str(video?.title) || firstText(feed?.titles),
-    cta: ctaVi(c?.call_to_action_type) || ctaVi(obj(link?.call_to_action)?.type) || ctaVi(obj(video?.call_to_action)?.type) || ctaVi(arr(feed?.call_to_action_types)[0]),
+    body: clean(str(c?.body) || str(link?.message) || str(video?.message) || str(photo?.caption) || firstText(feed?.bodies)),
+    title: clean(str(c?.title) || str(link?.name) || str(video?.title) || firstText(feed?.titles)),
+    cta: ctaType ? ctaVi(ctaType) : null,
+    cta_note: ctaType ? CTA_NOTE[ctaType] || null : null,
+    link: str(link?.link) || str(obj(obj(video?.call_to_action)?.value)?.link) || str(obj(arr(feed?.link_urls)[0])?.website_url),
     post_url: story ? `https://www.facebook.com/${story}` : null,
     preview_url: str(cfg?.preview_shareable_link),
   };

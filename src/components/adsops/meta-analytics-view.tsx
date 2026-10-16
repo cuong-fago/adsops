@@ -48,6 +48,11 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
   const tx = L[lang];
   const [days, setDays] = useState<number>(30);
   const [compare, setCompare] = useState(false);
+  const [adFilter, setAdFilter] = useState<AdFilter>({ campaign: "", adset: "" });
+  const pickAds = (f: AdFilter) => {
+    setAdFilter(f);
+    if (typeof document !== "undefined") document.getElementById("meta-ads-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const [data, setData] = useState<MetaAnalytics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,6 +153,7 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
               { head: "Trạng thái", cell: (r) => <StatusDot s={r.effective_status || r.status} /> },
               { head: "Loại mua", cell: (r) => campaignMeta(r.config).buying_type },
               { head: "Ngân sách", cell: (r) => budgetText(r, cur, lang) },
+              { head: "Quảng cáo", cell: (r) => <PickAds onClick={() => pickAds({ campaign: r.id, adset: "" })} /> },
             ]}
           />
           <RowsTable
@@ -161,6 +167,7 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
               { head: "Trạng thái", cell: (r) => <StatusDot s={r.effective_status || r.status} /> },
               { head: "Nhắm mục tiêu", cell: (r) => adsetSummary(r.config, cur, (v) => fmtMoney(lang, v, cur)).short, muted: true },
               { head: "Ngân sách", cell: (r) => budgetText(r, cur, lang) },
+              { head: "Quảng cáo", cell: (r) => <PickAds onClick={() => pickAds({ campaign: r.campaign_id || "", adset: r.id })} /> },
             ]}
             expand={(r) => (
               <>
@@ -172,7 +179,7 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
               </>
             )}
           />
-          <AdsTable rows={data.ads} fmt={fmt} tx={tx} compare={Boolean(showPrev)} />
+          <AdsTable rows={data.ads} campaigns={data.campaigns} adsets={data.adsets} filter={adFilter} setFilter={setAdFilter} fmt={fmt} tx={tx} compare={Boolean(showPrev)} />
           {!data.structure_pulled_at ? <p className="text-xs text-muted">Chưa kéo cấu trúc chiến dịch (mục tiêu, nhắm mục tiêu, mẫu quảng cáo). Bấm “Kiểm tra lại” hoặc chờ lần đồng bộ hằng ngày.</p> : null}
         </>
       )}
@@ -393,13 +400,95 @@ function RowsTable({
   );
 }
 
-function AdsTable({ rows, fmt, tx, compare = false }: { rows: MetaRow[]; fmt: Fmt; tx: (typeof L)[Lang]; compare?: boolean }) {
-  const cols = colsFor(rows);
-  const { sorted, sort, click } = useSorted(rows, compare);
+type AdFilter = { campaign: string; adset: string };
+
+function PickAds({ onClick }: { onClick: () => void }) {
   return (
-    <Card className="overflow-hidden">
-      <p className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">Quảng cáo <span className="font-normal text-muted">({rows.length})</span></p>
-      {rows.length ? (
+    <button type="button" onClick={onClick} className="text-xs font-medium text-accent hover:underline">
+      Xem quảng cáo
+    </button>
+  );
+}
+
+const SELECT = "h-9 min-w-0 max-w-[22rem] rounded-lg border border-line bg-paper px-2 text-sm text-ink hover:border-line-strong";
+
+function AdBody({ c }: { c: ReturnType<typeof creativeOf> }) {
+  const [full, setFull] = useState(false);
+  const long = (c.body?.length || 0) > 160 || (c.body?.split("\n").length || 0) > 3;
+  if (!c.title && !c.body) return null;
+  return (
+    <div className="w-[22rem]">
+      {c.title ? <p className={cn("font-medium text-ink", !full && "line-clamp-2")} title={c.title}>{c.title}</p> : null}
+      {c.body ? <p className={cn("whitespace-pre-line break-words text-muted", !full && "line-clamp-3")}>{c.body}</p> : null}
+      {full && c.link ? (
+        <a href={c.link} target="_blank" rel="noreferrer" className="mt-1 block break-all text-xs text-accent hover:underline">{c.link}</a>
+      ) : null}
+      {long || c.link ? (
+        <button type="button" onClick={() => setFull((v) => !v)} aria-expanded={full} className="mt-1 text-xs font-medium text-accent hover:underline">
+          {full ? "Thu gọn" : "Xem đầy đủ"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function AdsTable({
+  rows, campaigns, adsets, filter, setFilter, fmt, tx, compare = false,
+}: {
+  rows: MetaRow[];
+  campaigns: MetaRow[];
+  adsets: MetaRow[];
+  filter: AdFilter;
+  setFilter: (f: AdFilter) => void;
+  fmt: Fmt;
+  tx: (typeof L)[Lang];
+  compare?: boolean;
+}) {
+  const campaignOpts = useMemo(() => [...campaigns].sort((a, b) => a.name.localeCompare(b.name, "vi")), [campaigns]);
+  const adsetOpts = useMemo(
+    () => [...adsets].filter((a) => !filter.campaign || a.campaign_id === filter.campaign).sort((a, b) => a.name.localeCompare(b.name, "vi")),
+    [adsets, filter.campaign],
+  );
+  const shown = useMemo(
+    () => rows.filter((r) => (!filter.campaign || r.campaign_id === filter.campaign) && (!filter.adset || r.adset_id === filter.adset)),
+    [rows, filter],
+  );
+  const cols = colsFor(shown);
+  const { sorted, sort, click } = useSorted(shown, compare);
+  const filtered = Boolean(filter.campaign || filter.adset);
+  return (
+    <Card id="meta-ads-table" className="overflow-hidden scroll-mt-4">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+        <p className="mr-2 text-sm font-semibold text-ink">
+          Quảng cáo <span className="font-normal text-muted">({filtered ? `${shown.length}/${rows.length}` : rows.length})</span>
+        </p>
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          Chiến dịch
+          <select className={SELECT} value={filter.campaign} onChange={(e) => setFilter({ campaign: e.target.value, adset: "" })}>
+            <option value="">Tất cả</option>
+            {campaignOpts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          Nhóm quảng cáo
+          <select
+            className={SELECT}
+            value={filter.adset}
+            onChange={(e) => {
+              const id = e.target.value;
+              const a = adsets.find((x) => x.id === id);
+              setFilter({ campaign: id && a?.campaign_id ? a.campaign_id : filter.campaign, adset: id });
+            }}
+          >
+            <option value="">Tất cả</option>
+            {adsetOpts.map((a) => <option key={a.id} value={a.id}>{filter.campaign ? a.name : `${a.name} — ${a.campaign_name || ""}`}</option>)}
+          </select>
+        </label>
+        {filtered ? (
+          <button type="button" onClick={() => setFilter({ campaign: "", adset: "" })} className="text-xs font-medium text-accent hover:underline">Bỏ lọc</button>
+        ) : null}
+      </div>
+      {shown.length ? (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-inset text-xs text-muted">
@@ -421,20 +510,25 @@ function AdsTable({ rows, fmt, tx, compare = false }: { rows: MetaRow[]; fmt: Fm
                         <img src={c.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="size-16 rounded-md border border-line object-cover" />
                       ) : <div className="size-16 rounded-md bg-inset" />}
                     </td>
-                    <td className="sticky left-24 z-10 min-w-[12rem] max-w-[16rem] bg-paper px-3 py-2 shadow-[inset_-1px_0_0_var(--color-line)]">
-                      <p className="flex min-w-0 items-center font-medium text-ink" title={r.name}><span className="truncate">{r.name}</span><RowTag tag={r.tag} /></p>
-                      <p className="truncate text-xs text-muted" title={r.adset_name || ""}>{r.adset_name || ""}</p>
+                    <td className="sticky left-24 z-10 w-[16rem] min-w-[16rem] max-w-[16rem] bg-paper px-3 py-2 shadow-[inset_-1px_0_0_var(--color-line)]">
+                      <p className="break-words font-medium text-ink">{r.name}<RowTag tag={r.tag} /></p>
+                      {r.adset_name ? <p className="mt-0.5 break-words text-xs text-muted"><span className="text-subtle">Nhóm:</span> {r.adset_name}</p> : null}
+                      {r.campaign_name ? <p className="break-words text-xs text-muted"><span className="text-subtle">Chiến dịch:</span> {r.campaign_name}</p> : null}
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <StatusDot s={r.effective_status || r.status} />
                         {c.post_url ? <a href={c.post_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-xs font-medium text-accent hover:underline">Bài viết <ExternalLink className="size-3" /></a> : null}
                         {c.preview_url ? <a href={c.preview_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-xs font-medium text-accent hover:underline">Xem trước <ExternalLink className="size-3" /></a> : null}
                       </div>
                     </td>
-                    <td className="min-w-[16rem] max-w-[26rem] px-3 py-2">
-                      {c.title ? <p className="line-clamp-1 font-medium text-ink" title={c.title}>{c.title}</p> : null}
-                      {c.body ? <p className="line-clamp-3 whitespace-pre-line text-muted" title={c.body}>{c.body}</p> : null}
+                    <td className="px-3 py-2"><AdBody c={c} /></td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      {c.cta ? (
+                        <>
+                          <span className="text-ink">{c.cta}</span>
+                          {c.cta_note ? <span className="block text-xs text-muted">{c.cta_note}</span> : null}
+                        </>
+                      ) : r.config ? <span className="text-muted">Không có nút</span> : null}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-ink">{c.cta || ""}</td>
                     {cols.map((k) => <MetricCell key={k} r={r} k={k} fmt={fmt} compare={compare} />)}
                   </tr>
                 );
@@ -443,7 +537,7 @@ function AdsTable({ rows, fmt, tx, compare = false }: { rows: MetaRow[]; fmt: Fm
           </table>
         </div>
       ) : (
-        <p className="px-4 py-6 text-sm text-muted">{tx.none}</p>
+        <p className="px-4 py-6 text-sm text-muted">{rows.length ? "Không có quảng cáo khớp bộ lọc." : tx.none}</p>
       )}
     </Card>
   );
