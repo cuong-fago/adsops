@@ -123,42 +123,94 @@ export async function syncMetaAccounts(accounts: MetaAccount[]): Promise<{ ids: 
 
 const INSIGHT_FIELDS = "spend,impressions,clicks,actions";
 
-/** Daily insights for one account at account / campaign / adset level over the last INSIGHT_DAYS days. */
-export async function syncMetaInsights(clientId: string, tz = "Asia/Ho_Chi_Minh"): Promise<{ rows: number; through: string }> {
+export const HISTORY_DAYS = 182;
+export const BACKFILL_CHUNK_DAYS = 30;
+const INS_COLS = "client_id, level, object_id, date, campaign_id, campaign_name, adset_id, adset_name, spend, impressions, clicks, leads, messages, actions, ad_id, ad_name";
+
+/**
+ * Daily insights for one account at account / campaign / adset / ad level for [since, until]
+ * (default: the recent INSIGHT_DAYS window). Replaces stored rows in that range; batched inserts.
+ * Lowers meta_account_state.history_from when the range reaches further back.
+ */
+export async function syncMetaInsights(
+  clientId: string,
+  tz = "Asia/Ho_Chi_Minh",
+  range?: { since: string; until: string },
+): Promise<{ rows: number; through: string }> {
   const acc = fbAccountId(clientId);
-  const until = ymdInTz(tz);
-  const since = addDaysYmd(until, -(INSIGHT_DAYS - 1));
-  const range = JSON.stringify({ since, until });
+  const today = ymdInTz(tz);
+  const until = range?.until || today;
+  const since = range?.since || addDaysYmd(today, -(INSIGHT_DAYS - 1));
+  const timeRange = JSON.stringify({ since, until });
   const levels: Array<{ level: "account" | "campaign" | "adset" | "ad"; fields: string }> = [
     { level: "account", fields: INSIGHT_FIELDS },
     { level: "campaign", fields: `campaign_id,campaign_name,${INSIGHT_FIELDS}` },
     { level: "adset", fields: `campaign_id,campaign_name,adset_id,adset_name,${INSIGHT_FIELDS}` },
     { level: "ad", fields: `campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,${INSIGHT_FIELDS}` },
   ];
+  // Fetch all levels first so a failed GET never leaves a half-replaced range.
+  const fetched: Array<{ level: string; data: Record<string, unknown>[] }> = [];
+  for (const { level, fields } of levels) {
+    fetched.push({ level, data: await graphGet(`act_${acc}/insights`, { level, fields, time_increment: "1", time_range: timeRange, limit: "500" }, 60) });
+  }
   const sql = await getSql();
   let total = 0;
-  for (const { level, fields } of levels) {
-    const data = await graphGet(`act_${acc}/insights`, { level, fields, time_increment: "1", time_range: range, limit: "500" }, 40);
+  for (const { level, data } of fetched) {
     await sql.query(`delete from meta_insights_daily where client_id = $1 and level = $2 and date between $3 and $4`, [clientId, level, since, until]);
+    const rows: unknown[][] = [];
     for (const r of data) {
       const actions = (Array.isArray(r.actions) ? r.actions : []) as Action[];
       const objectId = level === "account" ? acc : level === "campaign" ? String(r.campaign_id || "") : level === "adset" ? String(r.adset_id || "") : String(r.ad_id || "");
-      if (!objectId) continue;
+      if (!objectId || !r.date_start) continue;
+      rows.push([clientId, level, objectId, String(r.date_start), r.campaign_id ? String(r.campaign_id) : null, r.campaign_name ? String(r.campaign_name) : null,
+        r.adset_id ? String(r.adset_id) : null, r.adset_name ? String(r.adset_name) : null, num(r.spend), num(r.impressions), num(r.clicks),
+        leadsOf(actions), messagesOf(actions), JSON.stringify(actions), r.ad_id ? String(r.ad_id) : null, r.ad_name ? String(r.ad_name) : null]);
+    }
+    for (let i = 0; i < rows.length; i += 200) {
+      const batch = rows.slice(i, i + 200);
+      const params: unknown[] = [];
+      const values = batch.map((row) => `(${row.map((v) => { params.push(v); return `$${params.length}`; }).join(",")})`).join(",");
       await sql.query(
-        `insert into meta_insights_daily (client_id, level, object_id, date, campaign_id, campaign_name, adset_id, adset_name, spend, impressions, clicks, leads, messages, actions, ad_id, ad_name)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        `insert into meta_insights_daily (${INS_COLS}) values ${values}
          on conflict (client_id, level, object_id, date) do update set spend = excluded.spend, impressions = excluded.impressions,
            clicks = excluded.clicks, leads = excluded.leads, messages = excluded.messages, actions = excluded.actions,
            campaign_name = excluded.campaign_name, adset_name = excluded.adset_name, ad_name = excluded.ad_name, pulled_at = now()`,
-        [clientId, level, objectId, String(r.date_start || ""), r.campaign_id ? String(r.campaign_id) : null, r.campaign_name ? String(r.campaign_name) : null,
-          r.adset_id ? String(r.adset_id) : null, r.adset_name ? String(r.adset_name) : null, num(r.spend), num(r.impressions), num(r.clicks),
-          leadsOf(actions), messagesOf(actions), JSON.stringify(actions), r.ad_id ? String(r.ad_id) : null, r.ad_name ? String(r.ad_name) : null],
+        params,
       );
-      total += 1;
+      total += batch.length;
     }
   }
-  await sql.query(`update meta_account_state set insights_through = $2 where client_id = $1`, [clientId, until]).catch(() => null);
+  if (!range) await sql.query(`update meta_account_state set insights_through = $2 where client_id = $1`, [clientId, until]).catch(() => null);
+  await sql.query(
+    `update meta_account_state set history_from = least(coalesce(history_from, $2::date), $2::date) where client_id = $1`,
+    [clientId, since],
+  ).catch(() => null);
   return { rows: total, through: until };
+}
+
+/** Earliest fetched date (history_from, else the recent window start). */
+export async function metaHistoryFrom(clientId: string, tz = "Asia/Ho_Chi_Minh"): Promise<string> {
+  const sql = await getSql();
+  const r = await sql.query<{ h: unknown }>(`select history_from as h from meta_account_state where client_id = $1`, [clientId]).catch(() => []);
+  const h = r[0]?.h;
+  const s = h ? (h instanceof Date ? h.toISOString() : String(h)).slice(0, 10) : null;
+  return s || addDaysYmd(ymdInTz(tz), -(INSIGHT_DAYS - 1));
+}
+
+/** Backfill one or more 30-day chunks older than history_from, down to HISTORY_DAYS (or `target`), while time remains. */
+export async function backfillMeta(clientId: string, tz: string, deadline: number, target?: string): Promise<{ chunks: number; from: string }> {
+  const floor = target || addDaysYmd(ymdInTz(tz), -(HISTORY_DAYS - 1));
+  let from = await metaHistoryFrom(clientId, tz);
+  let chunks = 0;
+  while (from > floor && Date.now() < deadline) {
+    const until = addDaysYmd(from, -1);
+    let since = addDaysYmd(until, -(BACKFILL_CHUNK_DAYS - 1));
+    if (since < floor) since = floor;
+    await syncMetaInsights(clientId, tz, { since, until });
+    from = since;
+    chunks += 1;
+  }
+  return { chunks, from };
 }
 
 /** 10-day spend + budget runway from stored state and account-level daily rows. */
@@ -278,6 +330,19 @@ export async function refreshAllMeta(deadline: number): Promise<{ ok: boolean; a
     }
   };
   await Promise.all([worker(), worker(), worker()]);
+  // History backfill (180 days, 30-day chunks) with whatever time is left; continues next run.
+  let bf = 0;
+  const bfWorker = async () => {
+    while (bf < accounts.length && Date.now() < deadline - 20_000) {
+      const a = accounts[bf++];
+      try {
+        await backfillMeta(`${FB_PREFIX}${a.account_id}`, a.timezone_name, deadline - 20_000);
+      } catch (err) {
+        errors.push(`${a.account_id} lịch sử: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  };
+  await Promise.all([bfWorker(), bfWorker(), bfWorker()]);
   return { ok: errors.length === 0, accounts: accounts.length, done, inserted: inserted.length, errors };
 }
 

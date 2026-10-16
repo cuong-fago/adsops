@@ -27,6 +27,10 @@ export type MetaRow = MetaMetrics & {
   status?: string | null;
   effective_status?: string | null;
   config?: { [k: string]: Json } | null;
+  /** Staff + compare + previous period covered only. Null = no delivery in the previous period. */
+  prev?: MetaMetrics | null;
+  /** "new" = ran only in the current period; "gone" = ran only in the previous period (current metrics blank). */
+  tag?: "new" | "gone" | null;
 };
 export type MetaAnalytics = {
   client_id: string;
@@ -39,6 +43,9 @@ export type MetaAnalytics = {
   /** Staff only (never for client principals). */
   prev: MetaMetrics | null;
   prev_range: { start: string; end: string } | null;
+  /** False when compare was asked but stored history does not reach the previous period start. */
+  prev_covered: boolean | null;
+  history_from: string | null;
   daily: MetaDay[];
   campaigns: MetaRow[];
   adsets: MetaRow[];
