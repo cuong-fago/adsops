@@ -1,8 +1,10 @@
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { alertBadge, type MetaFocus } from "@/components/adsops/meta-alerts-card";
+import type { MetaAlert } from "@/lib/adsops/meta-alerts.types";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowDown, ArrowUp, BarChart3, ChevronRight, Columns3, ExternalLink } from "lucide-react";
 import { STATUS_ORDER, adsetSummary, budgetOf, campaignMeta, creativeOf, statusVi } from "@/lib/adsops/meta-structure";
-import { readMetaAnalyticsFn, type MetaAnalytics, type MetaMetrics, type MetaRow } from "@/lib/adsops/meta-ads.functions";
+import { readMetaAlertsFn, readMetaAnalyticsFn, type MetaAnalytics, type MetaMetrics, type MetaRow } from "@/lib/adsops/meta-ads.functions";
 import { fmtDay, fmtMoney, fmtMoneyShort, fmtNum, fmtPct, fmtRange } from "@/lib/adsops/client-overview";
 import type { Lang } from "@/lib/adsops/client-i18n";
 import { cn } from "@/lib/cn";
@@ -81,11 +83,38 @@ const L = {
 } as const;
 
 /** Read-only Facebook (Meta) analytics: KPIs, daily spend, campaign + ad set tables. */
-export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { clientId: string; allowCompare: boolean; lang?: Lang }) {
+export function MetaAnalyticsView({
+  clientId, allowCompare, lang = "vi", staffAlerts = false, focus = null, onFocusDone,
+}: {
+  clientId: string;
+  allowCompare: boolean;
+  lang?: Lang;
+  /** Staff with Cảnh báo: fatigue / frequency / learning badges on ad set + ad rows. */
+  staffAlerts?: boolean;
+  /** Jump target from Cảnh báo (opens on 7 ngày, filters the ads table, scrolls to the row). */
+  focus?: MetaFocus | null;
+  onFocusDone?: () => void;
+}) {
   const tx = L[lang];
-  const [days, setDays] = useState<number>(30);
+  const [days, setDays] = useState<number>(focus ? 7 : 30);
+  const [alerts, setAlerts] = useState<Map<string, MetaAlert[]>>(new Map());
+  useEffect(() => {
+    if (!staffAlerts) return;
+    let live = true;
+    readMetaAlertsFn({ data: { clientId } })
+      .then((r) => {
+        if (!live) return;
+        const m = new Map<string, MetaAlert[]>();
+        for (const a of r.alerts) { const k = `${a.level}:${a.object_id}`; m.set(k, [...(m.get(k) || []), a]); }
+        setAlerts(m);
+      })
+      .catch(() => { /* badges are best-effort */ });
+    return () => { live = false; };
+  }, [clientId, staffAlerts]);
+  const badgesFor = (level: "adset" | "ad") => (staffAlerts ? (r: MetaRow) => <AlertBadges list={alerts.get(`${level}:${r.id}`)} /> : undefined);
+  const [hl, setHl] = useState<string | null>(null);
   const [compare, setCompare] = useState(false);
-  const [adFilter, setAdFilter] = useState<AdFilter>({ campaign: "", adset: "" });
+  const [adFilter, setAdFilter] = useState<AdFilter>(focus?.level === "ad" ? { campaign: focus.campaignId || "", adset: focus.adsetId || "" } : { campaign: "", adset: "" });
   const pickAds = (f: AdFilter) => {
     setAdFilter(f);
     if (typeof document !== "undefined") document.getElementById("meta-ads-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -107,6 +136,31 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
     return () => { live = false; };
   }, [clientId, range, nonce, allowCompare, compare]);
 
+  // Same account already open: apply the jump target to the current view too.
+  useEffect(() => {
+    if (!focus) return;
+    setDays(7);
+    if (focus.level === "ad") setAdFilter({ campaign: focus.campaignId || "", adset: focus.adsetId || "" });
+  }, [focus]);
+  // Scroll to the focused row once the tables render.
+  useEffect(() => {
+    if (!focus || !data || loading) return;
+    const id = `meta-row-${focus.level}-${focus.id}`;
+    let tries = 0;
+    const seek = () => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setHl(id);
+        window.setTimeout(() => setHl(null), 4000);
+        onFocusDone?.();
+      } else if (++tries < 20) window.setTimeout(seek, 150);
+      else onFocusDone?.();
+    };
+    window.setTimeout(seek, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus, data, loading]);
+
   const cur = data?.currency || "VND";
   const fmt = (k: KpiKey, v: number | null | undefined): string => {
     if (v == null) return "";
@@ -121,6 +175,7 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
 
   return (
     <FreqContext.Provider value={freqCtx}>
+    <HlContext.Provider value={hl}>
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="accent" dot={false}>Facebook</Badge>
@@ -200,6 +255,7 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
           <RowsTable
             title={tx.adsets}
             rows={data.adsets}
+            badges={badgesFor("adset")}
             fmt={fmt}
             tx={tx}
             compare={Boolean(showPrev)}
@@ -220,13 +276,21 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
               </>
             )}
           />
-          <AdsTable rows={data.ads} campaigns={data.campaigns} adsets={data.adsets} filter={adFilter} setFilter={setAdFilter} fmt={fmt} tx={tx} compare={Boolean(showPrev)} />
+          <AdsTable badges={badgesFor("ad")} rows={data.ads} campaigns={data.campaigns} adsets={data.adsets} filter={adFilter} setFilter={setAdFilter} fmt={fmt} tx={tx} compare={Boolean(showPrev)} />
           {!data.structure_pulled_at ? <p className="text-xs text-muted">Chưa kéo cấu trúc chiến dịch (mục tiêu, nhắm mục tiêu, mẫu quảng cáo). Bấm “Kiểm tra lại” hoặc chờ lần đồng bộ hằng ngày.</p> : null}
         </>
       )}
     </div>
+    </HlContext.Provider>
     </FreqContext.Provider>
   );
+}
+
+const HlContext = createContext<string | null>(null);
+
+function AlertBadges({ list }: { list?: MetaAlert[] }) {
+  if (!list?.length) return null;
+  return <span className="ml-1.5 inline-flex flex-wrap gap-1 align-middle">{list.map((a) => alertBadge(a))}</span>;
 }
 
 const FreqContext = createContext(false);
@@ -482,8 +546,9 @@ function StatusChips({ f }: { f: ReturnType<typeof useStatusFilter> }) {
 }
 
 function RowsTable({
-  title, rows, fmt, tx, extra = [], expand, compare = false,
+  title, rows, fmt, tx, extra = [], expand, compare = false, badges,
 }: {
+  badges?: (r: MetaRow) => ReactNode;
   title: string;
   rows: MetaRow[];
   fmt: Fmt;
@@ -495,6 +560,7 @@ function RowsTable({
   const sf = useStatusFilter(rows);
   const { sorted, sort, click } = useSorted(sf.shown, compare);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const hl = useContext(HlContext);
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const cc = useColumnChoice(title === tx.campaigns ? "campaign" : "adset");
   const cols = colsFor(sf.shown, cc.chosen);
@@ -522,15 +588,16 @@ function RowsTable({
             <tbody>
               {sorted.map((r) => (
                 <Fragment key={r.id}>
-                  <tr className="border-t border-line">
+                  <tr id={`meta-row-${title === tx.campaigns ? "campaign" : "adset"}-${r.id}`} className={cn("scroll-mt-24 border-t border-line", hl === `meta-row-${title === tx.campaigns ? "campaign" : "adset"}-${r.id}` && "bg-accent-soft ring-2 ring-inset ring-accent")}>
                     <td className={cn(STICKY, "max-w-[22rem] bg-paper px-4 py-2 text-ink")} title={r.name}>
                       {expand ? (
                         <button type="button" onClick={() => toggle(r.id)} aria-expanded={open.has(r.id)} className="inline-flex max-w-full items-center gap-1 text-left hover:text-accent">
                           <ChevronRight className={cn("size-4 shrink-0 transition-transform", open.has(r.id) && "rotate-90")} />
                           <span className="truncate">{r.name}</span>
                           <RowTag tag={r.tag} />
+                          {badges?.(r)}
                         </button>
-                      ) : <span className="flex min-w-0 items-center"><span className="truncate">{r.name}</span><RowTag tag={r.tag} /></span>}
+                      ) : <span className="flex min-w-0 items-center"><span className="truncate">{r.name}</span><RowTag tag={r.tag} />{badges?.(r)}</span>}
                     </td>
                     {extra.map((e) => (
                       <td key={e.head} className={cn("max-w-[18rem] truncate px-3 py-2", e.muted ? "text-muted" : "text-ink")}>{e.cell(r)}</td>
@@ -590,8 +657,9 @@ function AdBody({ c }: { c: ReturnType<typeof creativeOf> }) {
 }
 
 function AdsTable({
-  rows, campaigns, adsets, filter, setFilter, fmt, tx, compare = false,
+  rows, campaigns, adsets, filter, setFilter, fmt, tx, compare = false, badges,
 }: {
+  badges?: (r: MetaRow) => ReactNode;
   rows: MetaRow[];
   campaigns: MetaRow[];
   adsets: MetaRow[];
@@ -614,6 +682,7 @@ function AdsTable({
   const sf = useStatusFilter(byParent);
   const shown = sf.shown;
   const cc = useColumnChoice("ad");
+  const hl = useContext(HlContext);
   const cols = colsFor(shown, cc.chosen);
   const { sorted, sort, click } = useSorted(shown, compare);
   const filtered = Boolean(filter.campaign || filter.adset || sf.sel.size);
@@ -668,14 +737,14 @@ function AdsTable({
               {sorted.map((r) => {
                 const c = creativeOf(r.config);
                 return (
-                  <tr key={r.id} className="border-t border-line align-top">
+                  <tr key={r.id} id={`meta-row-ad-${r.id}`} className={cn("scroll-mt-24 border-t border-line align-top", hl === `meta-row-ad-${r.id}` && "bg-accent-soft ring-2 ring-inset ring-accent")}>
                     <td className="sticky left-0 z-10 w-24 min-w-24 bg-paper px-4 py-2">
                       {c.thumb ? (
                         <img src={c.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="size-16 rounded-md border border-line object-cover" />
                       ) : <div className="size-16 rounded-md bg-inset" />}
                     </td>
                     <td className="sticky left-24 z-10 w-[16rem] min-w-[16rem] max-w-[16rem] bg-paper px-3 py-2 shadow-[inset_-1px_0_0_var(--color-line)]">
-                      <p className="break-words font-medium text-ink">{r.name}<RowTag tag={r.tag} /></p>
+                      <p className="break-words font-medium text-ink">{r.name}<RowTag tag={r.tag} />{badges?.(r)}</p>
                       {r.adset_name ? <p className="mt-0.5 break-words text-xs text-muted"><span className="text-subtle">Nhóm:</span> {r.adset_name}</p> : null}
                       {r.campaign_name ? <p className="break-words text-xs text-muted"><span className="text-subtle">Chiến dịch:</span> {r.campaign_name}</p> : null}
                       <div className="mt-1 flex flex-wrap items-center gap-2">
