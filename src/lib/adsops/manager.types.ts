@@ -1,6 +1,6 @@
 /** "Bảng điều hành" (manager view): agency dashboard, client health, churn risk. Shared types + documented rules. */
 
-export type Split = { total: number | null; google: number | null; facebook: number | null };
+export type Split = { total: number | null; google: number | null; facebook: number | null; chatgpt: number | null };
 export type Kpis = {
   spend: Split;
   leads: number | null;
@@ -30,7 +30,7 @@ export type ManagerRead = {
   prev_kpis: Kpis;
   new_accounts: AccountRef[];
   stopped_accounts: AccountRef[];
-  trend: { month: string; google: number | null; facebook: number | null }[];
+  trend: { month: string; google: number | null; facebook: number | null; chatgpt: number | null }[];
   top_clients: ClientSpend[];
   movers: ClientSpend[];
   health: HealthRow[];

@@ -180,5 +180,32 @@ export async function withPulledMccClients(
   } catch {
     /* alias column / table missing: skip Facebook */
   }
+  // ChatGPT Ads (OpenAI) accounts synced by openai-ads.server.ts (platform 'openai', id oa_<hex>). Same grant model.
+  if (allowed === "all") {
+    const { seedFromEnv } = await import("./openai-ads.server.ts");
+    await seedFromEnv().catch(() => null);
+  }
+  try {
+    const oa = await sql<{ id: string; display_name: string; external_id: string | null; status: string | null; alias: string | null }>`
+      select id, display_name, external_id, status, alias from ad_accounts where platform = 'openai'
+    `;
+    for (const r of oa) {
+      if (!/^oa_[a-z0-9]+$/.test(r.id)) continue;
+      if (allowed !== "all" && !allowed.has(r.id)) continue;
+      const prev = by.get(r.id);
+      by.set(r.id, {
+        ...(prev || {}),
+        client_id: r.id,
+        display_name: r.display_name || prev?.display_name || r.id,
+        customer_id_dashed: `${r.external_id || r.id} · ChatGPT`,
+        status: r.status || undefined,
+        adapter: "live",
+        alias: (r.alias || "").trim() || prev?.alias || undefined,
+        platform: "openai" as const,
+      });
+    }
+  } catch {
+    /* migration 0028 not applied yet: skip ChatGPT Ads */
+  }
   return { ...dir, clients: [...by.values()] };
 }
