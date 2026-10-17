@@ -607,6 +607,8 @@ export async function pullAnalyticsWarehouse(
     // Account + campaign only. Ad group / keyword / search term are pulled month by
     // month into adsops_analytics_deep (deep-store.server.ts), resumable per request.
     const core = await pullCore(cfg, customerId, start, end);
+    // Per-conversion-action breakdown (separate GAQL: the segment can't mix with clicks / cost). Same window.
+    await (await import("./google-conv-actions.server.ts")).pullConvActionsSafe(cfg, customerId, id, start, end);
     const notes: string[] = [];
     const deep: Deep | null = null;
     const pulledAt = new Date().toISOString();
@@ -703,6 +705,7 @@ export async function refreshWarehouseOnView(
       const days = base?.daily?.account?.length ? RECENT_WINDOW_DAYS : SEED_WINDOW_DAYS;
       const start = addDaysYmd(today, -(days - 1));
       const core = await pullCore(cfg, customerId, start, today);
+      await (await import("./google-conv-actions.server.ts")).pullConvActionsSafe(cfg, customerId, id, start, today);
       const pulledAt = new Date().toISOString();
       const snap = buildSnap({
         clientId: id,
