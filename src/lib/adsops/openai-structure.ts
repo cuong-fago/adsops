@@ -7,12 +7,26 @@ export type OAInfo = {
   details: OADetail[];
   has_image: boolean;
   review: string | null;
+  /** Campaign settings shown as table columns (Ads Manager campaign edit page). null = not returned → "-". */
+  camp: CampFields | null;
+};
+export type CampFields = {
+  billing: string | null;
+  loc_include: string[];
+  loc_exclude: string[];
+  platforms: string | null;
+  tracking: string | null;
+  aud_include: string[];
+  aud_exclude: string[];
+  budget: string | null;
+  start: string | null;
+  end: string | null;
 };
 
 const MAP: Record<string, Record<string, string>> = {
   objective: { conversions: "Lượt chuyển đổi", clicks: "Lượt click", traffic: "Lưu lượng truy cập", awareness: "Nhận biết", impressions: "Lượt hiển thị", reach: "Phạm vi tiếp cận", sales: "Doanh số", leads: "Khách hàng tiềm năng" },
   bidding_type: { conversions: "Tối ưu chuyển đổi", clicks: "Tối ưu click", impressions: "Tối ưu hiển thị" },
-  billing: { click: "Theo click (CPC)", impression: "Theo hiển thị (CPM)", conversion: "Theo chuyển đổi" },
+  billing: { click: "Lượt nhấp (CPC)", impression: "Theo hiển thị (CPM)", conversion: "Theo chuyển đổi" },
   strategy: { maximize_conversions: "Tối đa hoá chuyển đổi", maximize_clicks: "Tối đa hoá click", fixed_bid: "Giá thầu cố định", target_cpa: "CPA mục tiêu", target_cost: "Chi phí mục tiêu", cost_cap: "Giới hạn chi phí", bid_cap: "Giới hạn giá thầu", lowest_cost: "Chi phí thấp nhất", manual: "Thủ công" },
   review: { approved: "Đã duyệt", pending: "Đang duyệt", in_review: "Đang duyệt", rejected: "Bị từ chối", disapproved: "Bị từ chối", needs_changes: "Cần sửa" },
   creative: { chat_card: "Thẻ trong chat", product: "Sản phẩm", product_template: "Mẫu sản phẩm" },
@@ -20,6 +34,32 @@ const MAP: Record<string, Record<string, string>> = {
 };
 const tr = (group: string, v: unknown) => (typeof v === "string" && v ? MAP[group]?.[v] || v : null);
 const isObj = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+const namesOf = (arr: unknown): string[] => (Array.isArray(arr) ? arr.map((x) => (isObj(x) ? String(x.name || x.id || "") : String(x))).filter(Boolean) : []);
+
+function campFields(o: Record<string, unknown>, currency: string): CampFields {
+  const t = isObj(o.targeting) ? o.targeting : {};
+  const loc = isObj(t.locations) ? t.locations : {};
+  const pl = isObj(t.platforms) ? t.platforms : null;
+  const aud = isObj(t.audiences) ? t.audiences : isObj(t.custom_audiences) ? t.custom_audiences : {};
+  const b = isObj(o.budget) ? o.budget : {};
+  const lpc = isObj(o.landing_page_configuration) ? o.landing_page_configuration : null;
+  const tracking = lpc ? String(lpc.tracking_parameters ?? lpc.url_parameters ?? lpc.tracking_template ?? "") || null : null;
+  const budget = [money(b.daily_spend_limit_micros, currency) ? `Hằng ngày ${money(b.daily_spend_limit_micros, currency)}` : null, money(b.lifetime_spend_limit_micros, currency) ? `Trọn đời ${money(b.lifetime_spend_limit_micros, currency)}` : null].filter(Boolean).join(" · ") || null;
+  const incl = pl && Array.isArray(pl.included) ? pl.included : null;
+  return {
+    billing: tr("billing", o.billing_event_type),
+    loc_include: [...namesOf(loc.include), ...namesOf(loc.countries)],
+    loc_exclude: namesOf(loc.exclude),
+    // Ads Manager shows "All platforms" when the campaign has no platform targeting.
+    platforms: incl && incl.length ? incl.map((x) => tr("platform", x) || String(x)).join(", ") : "Tất cả nền tảng",
+    tracking,
+    aud_include: namesOf(aud.include),
+    aud_exclude: namesOf(aud.exclude),
+    budget,
+    start: dt(o.start_time),
+    end: dt(o.end_time),
+  };
+}
 const money = (micros: unknown, cur: string) => (typeof micros === "number" ? `${Math.round(micros / 1_000_000).toLocaleString("vi-VN")}${cur === "VND" ? "đ" : ` ${cur}`}` : null);
 const dt = (v: unknown) => {
   if (v == null || v === "") return null;
@@ -61,7 +101,9 @@ export function infoFor(level: string, raw: unknown, currency: string): OAInfo {
     const b = isObj(o.budget) ? o.budget : {};
     push(out, "Loại (mục tiêu)", kind);
     push(out, "Kiểu đặt giá thầu", tr("bidding_type", o.bidding_type));
-    push(out, "Tính phí", tr("billing", o.billing_event_type));
+    push(out, "Thanh toán", tr("billing", o.billing_event_type));
+    push(out, "Nền tảng đủ điều kiện", campFields(o, currency).platforms);
+    push(out, "Tham số theo dõi", campFields(o, currency).tracking);
     push(out, "Ngân sách / ngày", money(b.daily_spend_limit_micros, currency));
     push(out, "Ngân sách trọn đời", money(b.lifetime_spend_limit_micros, currency));
     push(out, "Bắt đầu", dt(o.start_time));
@@ -99,5 +141,5 @@ export function infoFor(level: string, raw: unknown, currency: string): OAInfo {
     push(out, "Cập nhật", dt(o.updated_at));
     push(out, "Mã nội bộ", typeof o.user_external_id === "string" ? o.user_external_id : null, true);
   }
-  return { kind, bid_strategy: bid, hints, details: out, has_image: r.has_image === true, review };
+  return { kind, bid_strategy: bid, hints, details: out, has_image: r.has_image === true, review, camp: o && level === "campaign" ? campFields(o, currency) : null };
 }
