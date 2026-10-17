@@ -28,10 +28,15 @@ export const readOpenAIViewFn = createServerFn({ method: "POST" })
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
     const st = await sql.query<{ insights_through: unknown }>(`select insights_through from openai_account_state where client_id = $1`, [data.clientId]).catch(() => []);
-    if (!st[0]?.insights_through) {
+    // Re-pull metadata once when any entity still lacks its parent (pre-#79 data, or a new ad group/ad).
+    const orphan = await sql.query<{ n: number }>(
+      `select count(*)::int as n from openai_entities where client_id = $1 and ((level = 'ad' and ad_group_id is null) or (level = 'ad_group' and campaign_id is null))`,
+      [data.clientId],
+    ).catch(() => [{ n: 0 }]);
+    if (!st[0]?.insights_through || (orphan[0]?.n ?? 0) > 0) {
       // Never pulled yet: one read-only pull now (locked so parallel viewers don't stampede).
       const { acquireLock } = await import("./warehouse.server");
-      if (await acquireLock(`${data.clientId}:oa-first`, 120)) {
+      if (await acquireLock(`${data.clientId}:oa-first`, 900)) {
         await (await import("./openai-ads.server")).refreshOpenAIAccount(data.clientId).catch(() => null);
       }
     }
