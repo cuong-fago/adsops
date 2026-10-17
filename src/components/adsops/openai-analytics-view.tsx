@@ -66,6 +66,7 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
   const [compare, setCompare] = useState(false);
   const [status, setStatus] = useState<StatusPick>("all");
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [detail, setDetail] = useState<string | null>(null);
   const [data, setData] = useState<OAView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,36 +93,58 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
   const chart = (data?.daily || []).map((d) => ({ d: fmtDay(d.date).slice(0, 5), "Chi tiêu": d.spend, "Hiển thị": d.impressions }));
   const hasSpend = (data?.daily || []).some((d) => (d.spend ?? 0) > 0);
 
+  const levelOf = (depth: number) => (depth === 0 ? "campaign" : depth === 1 ? "ad_group" : "ad");
   const Row = ({ n, depth, kids, label }: { n: OANode; depth: number; kids?: number; label: string }) => {
     const id = `${depth}:${n.id}`;
+    const isOpen = detail === id;
+    const info = n.info;
+    const dash = <span className="text-muted">-</span>;
     return (
-      <tr className="border-t border-line">
-        <td className="py-1.5 pr-2" style={{ paddingLeft: 8 + depth * 18 }}>
-          <div className="flex items-start gap-1">
-            {kids ? (
-              <button type="button" onClick={() => toggle(id)} className="mt-0.5 text-muted hover:text-ink" aria-label="Mở / đóng">
-                <ChevronRight className={cn("size-4 transition-transform", open.has(id) && "rotate-90")} />
-              </button>
-            ) : <span className="inline-block w-4" />}
-            <div className="min-w-0">
-              <p className="truncate font-medium text-ink" title={n.name || n.id}>{n.name || n.id || "—"}</p>
-              <p className="text-xs text-muted">{label}{n.status ? ` · ${statusVi(n.status)}` : ""}{kids ? ` · ${kids}` : ""}</p>
-              {n.title ? <p className="truncate text-xs text-ink" title={n.body || n.title}>{n.title}</p> : null}
-              {n.link ? <a href={n.link} target="_blank" rel="noopener noreferrer" className="block max-w-[360px] truncate text-xs text-accent hover:underline" title={n.link}>{n.link.replace(/^https?:\/\//, "").split("?")[0]}</a> : null}
+      <>
+        <tr className={cn("cursor-pointer border-t border-line hover:bg-inset/50", isOpen && "bg-accent-soft/40")} onClick={() => setDetail(isOpen ? null : id)} title="Bấm để xem chi tiết">
+          <td className="sticky left-0 z-10 bg-paper py-1.5 pr-2 shadow-[inset_-1px_0_0_var(--color-line)]" style={{ paddingLeft: 8 + depth * 18 }}>
+            <div className="flex items-start gap-2">
+              {kids ? (
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); toggle(id); }} className="mt-0.5 text-muted hover:text-ink" aria-label="Mở / đóng">
+                  <ChevronRight className={cn("size-4 transition-transform", open.has(id) && "rotate-90")} />
+                </button>
+              ) : <span className="inline-block w-4" />}
+              {depth === 2 ? <Thumb clientId={clientId} adId={n.id} has={Boolean(info?.has_image)} managerUrl={data?.manager_url || null} /> : null}
+              <div className="min-w-0 max-w-[320px]">
+                <p className="truncate font-medium text-ink" title={n.name || n.id}>{n.name || n.id || "—"}</p>
+                <p className="text-xs text-muted">{label}{n.status ? ` · ${statusVi(n.status)}` : ""}{info?.review ? ` · ${info.review}` : ""}{kids ? ` · ${kids}` : ""}</p>
+                {n.title ? <p className="truncate text-xs text-ink" title={n.title}>{n.title}</p> : null}
+                {n.body ? <p className="truncate text-xs text-muted" title={n.body}>{n.body}</p> : null}
+                {n.link ? <a href={n.link} onClick={(ev) => ev.stopPropagation()} target="_blank" rel="noopener noreferrer" className="block truncate text-xs text-accent hover:underline" title={n.link}>{n.link.replace(/^https?:\/\//, "").split("?")[0]}</a> : null}
+              </div>
             </div>
-          </div>
-        </td>
-        {COLS.map((k) => {
-          const dl = showPrev && n.prev ? delta(n.m[k], n.prev[k], k) : null;
-          return (
-            <td key={k} className={cn("px-2 py-1.5 text-right tabular-nums", !n.delivered && n.m[k] == null && "text-muted")}>
-              {/* No delivery in range (OpenAI returns no row): "-" like Ads Manager. */}
-              {!n.delivered && n.m[k] == null ? "-" : fmt(k, n.m[k])}
-              {dl ? <div className={cn("text-xs", dl.good ? "text-ok" : "text-danger")}>{dl.text}</div> : null}
+          </td>
+          <td className="px-2 py-1.5 text-xs">{depth === 0 ? info?.kind || dash : ""}</td>
+          <td className="px-2 py-1.5 text-xs">{depth < 2 ? info?.bid_strategy || dash : ""}</td>
+          <td className="max-w-[260px] px-2 py-1.5 text-xs">
+            {depth === 1 ? (info?.hints.length ? <span className="line-clamp-2" title={info.hints.join("\n")}>{info.hints.join(" · ")}</span> : dash) : ""}
+          </td>
+          {COLS.map((k) => {
+            const dl = showPrev && n.prev ? delta(n.m[k], n.prev[k], k) : null;
+            return (
+              <td key={k} className={cn("px-2 py-1.5 text-right tabular-nums", !n.delivered && n.m[k] == null && "text-muted")}>
+                {/* No delivery in range (OpenAI returns no row): "-" like Ads Manager. */}
+                {!n.delivered && n.m[k] == null ? "-" : fmt(k, n.m[k])}
+                {dl ? <div className={cn("text-xs", dl.good ? "text-ok" : "text-danger")}>{dl.text}</div> : null}
+              </td>
+            );
+          })}
+        </tr>
+        {isOpen ? (
+          <tr className="border-t border-line bg-inset">
+            <td colSpan={COLS.length + 4} className="p-0">
+              <div className="sticky left-0 max-w-[min(100vw-4rem,1100px)] px-6 py-3">
+                <DetailPanel level={levelOf(depth)} n={n} clientId={clientId} managerUrl={data?.manager_url || null} />
+              </div>
             </td>
-          );
-        })}
-      </tr>
+          </tr>
+        ) : null}
+      </>
     );
   };
 
@@ -205,10 +228,13 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
                 ))}
               </div>
             </div>
-            <table className="w-full min-w-[900px] text-sm">
+            <table className="w-full min-w-[1300px] text-sm">
               <thead className="text-xs text-muted">
                 <tr>
-                  <th className="px-2 py-1 text-left">Tên</th>
+                  <th className="sticky left-0 z-10 bg-paper px-2 py-1 text-left">Tên</th>
+                  <th className="cursor-help px-2 py-1 text-left" title="Mục tiêu chiến dịch (Ads Manager: Loại).">Loại</th>
+                  <th className="cursor-help px-2 py-1 text-left" title="Chiến dịch: kiểu đặt giá thầu; nhóm quảng cáo: chiến lược giá thầu.">Chiến lược giá thầu</th>
+                  <th className="cursor-help px-2 py-1 text-left" title="Gợi ý ngữ cảnh của nhóm quảng cáo: các tình huống hội thoại nên hiện quảng cáo. Bấm dòng để xem đủ.">Gợi ý ngữ cảnh</th>
                   {COLS.map((k) => <th key={k} className="cursor-help px-2 py-1 text-right" title={HINT[k]}>{LABEL[k]}</th>)}
                 </tr>
               </thead>
@@ -226,10 +252,63 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-2 text-xs text-muted">Ô trống = OpenAI chưa trả số liệu (không phải 0). Ngày không có hiển thị thì OpenAI không trả dòng nào.</p>
+            <p className="px-4 py-2 text-xs text-muted">Bấm vào một dòng để xem chi tiết. Ô trống = OpenAI chưa trả số liệu (không phải 0). Ngày không có hiển thị thì OpenAI không trả dòng nào.</p>
           </Card>
         </>
       )}
+    </div>
+  );
+}
+
+function Thumb({ clientId, adId, has, managerUrl, big = false }: { clientId: string; adId: string; has: boolean; managerUrl: string | null; big?: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const size = big ? "size-40" : "size-12";
+  if (!has || failed) {
+    return (
+      <div className={cn(size, "flex shrink-0 items-center justify-center rounded border border-dashed border-line bg-inset p-1 text-center text-[10px] leading-tight text-muted")} title="OpenAI chưa cho tải ảnh qua API">
+        {big ? (
+          <span>OpenAI chưa cho tải ảnh qua API.{managerUrl ? <> <a href={managerUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Mở Ads Manager</a></> : null}</span>
+        ) : "Không có ảnh"}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={`/api/openai-ad-image?client=${encodeURIComponent(clientId)}&ad=${encodeURIComponent(adId)}`}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className={cn(size, "shrink-0 rounded border border-line bg-inset object-cover")}
+    />
+  );
+}
+
+function DetailPanel({ level, n, clientId, managerUrl }: { level: string; n: OANode; clientId: string; managerUrl: string | null }) {
+  const info = n.info;
+  const lines = info?.details || [];
+  return (
+    <div className="flex flex-col gap-3 text-sm md:flex-row">
+      {level === "ad" ? <Thumb clientId={clientId} adId={n.id} has={Boolean(info?.has_image)} managerUrl={managerUrl} big /> : null}
+      <div className="min-w-0 flex-1">
+        <p className="mb-2 font-semibold text-ink">{n.name || n.id}<span className="ml-2 text-xs font-normal text-muted">{n.id}</span></p>
+        {lines.length ? (
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 md:grid-cols-2">
+            {lines.map((d, i) => (
+              <div key={i} className={cn(d.long && "md:col-span-2")}>
+                <dt className="text-xs text-muted">{d.label}</dt>
+                <dd className="whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">{/^https?:\/\//.test(d.value) ? <a href={d.value} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">{d.value}</a> : d.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : <p className="text-muted">-</p>}
+        {level === "ad_group" ? (
+          <div className="mt-2">
+            <p className="text-xs text-muted">Gợi ý ngữ cảnh ({info?.hints.length || 0})</p>
+            {info?.hints.length ? <ul className="ml-4 list-disc text-ink">{info.hints.map((h, i) => <li key={i}>{h}</li>)}</ul> : <p className="text-muted">-</p>}
+          </div>
+        ) : null}
+        {managerUrl ? <a href={managerUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs text-accent hover:underline">Mở trong Ads Manager</a> : null}
+      </div>
     </div>
   );
 }

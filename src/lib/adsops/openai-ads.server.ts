@@ -160,7 +160,18 @@ export async function listConnections(): Promise<OAKeyRow[]> {
 // ── structure ─────────────────────────────────────────────────────────────────
 
 type ListResp<T> = { data?: T[]; has_more?: boolean; last_id?: string | null };
-type Entity = { id: string; name?: string | null; status?: string | null; title?: string | null; creative?: { title?: string | null; body?: string | null; target_url?: string | null } | null };
+type Entity = { id: string; name?: string | null; status?: string | null; title?: string | null; creative?: { title?: string | null; body?: string | null; target_url?: string | null; image_url?: string | null } | null } & Record<string, unknown>;
+
+/** Full object for the detail panel, minus short-lived signed URLs (the image is served via /api/openai-ad-image). */
+function sanitize(e: Entity): Record<string, unknown> {
+  const o: Record<string, unknown> = { ...e };
+  if (e.creative) {
+    const c = { ...e.creative } as Record<string, unknown>;
+    delete c.image_url;
+    o.creative = c;
+  }
+  return o;
+}
 
 async function listAll<T extends { id: string }>(key: string, path: string): Promise<T[]> {
   const out: T[] = [];
@@ -212,7 +223,7 @@ async function syncStructure(clientId: string, key: string, tz = DEFAULT_TZ): Pr
   ]);
   const put = async (level: string, rows: Entity[]) => {
     for (const e of rows) {
-      const raw = e.creative ? { title: e.creative.title ?? null, body: e.creative.body ?? null, link: e.creative.target_url ?? null } : null;
+      const raw = { obj: sanitize(e), ...(e.creative ? { title: e.creative.title ?? null, body: e.creative.body ?? null, link: e.creative.target_url ?? null, has_image: Boolean(e.creative.image_url || (e.creative as Record<string, unknown>).file_id) } : {}) };
       await sql.query(
         `insert into openai_entities (client_id, level, entity_id, name, status, raw, updated_at)
          values ($1,$2,$3,$4,$5,$6::jsonb, now())
@@ -224,7 +235,10 @@ async function syncStructure(clientId: string, key: string, tz = DEFAULT_TZ): Pr
   };
   await put("campaign", c);
   await put("ad_group", g);
-  await put("ad", a);
+  // Ad detail carries serving_issues / appeal / image_url that the list omits (one GET per ad, capped).
+  const detailed: Entity[] = [];
+  for (const ad of a.slice(0, 300)) detailed.push(await oaGet<Entity>(key, `/v1/ads/${encodeURIComponent(ad.id)}`, { "include[]": "serving_issues" }).catch(() => ad));
+  await put("ad", [...detailed, ...a.slice(300)]);
   const [zg, za] = await Promise.all([zeroRows(key, "ad_group", tz).catch(() => []), zeroRows(key, "ad", tz).catch(() => [])]);
   for (const r of zg) {
     if (!r.ad_group_id) continue;
@@ -416,6 +430,29 @@ export async function liveReach(clientId: string, start: string, end: string): P
     }
   }));
   return out;
+}
+
+/**
+ * Creative image for one ad: GET /v1/ads/{id} returns a short-lived signed creative.image_url
+ * (OpenAI file storage). Fetched server-side (GET only) so the browser never needs the key. null if none.
+ */
+export async function adImage(clientId: string, adId: string): Promise<{ body: ArrayBuffer; type: string } | null> {
+  if (!/^ad_[A-Za-z0-9]+$/.test(adId)) return null;
+  const k = await keyFor(clientId);
+  if (!k) return null;
+  const sql = await getSql();
+  const own = await sql.query(`select 1 from openai_entities where client_id = $1 and level = 'ad' and entity_id = $2`, [clientId, adId]);
+  if (!own.length) return null;
+  const ad = await oaGet<Entity>(k.key, `/v1/ads/${adId}`);
+  const u = ad.creative?.image_url;
+  if (!u) return null;
+  const url = new URL(u);
+  if (url.protocol !== "https:" || !url.hostname.endsWith(".oaiusercontent.com")) return null;
+  const res = await fetch(url, { method: "GET", headers: { "User-Agent": "AdsOps/1.0 (+https://ad.fagogroup.vn)" } });
+  if (!res.ok) return null;
+  const type = res.headers.get("content-type") || "image/png";
+  if (!type.startsWith("image/")) return null;
+  return { body: await res.arrayBuffer(), type };
 }
 
 export { OpenAIAdsError };

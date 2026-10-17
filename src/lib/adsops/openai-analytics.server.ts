@@ -1,6 +1,7 @@
 /** Read model for the ChatGPT Ads view — reads Neon only (no OpenAI call). */
 import { getSql } from "@/lib/db";
 import { addDaysYmd } from "./warehouse.server.ts";
+import { infoFor } from "./openai-structure.ts";
 import { oaDerive, type OACampaign, type OAMetrics, type OANode, type OAView } from "./openai-ads.types.ts";
 
 type Row = { level: string; entity_id: string; campaign_id: string | null; ad_group_id: string | null; impressions: unknown; clicks: unknown; spend: unknown; conversions: unknown; sales: unknown };
@@ -31,7 +32,7 @@ export async function readOpenAIView(clientId: string, start: string, end: strin
   const [cur, prev, ents, daily, reach] = await Promise.all([
     agg(clientId, start, end),
     prevStart && prevEnd ? agg(clientId, prevStart, prevEnd) : Promise.resolve([] as Row[]),
-    sql.query<{ level: string; entity_id: string; campaign_id: string | null; ad_group_id: string | null; name: string | null; status: string | null; raw: { title?: string; link?: string; body?: string } | null }>(
+    sql.query<{ level: string; entity_id: string; campaign_id: string | null; ad_group_id: string | null; name: string | null; status: string | null; raw: { title?: string; link?: string; body?: string; [k: string]: unknown } | null }>(
       `select level, entity_id, campaign_id, ad_group_id, name, status, raw from openai_entities where client_id = $1`,
       [clientId],
     ),
@@ -61,6 +62,7 @@ export async function readOpenAIView(clientId: string, start: string, end: strin
       link: raw?.link ?? null,
       body: raw?.body ?? null,
       delivered: curBy.has(key(level, id)),
+      info: infoFor(level, raw, (st.currency as string) || "VND"),
     };
   };
   // Entities = structure ∪ anything with delivery in range.
@@ -114,6 +116,7 @@ export async function readOpenAIView(clientId: string, start: string, end: strin
     end,
     prev_start: prevStart,
     prev_end: prevEnd,
+    manager_url: st.ad_account_id ? `https://ads.openai.com/manage/campaigns?act=${encodeURIComponent(String(st.ad_account_id))}` : null,
     totals: withReach(metricsOf(totalsRow), totalsRow ? key("account", totalsRow.entity_id) : [...reach.keys()].find((x) => x.startsWith("account|")) || ""),
     prev_totals: compare ? metricsOf(prevRow) : null,
     daily: daily.map((d) => ({ date: ymd(d.date) || "", spend: n(d.spend), impressions: n(d.impressions), clicks: n(d.clicks), conversions: n(d.conversions) })),
