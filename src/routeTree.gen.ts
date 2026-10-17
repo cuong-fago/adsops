@@ -13,7 +13,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ApiAdsopsFileRouteImport } from './routes/api/adsops-file'
 import { Route as ApiAdsopsHealthRouteImport } from './routes/api/adsops-health'
-import { Route as ApiClientReportRouteImport } from './routes/api/client-report'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronBudgetRunwayRouteImport } from './routes/api/cron/budget-runway'
 import { Route as ApiCronChangeLogRouteImport } from './routes/api/cron/change-log'
@@ -38,11 +37,6 @@ const ApiAdsopsFileRoute = ApiAdsopsFileRouteImport.update({
 const ApiAdsopsHealthRoute = ApiAdsopsHealthRouteImport.update({
   id: '/api/adsops-health',
   path: '/api/adsops-health',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiClientReportRoute = ApiClientReportRouteImport.update({
-  id: '/api/client-report',
-  path: '/api/client-report',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -77,7 +71,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/api/adsops-file': typeof ApiAdsopsFileRoute
   '/api/adsops-health': typeof ApiAdsopsHealthRoute
-  '/api/client-report': typeof ApiClientReportRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
@@ -89,7 +82,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/api/adsops-file': typeof ApiAdsopsFileRoute
   '/api/adsops-health': typeof ApiAdsopsHealthRoute
-  '/api/client-report': typeof ApiClientReportRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
@@ -102,7 +94,6 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/api/adsops-file': typeof ApiAdsopsFileRoute
   '/api/adsops-health': typeof ApiAdsopsHealthRoute
-  '/api/client-report': typeof ApiClientReportRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
@@ -116,7 +107,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/api/adsops-file'
     | '/api/adsops-health'
-    | '/api/client-report'
     | '/api/auth/$'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
@@ -128,7 +118,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/api/adsops-file'
     | '/api/adsops-health'
-    | '/api/client-report'
     | '/api/auth/$'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
@@ -140,7 +129,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/api/adsops-file'
     | '/api/adsops-health'
-    | '/api/client-report'
     | '/api/auth/$'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
@@ -153,7 +141,6 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ApiAdsopsFileRoute: typeof ApiAdsopsFileRoute
   ApiAdsopsHealthRoute: typeof ApiAdsopsHealthRoute
-  ApiClientReportRoute: typeof ApiClientReportRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronBudgetRunwayRoute: typeof ApiCronBudgetRunwayRoute
   ApiCronChangeLogRoute: typeof ApiCronChangeLogRoute
@@ -189,13 +176,6 @@ declare module '@tanstack/react-router' {
       path: '/api/adsops-health'
       fullPath: '/api/adsops-health'
       preLoaderRoute: typeof ApiAdsopsHealthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/client-report': {
-      id: '/api/client-report'
-      path: '/api/client-report'
-      fullPath: '/api/client-report'
-      preLoaderRoute: typeof ApiClientReportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -241,7 +221,6 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ApiAdsopsFileRoute: ApiAdsopsFileRoute,
   ApiAdsopsHealthRoute: ApiAdsopsHealthRoute,
-  ApiClientReportRoute: ApiClientReportRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronBudgetRunwayRoute: ApiCronBudgetRunwayRoute,
   ApiCronChangeLogRoute: ApiCronChangeLogRoute,
