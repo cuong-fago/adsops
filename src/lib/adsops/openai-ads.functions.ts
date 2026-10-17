@@ -30,7 +30,7 @@ export const readOpenAIViewFn = createServerFn({ method: "POST" })
     const st = await sql.query<{ insights_through: unknown }>(`select insights_through from openai_account_state where client_id = $1`, [data.clientId]).catch(() => []);
     // Re-pull metadata once when any entity still lacks its parent (pre-#79 data, or a new ad group/ad).
     const orphan = await sql.query<{ n: number }>(
-      `select count(*)::int as n from openai_entities where client_id = $1 and ((level = 'ad' and ad_group_id is null) or (level = 'ad_group' and campaign_id is null))`,
+      `select count(*)::int as n from openai_entities where client_id = $1 and ((level = 'ad' and ad_group_id is null) or (level = 'ad_group' and campaign_id is null) or raw is null or raw->'obj' is null)`,
       [data.clientId],
     ).catch(() => [{ n: 0 }]);
     if (!st[0]?.insights_through || (orphan[0]?.n ?? 0) > 0) {

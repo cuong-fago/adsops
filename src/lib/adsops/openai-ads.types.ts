@@ -1,3 +1,5 @@
+import type { OAInfo } from "./openai-structure.ts";
+export type { OAInfo, OADetail } from "./openai-structure.ts";
 /** ChatGPT Ads view types (JSON-safe). Missing = null, never 0. */
 export type OAMetrics = {
   impressions: number | null;
@@ -13,7 +15,7 @@ export type OAMetrics = {
   reach?: number | null;
   frequency?: number | null;
 };
-export type OANode = { id: string; name: string | null; status: string | null; m: OAMetrics; prev: OAMetrics | null; title?: string | null; link?: string | null; body?: string | null; delivered?: boolean };
+export type OANode = { id: string; name: string | null; status: string | null; m: OAMetrics; prev: OAMetrics | null; title?: string | null; link?: string | null; body?: string | null; delivered?: boolean; info?: OAInfo };
 export type OAAdGroup = OANode & { ads: OANode[] };
 export type OACampaign = OANode & { ad_groups: OAAdGroup[] };
 export type OAView = {
@@ -33,6 +35,8 @@ export type OAView = {
   prev_totals: OAMetrics | null;
   daily: Array<{ date: string; spend: number | null; impressions: number | null; clicks: number | null; conversions: number | null }>;
   campaigns: OACampaign[];
+  /** Ads Manager deep link for this account. */
+  manager_url: string | null;
 };
 export type OAConnection = { client_id: string; ad_account_id: string; name: string | null; source: string; created_by: string | null; updated_at: string; last_ok_at: string | null; last_error: string | null; insights_through: string | null };
 
