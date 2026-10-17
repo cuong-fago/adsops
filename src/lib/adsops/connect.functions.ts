@@ -290,3 +290,34 @@ export const readConvActionsFn = createServerFn({ method: "POST" })
       prevEnd: staffPrev ? data.prevEnd : null,
     });
   });
+
+/**
+ * Google impression-share metrics (range aggregate, cached per range) for the Phân tích tables.
+ * Same visibility as readConvActionsFn. Previous period: staff only. Read-only GAQL.
+ */
+export const readSharesFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const ymd = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+    const layer = d.layer === "campaign" || d.layer === "ad_group" || d.layer === "keyword" ? (d.layer as "campaign" | "ad_group" | "keyword") : null;
+    const start = ymd(d.start), end = ymd(d.end);
+    if (!clientId || !layer || !start || !end || end < start) throw new Error("Thiếu khách / lớp / ngày");
+    const prevStart = ymd(d.prevStart), prevEnd = ymd(d.prevEnd);
+    return { clientId, layer, start, end, prevStart, prevEnd: prevStart && prevEnd && prevEnd >= prevStart ? prevEnd : null };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertCap, assertAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertCap(ctx, "analytics", "Không có quyền xem Phân tích.");
+    assertAccount(ctx, data.clientId);
+    const staffPrev = ctx.principal.kind === "staff" && ctx.caps.compare && data.prevStart && data.prevEnd;
+    const m = await import("./google-share.server.ts");
+    return m.readShares(data.clientId, data.layer, {
+      start: data.start,
+      end: data.end,
+      prevStart: staffPrev ? data.prevStart : null,
+      prevEnd: staffPrev ? data.prevEnd : null,
+    });
+  });
