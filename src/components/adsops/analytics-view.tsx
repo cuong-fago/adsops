@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, Columns3, Info, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Columns3, Info, Search, X } from "lucide-react";
 import {
   type AnalyticsSnap,
   type DeepFacets,
@@ -17,7 +17,8 @@ import {
   warehouseDates,
   windowCoverage,
 } from "@/lib/adsops/analytics";
-import { autoFillDeepFn, autoFillWarehouseFn, readDeepLayerFn } from "@/lib/adsops/connect.functions";
+import { autoFillDeepFn, autoFillWarehouseFn, readConvActionsFn, readDeepLayerFn } from "@/lib/adsops/connect.functions";
+import { convCategoryVi, type ActionCells, type ConvActionRead } from "@/lib/adsops/google-conv-actions.types";
 import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
 import { cn } from "@/lib/cn";
 import { BudgetBanner } from "@/components/adsops/budget-banner";
@@ -502,6 +503,44 @@ export function AnalyticsView({
   // Campaign table: the header pill already carries the top-level note.
   const tableNote = fillLayer ? prevNoteDeep : null;
 
+  // ── Conversion actions: per-row breakdown + "Loại chuyển đổi" filter (campaign / ad group / keyword) ──
+  const convLayer = tableLayer === "campaign" || tableLayer === "ad_group" || tableLayer === "keyword" ? tableLayer : null;
+  const convKey = convLayer ? `${snap.client_id}|${convLayer}|${start}|${end}|${campaignId || ""}|${adGroupId || ""}|${prevStart}|${prevEnd}` : "";
+  const [conv, setConv] = useState<{ key: string; data: ConvActionRead | null; state: "loading" | "ready" | "error" }>({ key: "", data: null, state: "ready" });
+  const [convSel, setConvSel] = useState<Set<string>>(new Set());
+  useEffect(() => { setConvSel(new Set()); }, [snap.client_id]);
+  useEffect(() => {
+    if (!convKey || !convLayer) return;
+    let cancelled = false;
+    setConv((cur) => (cur.key === convKey ? cur : { key: convKey, data: cur.data?.layer === convLayer ? cur.data : null, state: "loading" }));
+    readConvActionsFn({
+      data: {
+        clientId: snap.client_id, layer: convLayer, start, end,
+        campaignId: convLayer === "campaign" ? null : campaignId, adGroupId: convLayer === "keyword" ? adGroupId : null,
+        prevStart: prevStart || null, prevEnd: prevEnd || null,
+      },
+    })
+      .then((data) => { if (!cancelled) setConv({ key: convKey, data, state: "ready" }); })
+      .catch(() => { if (!cancelled) setConv((cur) => ({ ...cur, key: convKey, state: "error" })); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convKey, deepEpoch, fillEpoch]);
+  const convData = conv.data && conv.data.layer === convLayer ? conv.data : null;
+  // Selected ids that exist in this read (a stale selection never zeroes the table silently).
+  const convActive = useMemo(() => (convData ? [...convSel].filter((id) => convData.actions.some((a) => a.id === id)) : []), [convSel, convData]);
+  const convOn = convActive.length > 0;
+  const shownBlock = useMemo(() => (current && convOn && convData ? applyConvFilter(current, convData.rows, convActive) : current), [current, convOn, convData, convActive]);
+  const shownCompare = useMemo<TableCompare | null>(() => {
+    if (!tableCompare || !convOn || !convData) return tableCompare;
+    if (!convData.prev_rows || !convData.prev_covered_days) return null;
+    const map = new Map<string, Record<string, number>>();
+    for (const [id, m] of tableCompare.map) map.set(id, withConv(m, convData.prev_rows[id], convActive));
+    return { ...tableCompare, map };
+  }, [tableCompare, convOn, convData, convActive]);
+  const convDetail = convData
+    ? (row: LayerRow) => <ConvBreakdown row={row} cells={convData.rows[row.id]} names={convData.actions} highlight={convActive} />
+    : undefined;
+
   const weeks = allowCompare && weekN ? previousWeeks(end, weekN) : [];
   const prevMonths = allowCompare && monthN ? previousMonths(end, monthN) : [];
   const inMonths = monthsOverlapping(start, end);
@@ -658,6 +697,9 @@ export function AnalyticsView({
               <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-inset px-3 text-sm"><input type="checkbox" checked={onlyConv} onChange={(e) => setOnlyConv(e.target.checked)} className="size-4 accent-accent" />Chỉ có conv</label>
             </div>
           )}
+          {convLayer ? (
+            <ConvActionFilter data={convData} loading={conv.state === "loading" && !convData} error={conv.state === "error"} selected={convActive} onChange={(ids) => setConvSel(new Set(ids))} />
+          ) : null}
           {(() => {
             const deepRows = fillLayer ? deepBlock?.rows.length || 0 : 0;
             const retryBtn = (
@@ -693,7 +735,7 @@ export function AnalyticsView({
                     {retryBtn}
                   </div>
                 ) : null}
-                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={current} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} compare={tableCompare} storeKey={userKey} />
+                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={shownBlock || current} convDetail={convDetail} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} compare={shownCompare} storeKey={userKey} />
               </div>
             );
           })()}
@@ -1335,8 +1377,10 @@ type ColDef = {
 };
 
 function DataTable({
-  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText, compare = null, storeKey,
+  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText, compare = null, storeKey, convDetail,
 }: {
+  /** Per-conversion-action breakdown for a row (popover from the Conv cell). */
+  convDetail?: (row: LayerRow) => ReactNode;
   layer: TableLayer;
   block: LayerBlock | DeepLayerBlock;
   groups: { id: string; label: string; metric: string }[];
@@ -1361,6 +1405,16 @@ function DataTable({
   const query = queryProp ?? queryLocal;
   const setQuery = onQueryChange ?? setQueryLocal;
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "cost", dir: -1 });
+  const [convPop, setConvPop] = useState<{ id: string; top: number; right: number } | null>(null);
+  useEffect(() => {
+    if (!convPop) return;
+    const close = (e: Event) => { if (!(e.target instanceof Element && e.target.closest("[data-conv-pop]"))) setConvPop(null); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setConvPop(null); };
+    document.addEventListener("mousedown", close);
+    window.addEventListener("scroll", close, true);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); window.removeEventListener("scroll", close, true); document.removeEventListener("keydown", esc); };
+  }, [convPop]);
   const [showAll, setShowAll] = useState(false);
   const [page, setPage] = useState(0);
   const note = coverageNote(block, layer);
@@ -1619,7 +1673,22 @@ function DataTable({
                 {showAdGroup ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-3 py-2.5 text-muted" title={row.ad_group_name || ""}><span className="line-clamp-2 [overflow-wrap:anywhere]">{row.ad_group_name || "—"}</span></td> : null}
                 {shownCols.map((c) => (
                   <td key={c.key} className={cn("h-10 whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-right font-medium tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
-                    {c.cell(row)}
+                    {c.key === "conversions" && convDetail ? (
+                      <button
+                        type="button"
+                        data-conv-pop
+                        aria-expanded={convPop?.id === row.id}
+                        title="Xem theo hành động chuyển đổi"
+                        onClick={(e) => {
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setConvPop((cur) => (cur?.id === row.id ? null : { id: row.id, top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) }));
+                        }}
+                        className="inline-flex items-center gap-0.5 rounded hover:text-accent"
+                      >
+                        {c.cell(row)}
+                        <ChevronDown className={cn("size-3 text-subtle transition-transform", convPop?.id === row.id && "rotate-180")} />
+                      </button>
+                    ) : c.cell(row)}
                     {compare && DELTA_COLS.has(c.key) && compare.map.has(row.id) ? (
                       <DeltaText d={metricDelta(c.key, row.metrics, compare.map.get(row.id) || {})} className="block leading-tight" />
                     ) : null}
@@ -1645,6 +1714,14 @@ function DataTable({
             </tfoot>
           ) : null}
         </table>
+        {convPop && convDetail ? (() => {
+          const row = visible.find((r) => r.id === convPop.id);
+          return row ? (
+            <div data-conv-pop className="fixed z-50 w-[min(34rem,calc(100vw-1rem))] rounded-lg border border-line bg-paper p-3 text-left shadow-sheet" style={{ top: convPop.top, right: convPop.right }}>
+              {convDetail(row)}
+            </div>
+          ) : null;
+        })() : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -1664,6 +1741,152 @@ function DataTable({
       {totals && (query || visible.length < filtered.length) ? (
         <p className="text-xs text-subtle">Dòng tổng tính trên toàn bộ {deep ? "dòng trong ngày đã kéo" : "chiến dịch trong khoảng"}, không theo ô tìm / trang.</p>
       ) : null}
+    </div>
+  );
+}
+
+// ── Conversion actions ─────────────────────────────────────────────────────────────
+
+/** Metrics with Conv / CPL / CR counted from the selected actions only. */
+function withConv(m: Record<string, number>, cells: ActionCells | undefined, ids: string[]): Record<string, number> {
+  let c = 0;
+  for (const id of ids) c += cells?.[id]?.[0] || 0;
+  const cost = m.cost || 0;
+  const clicks = m.clicks || 0;
+  return { ...m, conversions: c, cost_per_conversion: c ? cost / c : 0, cr: clicks ? c / clicks : 0 };
+}
+
+function applyConvFilter(block: LayerBlock | DeepLayerBlock, rows: Record<string, ActionCells>, ids: string[]): LayerBlock | DeepLayerBlock {
+  const next = { ...block, rows: block.rows.map((r) => ({ ...r, metrics: withConv(r.metrics, rows[r.id], ids) })) } as LayerBlock | DeepLayerBlock;
+  if ("totals" in block && block.totals) {
+    let c = 0;
+    for (const cells of Object.values(rows)) for (const id of ids) c += cells[id]?.[0] || 0;
+    const t = block.totals as Record<string, number>;
+    (next as DeepLayerBlock).totals = { ...t, conversions: c, cost_per_conversion: c ? (t.cost || 0) / c : 0, cr: t.clicks ? c / t.clicks : 0 } as DeepLayerBlock["totals"];
+  }
+  return next;
+}
+
+function ConvActionFilter({
+  data, loading, error, selected, onChange,
+}: {
+  data: ConvActionRead | null;
+  loading: boolean;
+  error: boolean;
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const actions = data?.actions || [];
+  const sel = new Set(selected);
+  const names = actions.filter((a) => sel.has(a.id)).map((a) => a.name);
+  const partial = data && data.covered_days < data.total_days;
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div ref={box} className="relative">
+        <button
+          type="button"
+          disabled={!actions.length}
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className={cn(
+            "inline-flex h-9 items-center gap-1.5 rounded-md border px-3 font-medium disabled:opacity-60",
+            sel.size ? "border-accent bg-accent-soft text-accent" : "border-line bg-paper text-ink hover:bg-inset",
+          )}
+        >
+          Loại chuyển đổi{sel.size ? ` (${sel.size})` : ": Tất cả"}
+          <ChevronDown className="size-3.5" />
+        </button>
+        {open ? (
+          <div className="absolute left-0 top-full z-40 mt-1 max-h-80 w-[min(28rem,calc(100vw-2rem))] overflow-auto rounded-lg border border-line bg-paper py-1 shadow-sheet">
+            <button type="button" onClick={() => onChange([])} className={cn("block w-full px-3 py-2 text-left text-sm hover:bg-inset", !sel.size && "font-semibold text-accent")}>Tất cả</button>
+            {actions.map((a) => (
+              <label key={a.id} className="flex cursor-pointer items-start gap-2 px-3 py-2 hover:bg-inset">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-accent"
+                  checked={sel.has(a.id)}
+                  onChange={() => onChange(sel.has(a.id) ? selected.filter((x) => x !== a.id) : [...selected, a.id])}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block [overflow-wrap:anywhere] text-ink">{a.name}</span>
+                  <span className="text-xs text-muted">{convCategoryVi(a.category)}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-muted">{convNum(a.conversions)}</span>
+              </label>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {loading ? <span className="text-xs text-subtle">Đang tải loại chuyển đổi…</span> : null}
+      {error ? <span className="text-xs text-warn">Chưa đọc được loại chuyển đổi.</span> : null}
+      {!loading && !error && data && !actions.length ? <span className="text-xs text-subtle">Không có hành động chuyển đổi trong khoảng này.</span> : null}
+      {sel.size ? (
+        <span className="rounded-md bg-accent-soft px-2 py-1 text-xs text-accent" title={names.join(", ")}>
+          Conv / CPL / CR chỉ tính: {names.length > 2 ? `${names.slice(0, 2).join(", ")} +${names.length - 2}` : names.join(", ")}
+        </span>
+      ) : null}
+      {partial ? <span className="text-xs text-warn">Loại chuyển đổi mới có {data!.covered_days}/{data!.total_days} ngày — số theo loại chỉ tham khảo.</span> : null}
+    </div>
+  );
+}
+
+function ConvBreakdown({
+  row, cells, names, highlight,
+}: {
+  row: LayerRow;
+  cells: ActionCells | undefined;
+  names: ConvActionRead["actions"];
+  highlight: string[];
+}) {
+  const byId = new Map(names.map((a) => [a.id, a]));
+  const list = Object.entries(cells || {})
+    .map(([id, [c, v, all]]) => ({ id, name: byId.get(id)?.name || id, category: byId.get(id)?.category || null, c, v, all }))
+    .filter((x) => x.c > 0 || x.all > 0)
+    .sort((a, b) => b.c - a.c || b.all - a.all);
+  const total = list.reduce((s, x) => s + x.c, 0);
+  const cost = row.metrics.cost || 0;
+  const hl = new Set(highlight);
+  return (
+    <div>
+      <p className="mb-2 text-sm font-semibold text-ink [overflow-wrap:anywhere]">Chuyển đổi theo hành động · {row.name}</p>
+      {list.length ? (
+        <table className="w-full text-xs">
+          <thead className="text-muted">
+            <tr>
+              <th className="pb-1 text-left font-medium">Hành động</th>
+              <th className="pb-1 pl-2 text-right font-medium">Conv</th>
+              <th className="pb-1 pl-2 text-right font-medium">%</th>
+              <th className="pb-1 pl-2 text-right font-medium">Giá trị</th>
+              <th className="pb-1 pl-2 text-right font-medium">Chi phí/conv</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((x) => (
+              <tr key={x.id} className={cn("border-t border-line/60 align-top", hl.has(x.id) && "bg-accent-soft/60")}>
+                <td className="py-1.5 pr-2">
+                  <span className="block [overflow-wrap:anywhere] text-ink">{x.name}</span>
+                  <span className="text-muted">{convCategoryVi(x.category)}{x.c === 0 && x.all > 0 ? ` · chỉ "Mọi chuyển đổi": ${convNum(x.all)}` : ""}</span>
+                </td>
+                <td className="py-1.5 pl-2 text-right tabular-nums text-ink">{convNum(x.c)}</td>
+                <td className="py-1.5 pl-2 text-right tabular-nums text-muted">{total > 0 ? `${((x.c / total) * 100).toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%` : ""}</td>
+                <td className="py-1.5 pl-2 text-right tabular-nums text-muted">{x.v > 0 ? dong(x.v) : ""}</td>
+                <td className="py-1.5 pl-2 text-right tabular-nums text-ink">{x.c > 0 && cost > 0 ? dong(cost / x.c) : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="text-xs text-muted">Chưa có số theo hành động cho dòng này (chưa kéo hoặc không có chuyển đổi).</p>
+      )}
+      <p className="mt-2 text-[11px] text-subtle">Chi phí/conv = chi tiêu của dòng ÷ conv của hành động. Conv chính (cột Conv) chỉ gồm hành động được đặt làm chính trong Google Ads.</p>
     </div>
   );
 }

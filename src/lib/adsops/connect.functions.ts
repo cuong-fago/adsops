@@ -253,3 +253,40 @@ export const autoFillWarehouseFn = createServerFn({ method: "POST" })
     const { autoFillWarehouseRange } = await import("./warehouse.server.ts");
     return autoFillWarehouseRange(data.clientId, data.start);
   });
+
+/**
+ * Per-conversion-action breakdown for the Google Phân tích tables (campaign / ad group / keyword).
+ * Same visibility as the Conv column (analytics cap + account grant). Previous period: staff only.
+ * Missing days are fetched read-only on demand (one GAQL round, per-account lock).
+ */
+export const readConvActionsFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const ymd = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+    const layer = d.layer === "campaign" || d.layer === "ad_group" || d.layer === "keyword" ? (d.layer as "campaign" | "ad_group" | "keyword") : null;
+    const start = ymd(d.start), end = ymd(d.end);
+    if (!clientId || !layer || !start || !end || end < start) throw new Error("Thiếu khách / lớp / ngày");
+    const prevStart = ymd(d.prevStart), prevEnd = ymd(d.prevEnd);
+    const id = (v: unknown) => (typeof v === "string" && /^\d+$/.test(v) ? v : null);
+    return { clientId, layer, start, end, prevStart, prevEnd: prevStart && prevEnd && prevEnd >= prevStart ? prevEnd : null, campaignId: id(d.campaignId), adGroupId: id(d.adGroupId) };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertCap, assertAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertCap(ctx, "analytics", "Không có quyền xem Phân tích.");
+    assertAccount(ctx, data.clientId);
+    const staffPrev = ctx.principal.kind === "staff" && ctx.caps.compare && data.prevStart && data.prevEnd;
+    const m = await import("./google-conv-actions.server.ts");
+    const from = staffPrev && data.prevStart! < data.start ? data.prevStart! : data.start;
+    await m.ensureConvActions(data.clientId, from, data.end).catch(() => null);
+    return m.readConvActions(data.clientId, data.layer, {
+      start: data.start,
+      end: data.end,
+      campaignId: data.campaignId,
+      adGroupId: data.adGroupId,
+      prevStart: staffPrev ? data.prevStart : null,
+      prevEnd: staffPrev ? data.prevEnd : null,
+    });
+  });
