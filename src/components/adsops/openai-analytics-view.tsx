@@ -66,6 +66,15 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
   const [days, setDays] = useState(30);
   const [compare, setCompare] = useState(false);
   const [status, setStatus] = useState<StatusPick>("all");
+  const [mode, setModeState] = useState<"perf" | "settings">("perf");
+  useEffect(() => {
+    try { if (localStorage.getItem("adsops.oa.tableMode") === "settings") setModeState("settings"); } catch { /* private mode */ }
+  }, []);
+  const setMode = (m: "perf" | "settings") => {
+    setModeState(m);
+    try { localStorage.setItem("adsops.oa.tableMode", m); } catch { /* ignore */ }
+  };
+  const perf = mode === "perf";
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<string | null>(null);
   const [data, setData] = useState<OAView | null>(null);
@@ -103,7 +112,7 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
     return (
       <>
         <tr className={cn("cursor-pointer border-t border-line hover:bg-inset/50", isOpen && "bg-accent-soft/40")} onClick={() => setDetail(isOpen ? null : id)} title="Bấm để xem chi tiết">
-          <td className="sticky left-0 z-10 bg-paper py-1.5 pr-2 shadow-[inset_-1px_0_0_var(--color-line)]" style={{ paddingLeft: 8 + depth * 18 }}>
+          <td className={cn("sticky left-0 z-10 w-[300px] min-w-[300px] max-w-[300px] py-1.5 pr-2 shadow-[inset_-1px_0_0_var(--color-line)]", isOpen ? "bg-accent-soft" : "bg-paper")} style={{ paddingLeft: 8 + depth * 18 }}>
             <div className="flex items-start gap-2">
               {kids ? (
                 <button type="button" onClick={(ev) => { ev.stopPropagation(); toggle(id); }} className="mt-0.5 text-muted hover:text-ink" aria-label="Mở / đóng">
@@ -111,29 +120,35 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
                 </button>
               ) : <span className="inline-block w-4" />}
               {depth === 2 ? <Thumb clientId={clientId} adId={n.id} has managerUrl={data?.manager_url || null} /> : null}
-              <div className="min-w-0 max-w-[320px]">
+              <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-ink" title={n.name || n.id}>{n.name || n.id || "—"}</p>
                 <p className="text-xs text-muted">{label}{n.status ? ` · ${statusVi(n.status)}` : ""}{info?.review ? ` · ${info.review}` : ""}{kids ? ` · ${kids}` : ""}</p>
+                {depth === 0 && summaryOf(info) ? <p className="truncate text-xs text-ink" title={summaryOf(info)!}>{summaryOf(info)}</p> : null}
                 {n.title ? <p className="truncate text-xs text-ink" title={n.title}>{n.title}</p> : null}
                 {n.body ? <p className="truncate text-xs text-muted" title={n.body}>{n.body}</p> : null}
                 {n.link ? <a href={n.link} onClick={(ev) => ev.stopPropagation()} target="_blank" rel="noopener noreferrer" className="block truncate text-xs text-accent hover:underline" title={n.link}>{n.link.replace(/^https?:\/\//, "").split("?")[0]}</a> : null}
               </div>
             </div>
           </td>
-          <td className="px-2 py-1.5 text-xs">{depth === 0 ? info?.kind || dash : ""}</td>
-          <td className="px-2 py-1.5 text-xs">{depth < 2 ? info?.bid_strategy || dash : ""}</td>
-          <td className="min-w-[340px] px-2 py-1.5 align-top text-xs">
-            {depth === 1 ? (info?.hints.length ? <ul className="ml-4 list-disc space-y-0.5 whitespace-normal text-ink">{info.hints.map((h, i) => <li key={i}>{h}</li>)}</ul> : dash) : ""}
-          </td>
-          {CAMP_COLS.map((c) => (
-            <td key={c.key} className={cn("px-2 py-1.5 align-top text-xs", c.wide && "min-w-[220px]")}>
-              {depth === 0 ? c.cell(info?.camp ?? null) ?? dash : depth === 1 ? <span className="text-muted">Theo chiến dịch</span> : ""}
-            </td>
-          ))}
-          {COLS.map((k) => {
+          {!perf ? (
+            <>
+              <td className="px-2 py-1.5 align-top text-xs">{depth === 0 ? info?.kind || dash : ""}</td>
+              <td className="px-2 py-1.5 align-top text-xs">{depth < 2 ? info?.bid_strategy || dash : ""}</td>
+              <td className="min-w-[320px] px-2 py-1.5 align-top text-xs">
+                {depth === 1 ? (info?.hints.length ? <ul className="ml-4 list-disc space-y-0.5 whitespace-normal text-ink">{info.hints.map((h, i) => <li key={i}>{h}</li>)}</ul> : dash) : ""}
+              </td>
+              {CAMP_COLS.map((c) => (
+                <td key={c.key} className={cn("px-2 py-1.5 align-top text-xs", c.wide && "min-w-[200px]")}>
+                  {/* Ad groups / ads inherit campaign settings: left empty (one note under the table). */}
+                  {depth === 0 ? c.cell(info?.camp ?? null) ?? dash : ""}
+                </td>
+              ))}
+            </>
+          ) : null}
+          {perf && COLS.map((k) => {
             const dl = showPrev && n.prev ? delta(n.m[k], n.prev[k], k) : null;
             return (
-              <td key={k} className={cn("px-2 py-1.5 text-right tabular-nums", !n.delivered && n.m[k] == null && "text-muted")}>
+              <td key={k} className={cn("whitespace-nowrap px-2 py-1.5 text-right tabular-nums", !n.delivered && n.m[k] == null && "text-muted")}>
                 {/* No delivery in range (OpenAI returns no row): "-" like Ads Manager. */}
                 {!n.delivered && n.m[k] == null ? "-" : fmt(k, n.m[k])}
                 {dl ? <div className={cn("text-xs", dl.good ? "text-ok" : "text-danger")}>{dl.text}</div> : null}
@@ -143,7 +158,7 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
         </tr>
         {isOpen ? (
           <tr className="border-t border-line bg-inset">
-            <td colSpan={COLS.length + 4 + CAMP_COLS.length} className="p-0">
+            <td colSpan={perf ? COLS.length + 1 : CAMP_COLS.length + 4} className="p-0">
               <div className="sticky left-0 max-w-[min(100vw-4rem,1100px)] px-6 py-3">
                 <DetailPanel level={levelOf(depth)} n={n} clientId={clientId} managerUrl={data?.manager_url || null} />
               </div>
@@ -225,7 +240,15 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
           <Card className="overflow-x-auto p-0">
             <div className="flex flex-wrap items-center gap-2 px-4 py-3">
               <p className="text-sm font-semibold text-ink">Chiến dịch → Nhóm quảng cáo → Quảng cáo</p>
-              <div className="ml-auto flex gap-1 rounded-md border border-line bg-paper p-1 text-sm">
+              <div className="ml-auto flex gap-1 rounded-md border border-line bg-paper p-1 text-sm" role="group" aria-label="Chế độ bảng">
+                {([["perf", "Hiệu suất"], ["settings", "Cài đặt"]] as const).map(([m, l]) => (
+                  <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)}
+                    className={cn("h-7 rounded px-3 font-medium", mode === m ? "bg-accent text-white" : "text-muted hover:text-ink")}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-1 rounded-md border border-line bg-paper p-1 text-sm">
                 {(["all", "active", "paused", "other"] as StatusPick[]).map((s) => (
                   <button key={s} type="button" aria-pressed={status === s} onClick={() => setStatus(s)}
                     className={cn("h-7 rounded px-2.5 font-medium", status === s ? "bg-accent-soft text-accent" : "text-muted hover:text-ink")}>
@@ -234,15 +257,18 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
                 ))}
               </div>
             </div>
-            <table className="w-full min-w-[2200px] text-sm">
+            <table className={cn("w-full text-sm", perf ? "min-w-[1180px]" : "min-w-[2000px]")}>
               <thead className="text-xs text-muted">
                 <tr>
-                  <th className="sticky left-0 z-10 bg-paper px-2 py-1 text-left">Tên</th>
-                  <th className="cursor-help px-2 py-1 text-left" title="Mục tiêu chiến dịch (Ads Manager: Loại).">Loại</th>
-                  <th className="cursor-help px-2 py-1 text-left" title="Chiến dịch: kiểu đặt giá thầu; nhóm quảng cáo: chiến lược giá thầu.">Chiến lược giá thầu</th>
-                  <th className="cursor-help px-2 py-1 text-left" title="Gợi ý ngữ cảnh của nhóm quảng cáo: các tình huống hội thoại nên hiện quảng cáo.">Gợi ý ngữ cảnh</th>
-                  {CAMP_COLS.map((c) => <th key={c.key} className="cursor-help px-2 py-1 text-left" title={c.hint}>{c.label}</th>)}
-                  {COLS.map((k) => <th key={k} className="cursor-help px-2 py-1 text-right" title={HINT[k]}>{LABEL[k]}</th>)}
+                  <th className="sticky left-0 z-10 w-[300px] min-w-[300px] bg-paper px-2 py-1 text-left">Tên</th>
+                  {!perf ? (
+                    <>
+                      <th className="cursor-help whitespace-nowrap px-2 py-1 text-left" title="Mục tiêu chiến dịch (Ads Manager: Loại).">Loại</th>
+                      <th className="cursor-help whitespace-nowrap px-2 py-1 text-left" title="Chiến dịch: kiểu đặt giá thầu; nhóm quảng cáo: chiến lược giá thầu.">Chiến lược giá thầu</th>
+                      <th className="cursor-help whitespace-nowrap px-2 py-1 text-left" title="Gợi ý ngữ cảnh của nhóm quảng cáo: các tình huống hội thoại nên hiện quảng cáo.">Gợi ý ngữ cảnh</th>
+                      {CAMP_COLS.map((c) => <th key={c.key} className="cursor-help whitespace-nowrap px-2 py-1 text-left" title={c.hint}>{c.label}</th>)}
+                    </>
+                  ) : COLS.map((k) => <th key={k} className="min-w-[84px] cursor-help whitespace-nowrap px-2 py-1 text-right" title={`${LABEL[k]}: ${HINT[k]}`}>{SHORT[k] || LABEL[k]}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -259,7 +285,7 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-2 text-xs text-muted">Bấm vào một dòng để xem chi tiết. Ô trống = OpenAI chưa trả số liệu (không phải 0). Ngày không có hiển thị thì OpenAI không trả dòng nào.</p>
+            <p className="px-4 py-2 text-xs text-muted">Bấm vào một dòng để xem chi tiết.{perf ? "" : " Nhóm quảng cáo và quảng cáo dùng cài đặt của chiến dịch (ô để trống)."} Ô trống = OpenAI chưa trả số liệu (không phải 0). Ngày không có hiển thị thì OpenAI không trả dòng nào.</p>
           </Card>
         </>
       )}
@@ -267,6 +293,16 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
   );
 }
 
+const SHORT: Partial<Record<K, string>> = { reach: "Tiếp cận", cpa: "Chi phí/CĐ", conversions: "Chuyển đổi", impressions: "Hiển thị" };
+/** One-line campaign summary, e.g. "Lượt chuyển đổi · CPC · 300.000đ/ngày · 5 khu vực". */
+function summaryOf(info: OANode["info"]): string | null {
+  const c = info?.camp;
+  if (!info || !c) return null;
+  const bill = c.billing ? (c.billing.match(/\((\w+)\)/)?.[1] || c.billing) : null;
+  const daily = c.budget?.match(/Hằng ngày ([^·]+)/)?.[1]?.trim();
+  const parts = [info.kind, bill, daily ? `${daily}/ngày` : c.budget, c.loc_include.length ? `${c.loc_include.length} khu vực` : null].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
 const list = (a: string[]) => (a.length ? <ul className="space-y-0.5">{a.map((x, i) => <li key={i}>{x}</li>)}</ul> : null);
 /** Campaign-level settings (Ads Manager campaign edit page). Ad groups inherit → "Theo chiến dịch". */
 const CAMP_COLS: Array<{ key: string; label: string; hint: string; wide?: boolean; cell: (c: CampFields | null) => ReactNode }> = [
