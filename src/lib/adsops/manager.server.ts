@@ -286,5 +286,16 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
   }
   churn.sort((a, b) => b.points - a.points);
 
-  return { period, prev, data_through: through, cur, prev_kpis: prevK, new_accounts: newAcc, stopped_accounts: stopped, trend, top_clients: top, movers, health, churn };
+  const plansStart = period.start.slice(0, 7) === curM ? plansCur : await readPlans(ids, period.start.slice(0, 7));
+  const accounts_detail: ManagerRead["accounts_detail"] = {};
+  for (const id of ids) {
+    const s = sumDays(days.get(id), period.start, period.end);
+    const pc = pace.get(id);
+    accounts_detail[id] = {
+      label: label.get(id) || id, group_key: groupOf.get(id)?.key || `a:${id}`,
+      spend: s.spend, leads: s.leads, cpl: cplOf(s), target_cpl: plansStart.get(id)?.target_cpl ?? null,
+      pace_status: pc?.plan && pc.status ? pc.status : null, alerts: alerts.get(id) || [], last_opt_at: isFb(id) ? null : ov.get(id)?.last_opt_at ?? null,
+    };
+  }
+  return { accounts_detail, period, prev, data_through: through, cur, prev_kpis: prevK, new_accounts: newAcc, stopped_accounts: stopped, trend, top_clients: top, movers, health, churn };
 }

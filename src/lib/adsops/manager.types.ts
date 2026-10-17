@@ -35,6 +35,21 @@ export type ManagerRead = {
   movers: ClientSpend[];
   health: HealthRow[];
   churn: ChurnRow[];
+  /** Per-account facts for the staff view (same period). */
+  accounts_detail: Record<string, AccountDetail>;
+};
+export type AccountDetail = {
+  label: string;
+  group_key: string;
+  spend: number | null;
+  leads: number | null;
+  cpl: number | null;
+  /** Plan target CPL for the month the period starts in. */
+  target_cpl: number | null;
+  /** Current-month pacing status; null = no plan / no spend. */
+  pace_status: string | null;
+  alerts: string[];
+  last_opt_at: string | null;
 };
 
 /** Health score: documented weights (renormalised over components that have data). */

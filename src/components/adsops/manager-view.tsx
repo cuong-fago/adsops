@@ -4,6 +4,7 @@ import { readManagerFn, type ManagerRead } from "@/lib/adsops/manager.functions"
 import { CHURN_LEVEL_VI, CHURN_RULES, HEALTH_GREEN, HEALTH_RULES, HEALTH_YELLOW, type ClientSpend, type HealthRow, type Kpis } from "@/lib/adsops/manager.types";
 import { cn } from "@/lib/cn";
 import { Badge, Card, EmptyState } from "@/components/adsops/ui";
+import { StaffPerfView } from "@/components/adsops/staff-perf-view";
 
 const dong = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v).toLocaleString("vi-VN")}đ`);
 const tr = (v: number | null | undefined) => (v == null ? "—" : `${(v / 1e6).toLocaleString("vi-VN", { maximumFractionDigits: 1 })}tr`);
@@ -70,6 +71,7 @@ export function ManagerView({ onOpenAccount }: { onOpenAccount?: (id: string) =>
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [openHealth, setOpenHealth] = useState<string | null>(null);
+  const [section, setSection] = useState<"agency" | "staff">("agency");
   useEffect(() => {
     let live = true;
     setLoading(true);
@@ -96,13 +98,18 @@ export function ManagerView({ onOpenAccount }: { onOpenAccount?: (id: string) =>
             {loading ? <span className="text-xs text-muted">Đang tải…</span> : null}
           </span>
         </div>
-        <div className="mt-3"><KpiTiles c={d.cur} p={d.prev_kpis} d={d} /></div>
-        <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+        <div className="mt-2 flex gap-1">
+          {([["agency", "Tổng quan agency"], ["staff", "Hiệu suất nhân sự"]] as const).map(([k, l]) => <button key={k} type="button" onClick={() => setSection(k)} className={cn("h-8 rounded-md px-3 text-sm", section === k ? "bg-accent text-white" : "border border-line bg-paper hover:bg-inset")}>{l}</button>)}
+        </div>
+        {section === "agency" ? <div className="mt-3"><KpiTiles c={d.cur} p={d.prev_kpis} d={d} /></div> : null}
+        {section === "agency" ? <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
           <p title="Bắt đầu chi tiêu trong kỳ, 60 ngày trước đó không chi tiêu (cần đủ dữ liệu lưu)."><b>Mới chạy ({d.new_accounts.length}):</b> {d.new_accounts.length ? d.new_accounts.map((a) => a.label).join(", ") : "—"}</p>
           <p title="Quy tắc hiện có: không chi tiêu 10 ngày (đã có chi tiêu từ kỳ trước)."><b>Đã dừng ({d.stopped_accounts.length}):</b> {d.stopped_accounts.length ? d.stopped_accounts.map((a) => a.label).join(", ") : "—"}</p>
-        </div>
+        </div> : null}
       </Card>
 
+      {section === "staff" ? <StaffPerfView range={range} onOpenAccount={onOpenAccount} /> : null}
+      {section === "agency" ? <>
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="p-4 xl:col-span-1">
           <h3 className="font-semibold">Chi tiêu 6 tháng</h3>
@@ -167,6 +174,7 @@ export function ManagerView({ onOpenAccount }: { onOpenAccount?: (id: string) =>
           </ul>
         )}
       </Card>
+      </> : null}
     </div>
   );
 }
