@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BarChart3, ChevronRight } from "lucide-react";
 import { PacingCard } from "@/components/adsops/budget-pacing";
 import { BusinessCard } from "@/components/adsops/business-outcomes";
+import type { CampFields } from "@/lib/adsops/openai-structure";
 import { readOpenAIViewFn, type OAMetrics, type OANode, type OAView } from "@/lib/adsops/openai-ads.functions";
 import { fmtDay, fmtMoney, fmtNum, fmtPct, fmtRange } from "@/lib/adsops/client-overview";
 import { cn } from "@/lib/cn";
@@ -121,9 +122,14 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
           </td>
           <td className="px-2 py-1.5 text-xs">{depth === 0 ? info?.kind || dash : ""}</td>
           <td className="px-2 py-1.5 text-xs">{depth < 2 ? info?.bid_strategy || dash : ""}</td>
-          <td className="max-w-[260px] px-2 py-1.5 text-xs">
-            {depth === 1 ? (info?.hints.length ? <span className="line-clamp-2" title={info.hints.join("\n")}>{info.hints.join(" · ")}</span> : dash) : ""}
+          <td className="min-w-[340px] px-2 py-1.5 align-top text-xs">
+            {depth === 1 ? (info?.hints.length ? <ul className="ml-4 list-disc space-y-0.5 whitespace-normal text-ink">{info.hints.map((h, i) => <li key={i}>{h}</li>)}</ul> : dash) : ""}
           </td>
+          {CAMP_COLS.map((c) => (
+            <td key={c.key} className={cn("px-2 py-1.5 align-top text-xs", c.wide && "min-w-[220px]")}>
+              {depth === 0 ? c.cell(info?.camp ?? null) ?? dash : depth === 1 ? <span className="text-muted">Theo chiến dịch</span> : ""}
+            </td>
+          ))}
           {COLS.map((k) => {
             const dl = showPrev && n.prev ? delta(n.m[k], n.prev[k], k) : null;
             return (
@@ -137,7 +143,7 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
         </tr>
         {isOpen ? (
           <tr className="border-t border-line bg-inset">
-            <td colSpan={COLS.length + 4} className="p-0">
+            <td colSpan={COLS.length + 4 + CAMP_COLS.length} className="p-0">
               <div className="sticky left-0 max-w-[min(100vw-4rem,1100px)] px-6 py-3">
                 <DetailPanel level={levelOf(depth)} n={n} clientId={clientId} managerUrl={data?.manager_url || null} />
               </div>
@@ -228,13 +234,14 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
                 ))}
               </div>
             </div>
-            <table className="w-full min-w-[1300px] text-sm">
+            <table className="w-full min-w-[2200px] text-sm">
               <thead className="text-xs text-muted">
                 <tr>
                   <th className="sticky left-0 z-10 bg-paper px-2 py-1 text-left">Tên</th>
                   <th className="cursor-help px-2 py-1 text-left" title="Mục tiêu chiến dịch (Ads Manager: Loại).">Loại</th>
                   <th className="cursor-help px-2 py-1 text-left" title="Chiến dịch: kiểu đặt giá thầu; nhóm quảng cáo: chiến lược giá thầu.">Chiến lược giá thầu</th>
-                  <th className="cursor-help px-2 py-1 text-left" title="Gợi ý ngữ cảnh của nhóm quảng cáo: các tình huống hội thoại nên hiện quảng cáo. Bấm dòng để xem đủ.">Gợi ý ngữ cảnh</th>
+                  <th className="cursor-help px-2 py-1 text-left" title="Gợi ý ngữ cảnh của nhóm quảng cáo: các tình huống hội thoại nên hiện quảng cáo.">Gợi ý ngữ cảnh</th>
+                  {CAMP_COLS.map((c) => <th key={c.key} className="cursor-help px-2 py-1 text-left" title={c.hint}>{c.label}</th>)}
                   {COLS.map((k) => <th key={k} className="cursor-help px-2 py-1 text-right" title={HINT[k]}>{LABEL[k]}</th>)}
                 </tr>
               </thead>
@@ -259,6 +266,21 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
     </div>
   );
 }
+
+const list = (a: string[]) => (a.length ? <ul className="space-y-0.5">{a.map((x, i) => <li key={i}>{x}</li>)}</ul> : null);
+/** Campaign-level settings (Ads Manager campaign edit page). Ad groups inherit → "Theo chiến dịch". */
+const CAMP_COLS: Array<{ key: string; label: string; hint: string; wide?: boolean; cell: (c: CampFields | null) => ReactNode }> = [
+  { key: "billing", label: "Thanh toán", hint: "Sự kiện tính phí của chiến dịch.", cell: (c) => c?.billing || null },
+  { key: "loc_in", label: "Vị trí bao gồm", hint: "Khu vực nhắm mục tiêu của chiến dịch.", wide: true, cell: (c) => list(c?.loc_include || []) },
+  { key: "loc_ex", label: "Vị trí loại trừ", hint: "Khu vực bị loại trừ.", cell: (c) => list(c?.loc_exclude || []) },
+  { key: "platforms", label: "Nền tảng đủ điều kiện", hint: "Nền tảng ChatGPT được phép hiển thị. Không giới hạn = Tất cả nền tảng.", cell: (c) => c?.platforms || null },
+  { key: "tracking", label: "Tham số theo dõi", hint: "Tham số gắn vào URL đích (cấu hình trang đích của chiến dịch).", cell: (c) => c?.tracking || null },
+  { key: "aud_in", label: "Đối tượng tùy chỉnh bao gồm", hint: "Tệp đối tượng tùy chỉnh được nhắm.", cell: (c) => list(c?.aud_include || []) },
+  { key: "aud_ex", label: "Đối tượng tùy chỉnh loại trừ", hint: "Tệp đối tượng tùy chỉnh bị loại trừ.", cell: (c) => list(c?.aud_exclude || []) },
+  { key: "budget", label: "Ngân sách", hint: "Giới hạn chi tiêu của chiến dịch.", cell: (c) => c?.budget || null },
+  { key: "start", label: "Ngày bắt đầu", hint: "Trống trên OpenAI = bắt đầu ngay khi bật.", cell: (c) => c?.start || null },
+  { key: "end", label: "Ngày kết thúc", hint: "Trống trên OpenAI = chạy liên tục.", cell: (c) => c?.end || null },
+];
 
 function Thumb({ clientId, adId, has, managerUrl, big = false }: { clientId: string; adId: string; has: boolean; managerUrl: string | null; big?: boolean }) {
   const [failed, setFailed] = useState(false);
