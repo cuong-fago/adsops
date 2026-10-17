@@ -15,8 +15,8 @@ async function handle({ request }: { request: Request }): Promise<Response> {
     return new Response("Unauthorized", { status: 401 });
   }
   if (ctx.principal.role === "pending" || !p.canSeeAccount(ctx, clientId)) return new Response("Not found", { status: 404 });
-  const img = await (await import("@/lib/adsops/openai-ads.server")).adImage(clientId, adId).catch(() => null);
-  if (!img) return new Response("Not found", { status: 404 });
+  const img = await (await import("@/lib/adsops/openai-ads.server")).adImage(clientId, adId).catch((e: unknown) => { console.error("[openai-ad-image]", adId, e instanceof Error ? e.message : String(e)); return null; });
+  if (!img) { console.warn("[openai-ad-image] no image", adId); return new Response("Not found", { status: 404 }); }
   return new Response(img.body, {
     headers: { "Content-Type": img.type, "Cache-Control": "private, max-age=1800", "X-Content-Type-Options": "nosniff" },
   });
