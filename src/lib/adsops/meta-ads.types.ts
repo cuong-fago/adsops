@@ -16,6 +16,26 @@ export type MetaMetrics = {
   cost_per_follow: number | null;
   /** action_type "page_engagement"; null when none. */
   page_engagement: number | null;
+  /** Per range (time_increment=all_days), never a sum of days. */
+  reach: number | null;
+  frequency: number | null;
+  cpm: number | null;
+  link_clicks: number | null;
+  link_ctr: number | null;
+  cost_per_link_click: number | null;
+  lpv: number | null;
+  lpv_rate: number | null;
+  video_3s: number | null;
+  thruplay: number | null;
+  /** 3s views / impressions */
+  hook_rate: number | null;
+  /** ThruPlay / 3s views */
+  hold_rate: number | null;
+  /** pXX watched / 3s views */
+  ret25: number | null;
+  ret50: number | null;
+  ret75: number | null;
+  ret100: number | null;
 };
 export type MetaDay = MetaMetrics & { date: string };
 export type MetaRow = MetaMetrics & {
@@ -48,6 +68,9 @@ export type MetaAnalytics = {
   /** False when compare was asked but stored history does not reach the previous period start. */
   prev_covered: boolean | null;
   history_from: string | null;
+  /** False while older stored days still lack link clicks / video quartiles (backfill running). */
+  fields_complete: boolean;
+  prev_fields_complete: boolean | null;
   daily: MetaDay[];
   campaigns: MetaRow[];
   adsets: MetaRow[];

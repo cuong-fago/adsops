@@ -121,11 +121,22 @@ export async function syncMetaAccounts(accounts: MetaAccount[]): Promise<{ ids: 
   return { ids, inserted };
 }
 
-const INSIGHT_FIELDS = "spend,impressions,clicks,actions";
+const INSIGHT_FIELDS =
+  "spend,impressions,clicks,actions,inline_link_clicks,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,video_thruplay_watched_actions";
+
+/** Sum of an "…_watched_actions" list (video_view entries); null when Meta sent none. */
+function videoSum(v: unknown): number | null {
+  if (!Array.isArray(v) || !v.length) return null;
+  return v.reduce((s: number, a: unknown) => s + num((a as Action)?.value), 0);
+}
+function actionVal(actions: Action[], type: string): number | null {
+  const a = actions.find((x) => x.action_type === type);
+  return a ? num(a.value) : null;
+}
 
 export const HISTORY_DAYS = 182;
 export const BACKFILL_CHUNK_DAYS = 30;
-const INS_COLS = "client_id, level, object_id, date, campaign_id, campaign_name, adset_id, adset_name, spend, impressions, clicks, leads, messages, actions, ad_id, ad_name";
+const INS_COLS = "client_id, level, object_id, date, campaign_id, campaign_name, adset_id, adset_name, spend, impressions, clicks, leads, messages, actions, ad_id, ad_name, inline_link_clicks, video_p25, video_p50, video_p75, video_p100, video_thruplay, video_3s, landing_page_views";
 
 /**
  * Daily insights for one account at account / campaign / adset / ad level for [since, until]
@@ -164,7 +175,11 @@ export async function syncMetaInsights(
       if (!objectId || !r.date_start) continue;
       rows.push([clientId, level, objectId, String(r.date_start), r.campaign_id ? String(r.campaign_id) : null, r.campaign_name ? String(r.campaign_name) : null,
         r.adset_id ? String(r.adset_id) : null, r.adset_name ? String(r.adset_name) : null, num(r.spend), num(r.impressions), num(r.clicks),
-        leadsOf(actions), messagesOf(actions), JSON.stringify(actions), r.ad_id ? String(r.ad_id) : null, r.ad_name ? String(r.ad_name) : null]);
+        leadsOf(actions), messagesOf(actions), JSON.stringify(actions), r.ad_id ? String(r.ad_id) : null, r.ad_name ? String(r.ad_name) : null,
+        r.inline_link_clicks != null ? num(r.inline_link_clicks) : null,
+        videoSum(r.video_p25_watched_actions), videoSum(r.video_p50_watched_actions), videoSum(r.video_p75_watched_actions),
+        videoSum(r.video_p100_watched_actions), videoSum(r.video_thruplay_watched_actions),
+        actionVal(actions, "video_view"), actionVal(actions, "landing_page_view")]);
     }
     for (let i = 0; i < rows.length; i += 200) {
       const batch = rows.slice(i, i + 200);
@@ -174,7 +189,10 @@ export async function syncMetaInsights(
         `insert into meta_insights_daily (${INS_COLS}) values ${values}
          on conflict (client_id, level, object_id, date) do update set spend = excluded.spend, impressions = excluded.impressions,
            clicks = excluded.clicks, leads = excluded.leads, messages = excluded.messages, actions = excluded.actions,
-           campaign_name = excluded.campaign_name, adset_name = excluded.adset_name, ad_name = excluded.ad_name, pulled_at = now()`,
+           campaign_name = excluded.campaign_name, adset_name = excluded.adset_name, ad_name = excluded.ad_name,
+           inline_link_clicks = excluded.inline_link_clicks, video_p25 = excluded.video_p25, video_p50 = excluded.video_p50,
+           video_p75 = excluded.video_p75, video_p100 = excluded.video_p100, video_thruplay = excluded.video_thruplay,
+           video_3s = excluded.video_3s, landing_page_views = excluded.landing_page_views, pulled_at = now()`,
         params,
       );
       total += batch.length;
@@ -184,6 +202,12 @@ export async function syncMetaInsights(
   await sql.query(
     `update meta_account_state set history_from = least(coalesce(history_from, $2::date), $2::date) where client_id = $1`,
     [clientId, since],
+  ).catch(() => null);
+  // New-field coverage only grows contiguously (a chunk older than the gap does not count).
+  await sql.query(
+    `update meta_account_state set fields_v2_from = $2::date
+      where client_id = $1 and (fields_v2_from is null and $3::date >= $4::date or fields_v2_from is not null and $3::date >= fields_v2_from - 1 and $2::date < fields_v2_from)`,
+    [clientId, since, until, addDaysYmd(today, -1)],
   ).catch(() => null);
   return { rows: total, through: until };
 }
@@ -211,6 +235,87 @@ export async function backfillMeta(clientId: string, tz: string, deadline: numbe
     chunks += 1;
   }
   return { chunks, from };
+}
+
+/**
+ * Re-pull stored days older than fields_v2_from (30-day chunks, newest first) so the delivery /
+ * video fields fill in for history. Stops at history_from or the deadline; resumes next run.
+ */
+export async function upgradeMetaFields(clientId: string, tz: string, deadline: number): Promise<{ chunks: number }> {
+  const sql = await getSql();
+  const r = await sql.query<{ v: unknown; h: unknown }>(`select fields_v2_from as v, history_from as h from meta_account_state where client_id = $1`, [clientId]).catch(() => []);
+  const d = (x: unknown) => (x ? (x instanceof Date ? x.toISOString() : String(x)).slice(0, 10) : null);
+  let from = d(r[0]?.v);
+  const floor = d(r[0]?.h);
+  if (!from || !floor) return { chunks: 0 };
+  let chunks = 0;
+  while (from > floor && Date.now() < deadline) {
+    const until = addDaysYmd(from, -1);
+    let since = addDaysYmd(until, -(BACKFILL_CHUNK_DAYS - 1));
+    if (since < floor) since = floor;
+    await syncMetaInsights(clientId, tz, { since, until });
+    from = since;
+    chunks += 1;
+  }
+  return { chunks };
+}
+
+type ReachLevel = "account" | "campaign" | "adset" | "ad";
+export type ReachMap = Record<string, { reach: number | null; frequency: number | null }>;
+
+/**
+ * Reach / frequency for one range (time_increment=all_days): reach is not additive across days.
+ * Cached per range; ranges touching the last 2 days refresh after 6 h, older ranges are kept.
+ */
+export async function metaReach(clientId: string, start: string, end: string, tz = "Asia/Ho_Chi_Minh"): Promise<Record<ReachLevel, ReachMap>> {
+  const sql = await getSql();
+  const out: Record<ReachLevel, ReachMap> = { account: {}, campaign: {}, adset: {}, ad: {} };
+  const recent = end >= addDaysYmd(ymdInTz(tz), -1);
+  const cached = await sql.query<{ level: ReachLevel; object_id: string; reach: unknown; frequency: unknown; fetched_at: unknown }>(
+    `select level, object_id, reach, frequency, fetched_at from meta_reach_cache where client_id = $1 and start_date = $2 and end_date = $3`,
+    [clientId, start, end],
+  ).catch(() => []);
+  const fresh = cached.length > 0 && (!recent || cached.every((c) => Date.now() - new Date(String(c.fetched_at instanceof Date ? c.fetched_at.toISOString() : c.fetched_at)).getTime() < 6 * 3600_000));
+  if (fresh) {
+    for (const c of cached) if (c.object_id !== "__none__") out[c.level][c.object_id] = { reach: c.reach == null ? null : Number(c.reach), frequency: c.frequency == null ? null : Number(c.frequency) };
+    return out;
+  }
+  if (!metaConfigured()) return out;
+  const acc = fbAccountId(clientId);
+  const range = JSON.stringify({ since: start, until: end });
+  const idField: Record<ReachLevel, string> = { account: "account_id", campaign: "campaign_id", adset: "adset_id", ad: "ad_id" };
+  const levels: ReachLevel[] = ["account", "campaign", "adset", "ad"];
+  const fetched = await Promise.all(
+    levels.map((level) =>
+      graphGet(`act_${acc}/insights`, { level, fields: `${idField[level]},reach,frequency`, time_increment: "all_days", time_range: range, limit: "500" }, 20)
+        .then((rows) => ({ level, rows })),
+    ),
+  );
+  const rowsToStore: unknown[][] = [];
+  for (const { level, rows } of fetched) {
+    for (const r of rows) {
+      const id = level === "account" ? acc : String(r[idField[level]] || "");
+      if (!id) continue;
+      const reach = r.reach != null ? num(r.reach) : null;
+      const frequency = r.frequency != null ? num(r.frequency) : null;
+      out[level][id] = { reach, frequency };
+      rowsToStore.push([clientId, level, id, start, end, reach, frequency]);
+    }
+  }
+  await sql.query(`delete from meta_reach_cache where client_id = $1 and start_date = $2 and end_date = $3`, [clientId, start, end]).catch(() => null);
+  // Marker row so an empty range is cached too.
+  if (!rowsToStore.length) rowsToStore.push([clientId, "account", "__none__", start, end, null, null]);
+  for (let i = 0; i < rowsToStore.length; i += 200) {
+    const batch = rowsToStore.slice(i, i + 200);
+    const params: unknown[] = [];
+    const values = batch.map((row) => `(${row.map((v) => { params.push(v); return `$${params.length}`; }).join(",")})`).join(",");
+    await sql.query(
+      `insert into meta_reach_cache (client_id, level, object_id, start_date, end_date, reach, frequency) values ${values}
+       on conflict (client_id, level, object_id, start_date, end_date) do update set reach = excluded.reach, frequency = excluded.frequency, fetched_at = now()`,
+      params,
+    ).catch(() => null);
+  }
+  return out;
 }
 
 /** 10-day spend + budget runway from stored state and account-level daily rows. */
@@ -343,6 +448,19 @@ export async function refreshAllMeta(deadline: number): Promise<{ ok: boolean; a
     }
   };
   await Promise.all([bfWorker(), bfWorker(), bfWorker()]);
+  // Re-pull older stored days so the delivery / video fields fill in (same chunking, leftover time).
+  let up = 0;
+  const upWorker = async () => {
+    while (up < accounts.length && Date.now() < deadline - 20_000) {
+      const a = accounts[up++];
+      try {
+        await upgradeMetaFields(`${FB_PREFIX}${a.account_id}`, a.timezone_name, deadline - 20_000);
+      } catch (err) {
+        errors.push(`${a.account_id} cập nhật chỉ số: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  };
+  await Promise.all([upWorker(), upWorker()]);
   return { ok: errors.length === 0, accounts: accounts.length, done, inserted: inserted.length, errors };
 }
 
