@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
+import { OpenAIAnalyticsView } from "@/components/adsops/openai-analytics-view";
 import { MetaAlertsCard, type MetaFocus } from "@/components/adsops/meta-alerts-card";
 import { PacingAlertsCard } from "@/components/adsops/budget-pacing";
 import { ClassifyView } from "@/components/adsops/classify-view";
@@ -819,6 +820,9 @@ export function AdsOpsApp() {
           {warehouseMsg ? <span className="text-sm text-muted">{warehouseMsg}</span> : null}
         </div>
       ) : null;
+      if (clientId.startsWith("oa_")) {
+        return <OpenAIAnalyticsView key={clientId} clientId={clientId} allowCompare={Boolean(access.caps.compare && access.kind === "staff")} />;
+      }
       if (clientId.startsWith("fb_")) {
         const focus = metaFocus && metaFocus.clientId === clientId ? metaFocus : null;
         return (
