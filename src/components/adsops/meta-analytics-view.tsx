@@ -25,13 +25,15 @@ const PRESETS = [7, 14, 30, 90] as const;
 type KpiKey =
   | "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "leads" | "messages" | "cpl" | "follows" | "cost_per_follow" | "page_engagement"
   | "reach" | "frequency" | "cpm" | "link_clicks" | "link_ctr" | "cost_per_link_click" | "lpv" | "lpv_rate"
-  | "video_3s" | "thruplay" | "hook_rate" | "hold_rate" | "ret25" | "ret50" | "ret75" | "ret100";
+  | "video_3s" | "thruplay" | "hook_rate" | "hold_rate" | "ret25" | "ret50" | "ret75" | "ret100"
+  | "cost_per_message" | "msg_first_reply" | "msg_replied" | "msg_depth2" | "msg_depth3" | "msg_depth5" | "msg_connections" | "deep_rate"
+  | "purchases" | "purchase_value" | "roas" | "cpa_purchase";
 /** Lower is better for cost metrics (delta colour flips). */
-const LOWER_BETTER: Partial<Record<KpiKey, true>> = { cpc: true, cpl: true, cost_per_follow: true, cpm: true, cost_per_link_click: true };
+const LOWER_BETTER: Partial<Record<KpiKey, true>> = { cpc: true, cpl: true, cost_per_follow: true, cpm: true, cost_per_link_click: true, cost_per_message: true, cpa_purchase: true };
 /** No good/bad colour on the delta (frequency: watch the level, not the direction). */
 const NEUTRAL: Partial<Record<KpiKey, true>> = { frequency: true };
-const MONEY = new Set<KpiKey>(["spend", "cpc", "cpl", "cost_per_follow", "cpm", "cost_per_link_click"]);
-const PCT = new Set<KpiKey>(["ctr", "link_ctr", "lpv_rate", "hook_rate", "hold_rate", "ret25", "ret50", "ret75", "ret100"]);
+const MONEY = new Set<KpiKey>(["spend", "cpc", "cpl", "cost_per_follow", "cpm", "cost_per_link_click", "cost_per_message", "purchase_value", "cpa_purchase"]);
+const PCT = new Set<KpiKey>(["ctr", "link_ctr", "lpv_rate", "hook_rate", "hold_rate", "ret25", "ret50", "ret75", "ret100", "deep_rate"]);
 /** Frequency ≥ these over a ~7-day window: amber / red. */
 const FREQ_WARN = 3;
 const FREQ_BAD = 4;
@@ -54,6 +56,19 @@ const HINT: Partial<Record<KpiKey, string>> = {
   ret75: "Lượt xem tới 75% video ÷ Lượt xem 3s.",
   ret100: "Lượt xem hết video ÷ Lượt xem 3s.",
   ctr: "Tất cả click ÷ Hiển thị.",
+  messages: "Cuộc trò chuyện mới bắt đầu qua Messenger / Instagram / WhatsApp (messaging_conversation_started_7d).",
+  cost_per_message: "Chi tiêu ÷ Tin nhắn mới.",
+  msg_first_reply: "Số cuộc trò chuyện mà khách nhận được phản hồi đầu tiên (messaging_first_reply, Meta tính).",
+  msg_replied: "Cuộc trò chuyện có khách trả lời trong 7 ngày (messaging_conversation_replied_7d).",
+  msg_depth2: "Khách nhắn tiếp ≥2 tin trong cuộc trò chuyện.",
+  msg_depth3: "Khách nhắn tiếp ≥3 tin trong cuộc trò chuyện.",
+  msg_depth5: "Khách nhắn tiếp ≥5 tin trong cuộc trò chuyện.",
+  msg_connections: "Tổng số kết nối nhắn tin (total_messaging_connection).",
+  deep_rate: "Khách nhắn tiếp ≥2 tin ÷ Tin nhắn mới. Chỉ là chỉ báo thay thế: Ads API không có tỷ lệ phản hồi thật của doanh nghiệp.",
+  purchases: "Lượt mua hàng Meta ghi nhận (omni_purchase; nếu không có thì purchase / Pixel / mua trên Facebook, không cộng trùng).",
+  purchase_value: "Giá trị mua hàng từ action_values (cùng loại với Lượt mua). Trống khi Meta không báo giá trị.",
+  roas: "Giá trị mua hàng ÷ Chi tiêu.",
+  cpa_purchase: "Chi tiêu ÷ Lượt mua.",
   cpc: "Chi tiêu ÷ Tất cả click.",
 };
 
@@ -64,6 +79,9 @@ const L = {
     reach: "Tiếp cận", frequency: "Tần suất", cpm: "CPM", link_clicks: "Click liên kết", link_ctr: "CTR liên kết",
     cost_per_link_click: "CPC liên kết", lpv: "Xem trang đích", lpv_rate: "Tỷ lệ xem trang đích", video_3s: "Xem video 3s",
     thruplay: "ThruPlay", hook_rate: "Hook rate", hold_rate: "Hold rate", ret25: "Xem 25%", ret50: "Xem 50%", ret75: "Xem 75%", ret100: "Xem 100%",
+    cost_per_message: "Chi phí / tin nhắn mới", msg_first_reply: "Phản hồi đầu tiên", msg_replied: "Hội thoại có trả lời", msg_depth2: "Nhắn ≥2 tin",
+    msg_depth3: "Nhắn ≥3 tin", msg_depth5: "Nhắn ≥5 tin", msg_connections: "Kết nối nhắn tin", deep_rate: "Tỷ lệ hội thoại sâu",
+    purchases: "Lượt mua", purchase_value: "Giá trị mua hàng", roas: "ROAS", cpa_purchase: "CPA mua hàng",
     days: (n: number) => `${n} ngày`, compare: "So kỳ trước", campaigns: "Chiến dịch", adsets: "Nhóm quảng cáo", campaign: "Chiến dịch", name: "Tên",
     daily: "Chi tiêu theo ngày", loading: "Đang tải Facebook Ads…", empty: "Chưa có dữ liệu Facebook Ads trong khoảng này.",
     emptyHint: "Dữ liệu kéo mỗi ngày qua cron (35 ngày gần nhất). Không đoán số: ô trống nghĩa là Meta không báo.",
@@ -75,6 +93,9 @@ const L = {
     reach: "Reach", frequency: "Frequency", cpm: "CPM", link_clicks: "Link clicks", link_ctr: "Link CTR",
     cost_per_link_click: "Cost / link click", lpv: "Landing page views", lpv_rate: "LPV rate", video_3s: "3s video views",
     thruplay: "ThruPlay", hook_rate: "Hook rate", hold_rate: "Hold rate", ret25: "Viewed 25%", ret50: "Viewed 50%", ret75: "Viewed 75%", ret100: "Viewed 100%",
+    cost_per_message: "Cost / new message", msg_first_reply: "First replies", msg_replied: "Replied conversations", msg_depth2: "≥2 messages",
+    msg_depth3: "≥3 messages", msg_depth5: "≥5 messages", msg_connections: "Messaging connections", deep_rate: "Deep conversation rate",
+    purchases: "Purchases", purchase_value: "Purchase value", roas: "ROAS", cpa_purchase: "Cost / purchase",
     days: (n: number) => `${n} days`, compare: "Compare previous", campaigns: "Campaigns", adsets: "Ad sets", campaign: "Campaign", name: "Name",
     daily: "Daily spend", loading: "Loading Facebook Ads…", empty: "No Facebook Ads data in this range.",
     emptyHint: "Pulled daily by cron (last 35 days). Blank cells mean Meta did not report a value.",
@@ -166,6 +187,7 @@ export function MetaAnalyticsView({
     if (v == null) return "";
     if (MONEY.has(k)) return fmtMoney(lang, v, cur);
     if (PCT.has(k)) return fmtPct(lang, v);
+    if (k === "roas") return `${v.toLocaleString(lang === "en" ? "en-US" : "vi-VN", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}×`;
     if (k === "frequency") return v.toLocaleString(lang === "en" ? "en-US" : "vi-VN", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
     return fmtNum(lang, v);
   };
@@ -327,6 +349,8 @@ const ALL_COLS = [
   "spend", "impressions", "reach", "frequency", "cpm", "clicks", "ctr", "cpc",
   "link_clicks", "link_ctr", "cost_per_link_click", "lpv", "lpv_rate",
   "follows", "cost_per_follow", "page_engagement", "leads", "messages", "cpl",
+  "cost_per_message", "msg_first_reply", "msg_replied", "msg_depth2", "msg_depth3", "msg_depth5", "msg_connections", "deep_rate",
+  "purchases", "purchase_value", "roas", "cpa_purchase",
   "video_3s", "hook_rate", "thruplay", "hold_rate", "ret25", "ret50", "ret75", "ret100",
 ] as const satisfies readonly (keyof MetaMetrics)[];
 /** Core columns always (when chosen); the rest only when some row in this table has a value (blank otherwise). */
@@ -334,6 +358,7 @@ const CORE = new Set<KpiKey>(["spend", "impressions", "clicks", "ctr", "cpc", "c
 const DEFAULT_COLS = new Set<KpiKey>([
   "spend", "impressions", "reach", "frequency", "cpm", "clicks", "ctr", "cpc",
   "follows", "cost_per_follow", "page_engagement", "leads", "messages", "cpl", "hook_rate", "hold_rate",
+  "cost_per_message", "deep_rate", "purchases", "purchase_value", "roas", "cpa_purchase",
 ]);
 const colsFor = (rows: MetaRow[], chosen: Set<KpiKey> = DEFAULT_COLS) =>
   ALL_COLS.filter((c) => chosen.has(c) && (CORE.has(c) || rows.some((r) => r[c] != null)));
@@ -400,9 +425,14 @@ function kpiOrder(d: MetaAnalytics): KpiKey[] {
   const lead: KpiKey[] = ["leads", "cpl", "messages"];
   const results = (followFirst ? [...follow, ...lead] : [...lead, ...follow]).filter((k) => t[k] != null || (k === "leads" && t.follows == null));
   const delivery: KpiKey[] = ["reach", "frequency", "cpm"];
-  return [...(followFirst
-    ? ["spend", ...results.slice(0, 2), "impressions", ...delivery, "clicks", "ctr", "cpc", ...results.slice(2)]
-    : ["spend", "impressions", ...delivery, "clicks", "ctr", "cpc", ...results])] as KpiKey[];
+  // Adaptive: messaging cards only with messaging data, purchase cards only with purchases.
+  const msg: KpiKey[] = t.messages != null ? ["messages", "cost_per_message", "deep_rate"] : [];
+  const buy: KpiKey[] = t.purchases != null ? ["purchases", "purchase_value", "roas", "cpa_purchase"] : [];
+  const res = msg.length ? results.filter((k) => k !== "messages") : results;
+  const order = (followFirst
+    ? ["spend", ...res.slice(0, 2), "impressions", ...delivery, "clicks", "ctr", "cpc", ...res.slice(2)]
+    : ["spend", "impressions", ...delivery, "clicks", "ctr", "cpc", ...res]) as KpiKey[];
+  return [...order, ...buy, ...msg];
 }
 
 function budgetText(r: MetaRow, cur: string, lang: Lang): string | null {

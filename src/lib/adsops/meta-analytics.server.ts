@@ -5,13 +5,14 @@ import type { Json, MetaAnalytics, MetaMetrics, MetaRow } from "./meta-ads.types
 
 type Raw = { spend: unknown; impressions: unknown; clicks: unknown; leads: unknown; messages: unknown; lead_rows: unknown; msg_rows: unknown; follows: unknown; follow_rows: unknown; page_eng: unknown; page_eng_rows: unknown;
   link_clicks?: unknown; lc_rows?: unknown; lpv?: unknown; lpv_rows?: unknown; v3s?: unknown; v3s_rows?: unknown; thru?: unknown; thru_rows?: unknown;
-  p25?: unknown; p50?: unknown; p75?: unknown; p100?: unknown; p_rows?: unknown };
+  p25?: unknown; p50?: unknown; p75?: unknown; p100?: unknown; p_rows?: unknown;
+  [k: string]: unknown };
 type Reach = { reach: number | null; frequency: number | null } | undefined;
 const n = (v: unknown) => { const x = Number(v ?? 0); return Number.isFinite(x) ? x : 0; };
 const iso = (v: unknown) => (v == null ? null : (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10));
 
 /** `full` = every day in the range has the new fields (link clicks / quartiles / ThruPlay). */
-function metrics(r: Raw | undefined, full = true, rf?: Reach): MetaMetrics {
+function metrics(r: Raw | undefined, full = true, rf?: Reach, v3 = false): MetaMetrics {
   const spend = n(r?.spend);
   const impressions = n(r?.impressions);
   const clicks = n(r?.clicks);
@@ -27,6 +28,30 @@ function metrics(r: Raw | undefined, full = true, rf?: Reach): MetaMetrics {
     cost_per_follow: follows && follows > 0 ? spend / follows : null,
     page_engagement: n(r?.page_eng_rows) > 0 ? n(r?.page_eng) : null,
     ...delivery(r, spend, impressions, full, rf),
+    ...commerce(r, spend, messages, v3),
+  };
+}
+/** Messaging depth + purchases. Counts from actions (full history); value / ROAS need action_values (fullV3). */
+function commerce(r: Raw | undefined, spend: number, messages: number | null, v3: boolean) {
+  const opt = (k: string) => (n(r?.[`${k}_rows`]) > 0 ? n(r?.[k]) : null);
+  const depth2 = opt("md2");
+  const replied = opt("mrep");
+  const deep = depth2 ?? replied;
+  const purchases = opt("pur");
+  const value = v3 && n(r?.purv_rows) > 0 ? n(r?.purv) : null;
+  return {
+    cost_per_message: messages && messages > 0 ? spend / messages : null,
+    msg_first_reply: opt("mfr"),
+    msg_replied: replied,
+    msg_depth2: depth2,
+    msg_depth3: opt("md3"),
+    msg_depth5: opt("md5"),
+    msg_connections: opt("mconn"),
+    deep_rate: deep != null && messages && messages > 0 ? deep / messages : null,
+    purchases,
+    purchase_value: purchases != null ? value : null,
+    roas: purchases != null && value != null && spend > 0 ? value / spend : null,
+    cpa_purchase: purchases && purchases > 0 ? spend / purchases : null,
   };
 }
 function delivery(r: Raw | undefined, spend: number, impressions: number, full: boolean, rf: Reach) {
@@ -65,7 +90,23 @@ const PAGE_ENG_EXPR = act(["page_engagement"]);
 // Older rows have these only inside actions jsonb: fall back so history counts at once.
 const LPV_EXPR = `coalesce(landing_page_views, ${act(["landing_page_view"])})`;
 const V3S_EXPR = `coalesce(video_3s, ${act(["video_view"])})`;
-const AGG = `sum(spend) as spend, sum(impressions) as impressions, sum(clicks) as clicks,
+// Purchase types overlap (omni ⊇ pixel / onsite): first present, never summed.
+const PUR_TYPES = ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase", "onsite_conversion.purchase"];
+const firstOf = (col: string) =>
+  `coalesce(${PUR_TYPES.map((t) => `(select sum((a->>'value')::numeric) from jsonb_array_elements(case when jsonb_typeof(${col}) = 'array' then ${col} else '[]'::jsonb end) a where a->>'action_type' = '${t}')`).join(", ")})`;
+const PUR_EXPR = firstOf("actions");
+const PURV_EXPR = firstOf("action_values");
+const MSG = {
+  mfr: act(["onsite_conversion.messaging_first_reply"]),
+  mrep: act(["onsite_conversion.messaging_conversation_replied_7d"]),
+  md2: act(["onsite_conversion.messaging_user_depth_2_message_send"]),
+  md3: act(["onsite_conversion.messaging_user_depth_3_message_send"]),
+  md5: act(["onsite_conversion.messaging_user_depth_5_message_send"]),
+  mconn: act(["onsite_conversion.total_messaging_connection", "total_messaging_connection"]),
+};
+const AGG = `${Object.entries(MSG).map(([k, e]) => `sum(${e}) as ${k}, count(${e}) as ${k}_rows`).join(", ")},
+  sum(${PUR_EXPR}) as pur, count(${PUR_EXPR}) as pur_rows, sum(${PURV_EXPR}) as purv, count(${PURV_EXPR}) as purv_rows,
+  sum(spend) as spend, sum(impressions) as impressions, sum(clicks) as clicks,
   sum(leads) as leads, count(leads) as lead_rows, sum(messages) as messages, count(messages) as msg_rows,
   sum(${FOLLOW_EXPR}) as follows, count(${FOLLOW_EXPR}) as follow_rows,
   sum(${PAGE_ENG_EXPR}) as page_eng, count(${PAGE_ENG_EXPR}) as page_eng_rows,
@@ -85,8 +126,11 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
   const prevCovered = prevRange ? Boolean(historyFrom && historyFrom <= prevRange.start) : null;
   const usePrev = prevRange && prevCovered ? prevRange : null;
   // New fields complete for a range when every day was (re-)pulled with them.
-  const v2 = await sql.query<{ v: unknown }>(`select fields_v2_from as v from meta_account_state where client_id = $1`, [clientId]).catch(() => []);
+  const v2 = await sql.query<{ v: unknown; v3: unknown }>(`select fields_v2_from as v, fields_v3_from as v3 from meta_account_state where client_id = $1`, [clientId]).catch(() => []);
   const v2From = iso(v2[0]?.v);
+  const v3From = iso(v2[0]?.v3);
+  const v3Cur = Boolean(v3From && v3From <= start);
+  const v3Prev = usePrev ? Boolean(v3From && v3From <= usePrev.start) : false;
   const fullCur = Boolean(v2From && v2From <= start);
   const fullPrev = usePrev ? Boolean(v2From && v2From <= usePrev.start) : null;
   // Reach / frequency per range from Meta (cached). Failure = blank, never a sum of days.
@@ -140,8 +184,8 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
         status: o?.status ?? null,
         effective_status: o?.effective_status ?? null,
         config: cfg(o?.config),
-        ...(isGone ? metrics(undefined) : metrics(x, fullCur, reachCur?.[reachLevel[level]][x.id])),
-        ...(usePrev ? { prev: pv ? metrics(pv, Boolean(fullPrev), reachPrev?.[reachLevel[level]][x.id]) : null, tag: isGone ? ("gone" as const) : pv ? null : ("new" as const) } : {}),
+        ...(isGone ? metrics(undefined) : metrics(x, fullCur, reachCur?.[reachLevel[level]][x.id], v3Cur)),
+        ...(usePrev ? { prev: pv ? metrics(pv, Boolean(fullPrev), reachPrev?.[reachLevel[level]][x.id], v3Prev) : null, tag: isGone ? ("gone" as const) : pv ? null : ("new" as const) } : {}),
       };
     });
   };
@@ -159,14 +203,14 @@ export async function readMetaAnalytics(clientId: string, start: string, end: st
     start, end,
     data_through: iso(span?.b),
     warehouse_start: iso(span?.a),
-    totals: metrics(await sum(start, end), fullCur, reachCur?.account[accId]),
-    prev: usePrev ? metrics(await sum(usePrev.start, usePrev.end), Boolean(fullPrev), reachPrev?.account[accId]) : null,
+    totals: metrics(await sum(start, end), fullCur, reachCur?.account[accId], v3Cur),
+    prev: usePrev ? metrics(await sum(usePrev.start, usePrev.end), Boolean(fullPrev), reachPrev?.account[accId], v3Prev) : null,
     fields_complete: fullCur,
     prev_fields_complete: fullPrev,
     prev_range: prevRange,
     prev_covered: prevCovered,
     history_from: historyFrom,
-    daily: daily.map((d) => ({ date: iso(d.date) as string, ...metrics(d, Boolean(v2From && v2From <= (iso(d.date) as string))) })),
+    daily: daily.map((d) => ({ date: iso(d.date) as string, ...metrics(d, Boolean(v2From && v2From <= (iso(d.date) as string)), undefined, Boolean(v3From && v3From <= (iso(d.date) as string))) })),
     campaigns: await rowsAt("campaign"),
     adsets: await rowsAt("adset"),
     ads: await rowsAt("ad"),

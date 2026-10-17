@@ -122,7 +122,7 @@ export async function syncMetaAccounts(accounts: MetaAccount[]): Promise<{ ids: 
 }
 
 const INSIGHT_FIELDS =
-  "spend,impressions,clicks,actions,inline_link_clicks,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,video_thruplay_watched_actions";
+  "spend,impressions,clicks,actions,action_values,inline_link_clicks,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,video_thruplay_watched_actions";
 
 /** Sum of an "…_watched_actions" list (video_view entries); null when Meta sent none. */
 function videoSum(v: unknown): number | null {
@@ -136,7 +136,7 @@ function actionVal(actions: Action[], type: string): number | null {
 
 export const HISTORY_DAYS = 182;
 export const BACKFILL_CHUNK_DAYS = 30;
-const INS_COLS = "client_id, level, object_id, date, campaign_id, campaign_name, adset_id, adset_name, spend, impressions, clicks, leads, messages, actions, ad_id, ad_name, inline_link_clicks, video_p25, video_p50, video_p75, video_p100, video_thruplay, video_3s, landing_page_views";
+const INS_COLS = "client_id, level, object_id, date, campaign_id, campaign_name, adset_id, adset_name, spend, impressions, clicks, leads, messages, actions, ad_id, ad_name, inline_link_clicks, video_p25, video_p50, video_p75, video_p100, video_thruplay, video_3s, landing_page_views, action_values";
 
 /**
  * Daily insights for one account at account / campaign / adset / ad level for [since, until]
@@ -179,7 +179,9 @@ export async function syncMetaInsights(
         r.inline_link_clicks != null ? num(r.inline_link_clicks) : null,
         videoSum(r.video_p25_watched_actions), videoSum(r.video_p50_watched_actions), videoSum(r.video_p75_watched_actions),
         videoSum(r.video_p100_watched_actions), videoSum(r.video_thruplay_watched_actions),
-        actionVal(actions, "video_view"), actionVal(actions, "landing_page_view")]);
+        actionVal(actions, "video_view"), actionVal(actions, "landing_page_view"),
+        // Only purchase values are kept (custom conversions / view_content values are not used).
+        JSON.stringify((Array.isArray(r.action_values) ? (r.action_values as Action[]) : []).filter((v) => /purchase/.test(String(v.action_type || ""))))]);
     }
     for (let i = 0; i < rows.length; i += 200) {
       const batch = rows.slice(i, i + 200);
@@ -192,7 +194,7 @@ export async function syncMetaInsights(
            campaign_name = excluded.campaign_name, adset_name = excluded.adset_name, ad_name = excluded.ad_name,
            inline_link_clicks = excluded.inline_link_clicks, video_p25 = excluded.video_p25, video_p50 = excluded.video_p50,
            video_p75 = excluded.video_p75, video_p100 = excluded.video_p100, video_thruplay = excluded.video_thruplay,
-           video_3s = excluded.video_3s, landing_page_views = excluded.landing_page_views, pulled_at = now()`,
+           video_3s = excluded.video_3s, landing_page_views = excluded.landing_page_views, action_values = excluded.action_values, pulled_at = now()`,
         params,
       );
       total += batch.length;
@@ -207,6 +209,11 @@ export async function syncMetaInsights(
   await sql.query(
     `update meta_account_state set fields_v2_from = $2::date
       where client_id = $1 and (fields_v2_from is null and $3::date >= $4::date or fields_v2_from is not null and $3::date >= fields_v2_from - 1 and $2::date < fields_v2_from)`,
+    [clientId, since, until, addDaysYmd(today, -1)],
+  ).catch(() => null);
+  await sql.query(
+    `update meta_account_state set fields_v3_from = $2::date
+      where client_id = $1 and (fields_v3_from is null and $3::date >= $4::date or fields_v3_from is not null and $3::date >= fields_v3_from - 1 and $2::date < fields_v3_from)`,
     [clientId, since, until, addDaysYmd(today, -1)],
   ).catch(() => null);
   return { rows: total, through: until };
@@ -243,7 +250,10 @@ export async function backfillMeta(clientId: string, tz: string, deadline: numbe
  */
 export async function upgradeMetaFields(clientId: string, tz: string, deadline: number): Promise<{ chunks: number }> {
   const sql = await getSql();
-  const r = await sql.query<{ v: unknown; h: unknown }>(`select fields_v2_from as v, history_from as h from meta_account_state where client_id = $1`, [clientId]).catch(() => []);
+  // Re-pull from the newer of the two field markers (v2: delivery / video, v3: purchase values).
+  const r = await sql.query<{ v: unknown; h: unknown }>(
+    `select greatest(fields_v2_from, coalesce(fields_v3_from, fields_v2_from)) as v, history_from as h from meta_account_state where client_id = $1`, [clientId],
+  ).catch(() => []);
   const d = (x: unknown) => (x ? (x instanceof Date ? x.toISOString() : String(x)).slice(0, 10) : null);
   let from = d(r[0]?.v);
   const floor = d(r[0]?.h);

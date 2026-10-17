@@ -27,6 +27,22 @@ export type MetaMetrics = {
   lpv_rate: number | null;
   video_3s: number | null;
   thruplay: number | null;
+  /** Spend / messaging conversations started. */
+  cost_per_message: number | null;
+  msg_first_reply: number | null;
+  msg_replied: number | null;
+  msg_depth2: number | null;
+  msg_depth3: number | null;
+  msg_depth5: number | null;
+  msg_connections: number | null;
+  /** depth_2 (else replied_7d) / conversations started: proxy, "Khách nhắn tiếp ≥2 tin". */
+  deep_rate: number | null;
+  /** First present of omni_purchase / purchase / fb_pixel_purchase / onsite purchase (never summed). */
+  purchases: number | null;
+  /** Same type from action_values; null until purchase values are stored for the whole range. */
+  purchase_value: number | null;
+  roas: number | null;
+  cpa_purchase: number | null;
   /** 3s views / impressions */
   hook_rate: number | null;
   /** ThruPlay / 3s views */
