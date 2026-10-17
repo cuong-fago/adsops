@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
 import { MetaAlertsCard, type MetaFocus } from "@/components/adsops/meta-alerts-card";
+import { PacingAlertsCard } from "@/components/adsops/budget-pacing";
 import { ClassifyView } from "@/components/adsops/classify-view";
 import { ClientPortal } from "@/components/adsops/client-portal";
 import type { PacePreview } from "@/components/adsops/budget-banner";
@@ -885,6 +886,10 @@ export function AdsOpsApp() {
           <>
             <BudgetRunwayCard canCheck={canCheck} />
             <OptimizationScoreCard canCheck={canCheck} />
+            <PacingAlertsCard
+              labels={Object.fromEntries(clients.map((c) => [c.client_id, c.alias ? `${c.alias} — ${c.display_name}` : c.display_name]))}
+              onOpenAccount={tabAllowed(access, "analytics") ? (id) => { setClientId(id); goTab("analytics"); } : undefined}
+            />
             <MetaAlertsCard onJump={tabAllowed(access, "analytics") ? jumpMeta : undefined} />
           </>
         ) : null;
