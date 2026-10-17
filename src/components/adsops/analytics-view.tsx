@@ -17,7 +17,8 @@ import {
   warehouseDates,
   windowCoverage,
 } from "@/lib/adsops/analytics";
-import { autoFillDeepFn, autoFillWarehouseFn, readConvActionsFn, readDeepLayerFn } from "@/lib/adsops/connect.functions";
+import { autoFillDeepFn, autoFillWarehouseFn, readConvActionsFn, readDeepLayerFn, readSharesFn } from "@/lib/adsops/connect.functions";
+import { SHARE_HINT, SHARE_LABEL, SHARE_LOWER_BETTER, fmtShare, shareBound, type ShareCells, type ShareKey, type ShareRead } from "@/lib/adsops/google-share.types";
 import { convCategoryVi, type ActionCells, type ConvActionRead } from "@/lib/adsops/google-conv-actions.types";
 import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
 import { cn } from "@/lib/cn";
@@ -537,6 +538,26 @@ export function AnalyticsView({
     for (const [id, m] of tableCompare.map) map.set(id, withConv(m, convData.prev_rows[id], convActive));
     return { ...tableCompare, map };
   }, [tableCompare, convOn, convData, convActive]);
+  // ── Impression share (range aggregate from Google, cached per range) ──
+  const shareLayer = convLayer ?? (tab === "overview" ? "campaign" : null);
+  const shareKey = shareLayer ? `${snap.client_id}|${shareLayer}|${start}|${end}|${prevStart}|${prevEnd}` : "";
+  const [shareSt, setShareSt] = useState<{ key: string; data: ShareRead | null }>({ key: "", data: null });
+  useEffect(() => {
+    if (!shareKey || !shareLayer) return;
+    let cancelled = false;
+    setShareSt((cur) => (cur.key === shareKey ? cur : { key: shareKey, data: null }));
+    readSharesFn({ data: { clientId: snap.client_id, layer: shareLayer, start, end, prevStart: prevStart || null, prevEnd: prevEnd || null } })
+      .then((data) => { if (!cancelled) setShareSt({ key: shareKey, data }); })
+      .catch(() => { if (!cancelled) setShareSt({ key: shareKey, data: null }); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareKey]);
+  const shareData = shareSt.key === shareKey && shareSt.data && shareSt.data.layer === shareLayer ? shareSt.data : null;
+  const campaignHints = useMemo(
+    () => (shareData && shareData.layer === "campaign" ? shareHints(campaignBlock?.rows || [], shareData.rows, account.rows[0]?.metrics || {}) : {}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shareData, campaignBlock, account],
+  );
   const convDetail = convData
     ? (row: LayerRow) => <ConvBreakdown row={row} cells={convData.rows[row.id]} names={convData.actions} highlight={convActive} />
     : undefined;
@@ -668,7 +689,7 @@ export function AnalyticsView({
       </div>
 
       {tab === "overview" ? (
-        <Overview snap={snap} start={start} end={end} metrics={metrics} prevMetrics={prevRange ? prevMetrics : undefined} prevIncomplete={Boolean(prevRange && prevAccount && !prevAccount.complete)} prevLoading={whFilling} hasRows={account.rows.length > 0} campaigns={campaignBlock?.rows || []} groups={groups} onOpenCampaigns={() => setTab("campaign")} onPickCampaign={(row) => { setCampaignId(row.id); setAdGroupId(null); setTab(row.pmax ? "search_term" : "ad_group"); }} />
+        <Overview snap={snap} start={start} end={end} metrics={metrics} prevMetrics={prevRange ? prevMetrics : undefined} prevIncomplete={Boolean(prevRange && prevAccount && !prevAccount.complete)} prevLoading={whFilling} hasRows={account.rows.length > 0} campaigns={campaignBlock?.rows || []} groups={groups} hints={campaignHints} onOpenCampaigns={() => setTab("campaign")} onPickCampaign={(row) => { setCampaignId(row.id); setAdGroupId(null); setTab(row.pmax ? "search_term" : "ad_group"); }} />
       ) : null}
 
       {tab === "monthly" ? (
@@ -735,7 +756,7 @@ export function AnalyticsView({
                     {retryBtn}
                   </div>
                 ) : null}
-                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={shownBlock || current} convDetail={convDetail} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} compare={shownCompare} storeKey={userKey} />
+                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={shownBlock || current} convDetail={convDetail} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} compare={shownCompare} storeKey={userKey} share={shareData && shareData.layer === tableLayer ? shareData : null} shareCompare={Boolean(prevRange)} hints={tableLayer === "campaign" ? campaignHints : undefined} />
               </div>
             );
           })()}
@@ -808,8 +829,9 @@ function DeltaText({ d, className }: { d: { text: string; tone: "good" | "bad" |
 }
 
 function Overview({
-  snap, start, end, metrics, prevMetrics, prevIncomplete, prevLoading = false, hasRows, campaigns, groups, onOpenCampaigns, onPickCampaign,
+  snap, start, end, metrics, prevMetrics, prevIncomplete, prevLoading = false, hasRows, campaigns, groups, onOpenCampaigns, onPickCampaign, hints = {},
 }: {
+  hints?: Record<string, CampaignHint[]>;
   snap: AnalyticsSnap; start: string; end: string; metrics: Record<string, number>; prevMetrics?: Record<string, number>;
   prevIncomplete: boolean; prevLoading?: boolean; hasRows: boolean; campaigns: LayerRow[];
   groups: { id: string; label: string; metric: string; actions?: string[] }[];
@@ -886,6 +908,7 @@ function Overview({
                     <span className="text-right text-sm font-medium tabular-nums">{dongShort(row.metrics.cost || 0)}</span>
                     <span className="h-1 overflow-hidden rounded-sm bg-inset"><span className="block h-full rounded-sm bg-accent/70" style={{ width: `${maxCost ? ((row.metrics.cost || 0) / maxCost) * 100 : 0}%` }} /></span>
                     <span className="text-right text-xs text-muted tabular-nums">{convNum(row.metrics.conversions || 0)} conv · CPL {dongShort(row.metrics.cost_per_conversion || 0)}</span>
+                    {hints[row.id]?.length ? <span className="col-span-2"><HintChips hints={hints[row.id]} /></span> : null}
                   </button>
                 </li>
               ))}
@@ -1374,11 +1397,18 @@ type ColDef = {
   total?: (t: Record<string, number>) => string;
   heat?: "cool" | "warm";
   strong?: boolean;
+  hint?: string;
 };
 
 function DataTable({
-  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText, compare = null, storeKey, convDetail,
+  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText, compare = null, storeKey, convDetail, share = null, shareCompare = false, hints,
 }: {
+  /** Impression-share values for this layer (range aggregate). */
+  share?: ShareRead | null;
+  /** Show share deltas (a previous period is being compared). */
+  shareCompare?: boolean;
+  /** Campaign insight chips by row id. */
+  hints?: Record<string, CampaignHint[]>;
   /** Per-conversion-action breakdown for a row (popover from the Conv cell). */
   convDetail?: (row: LayerRow) => ReactNode;
   layer: TableLayer;
@@ -1423,7 +1453,7 @@ function DataTable({
   const showMatch = layer === "keyword" || layer === "search_term";
   const showConvSplit = deep ? deep.conv_split : splitKnown;
 
-  const cols: ColDef[] = useMemo(
+  const baseCols: ColDef[] = useMemo(
     () => [
       { key: "cost", label: "Chi tiêu", cell: (r) => dong(r.metrics.cost || 0), sortVal: (r) => r.metrics.cost || 0, total: (t) => dong(t.cost || 0), heat: "cool", strong: true },
       { key: "impressions", label: "Hiển thị", cell: (r) => num(r.metrics.impressions || 0), sortVal: (r) => r.metrics.impressions || 0, total: (t) => num(t.impressions || 0), heat: "cool" },
@@ -1444,6 +1474,22 @@ function DataTable({
     ],
     [groups, isDeep, showConvSplit],
   );
+  const shareCols: ColDef[] = useMemo(() => {
+    if (!share) return [];
+    const keys: ShareKey[] = layer === "campaign"
+      ? ["is", "is_lost_budget", "is_lost_rank", "top_is", "abs_top_is", "top_pct", "abs_top_pct", "exact_is"]
+      : ["is", "is_lost_rank", "top_is", "abs_top_is", "top_pct", "abs_top_pct"];
+    const val = (r: LayerRow, k: string) => share.rows[r.id]?.[k];
+    return keys.map((k) => ({
+      key: `share:${k}`,
+      label: SHARE_LABEL[k],
+      hint: SHARE_HINT[k],
+      cell: (r: LayerRow) => fmtShare(val(r, k)),
+      sortVal: (r: LayerRow) => val(r, k) ?? -1,
+      total: layer === "campaign" ? () => fmtShare(share.account?.[k]) : () => "—",
+    }));
+  }, [share, layer]);
+  const cols = useMemo(() => [...baseCols, ...shareCols], [baseCols, shareCols]);
 
   // ── "Cột": which columns are shown (remembered per user + layer) ──────────────────
   const optCols = useMemo(() => {
@@ -1641,7 +1687,7 @@ function DataTable({
               ) : null}
               {shownCols.map((c) => (
                 <th key={c.key} className={cn(thBase, "text-right")} aria-sort={sort.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
-                  <button type="button" onClick={() => toggleSort(c.key)} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === c.key && "text-ink")}>{sortIcon(c.key)}{c.label}</button>
+                  <button type="button" onClick={() => toggleSort(c.key)} title={c.hint} className={cn("inline-flex items-center gap-1 hover:text-ink", sort.key === c.key && "text-ink", c.hint && "underline decoration-dotted underline-offset-4")}>{sortIcon(c.key)}{c.label}</button>
                 </th>
               ))}
             </tr>
@@ -1657,7 +1703,7 @@ function DataTable({
                       {row.pmax ? <span className="shrink-0 rounded-sm bg-inset px-1.5 text-[11px] font-medium text-muted">PMax</span> : null}
                       <ChevronRight className="size-3.5 shrink-0 text-subtle" />
                     </button>
-                  ) : (
+                  ) : !canDrill ? (
                     <div className="flex min-h-9 max-w-[12rem] flex-col justify-center md:max-w-[22rem]" title={row.name}>
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span className="line-clamp-2 min-w-0 font-medium [overflow-wrap:anywhere]">{row.name}</span>
@@ -1665,7 +1711,8 @@ function DataTable({
                       </span>
                       {(layer === "search_term" || layer === "keyword") && !showCampaign && !showAdGroup && contextLine(row) ? <span className="truncate text-xs text-subtle" title={contextLine(row)}>{contextLine(row)}</span> : null}
                     </div>
-                  )}
+                  ) : null}
+                  {canDrill && hints?.[row.id]?.length ? <HintChips hints={hints[row.id]} /> : null}
                 </td>
                 {showStatus ? <td className="border-b border-line/60 px-3 py-2.5"><StatusBadge status={row.status} /></td> : null}
                 {showMatchCol ? <td className="whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-muted">{row.match_type_label || row.match_type || "—"}</td> : null}
@@ -1689,6 +1736,9 @@ function DataTable({
                         <ChevronDown className={cn("size-3 text-subtle transition-transform", convPop?.id === row.id && "rotate-180")} />
                       </button>
                     ) : c.cell(row)}
+                    {share && shareCompare && c.key.startsWith("share:") ? (
+                      <DeltaText d={shareDelta(c.key.slice(6), share.rows[row.id], share.prev_rows?.[row.id])} className="block leading-tight" />
+                    ) : null}
                     {compare && DELTA_COLS.has(c.key) && compare.map.has(row.id) ? (
                       <DeltaText d={metricDelta(c.key, row.metrics, compare.map.get(row.id) || {})} className="block leading-tight" />
                     ) : null}
@@ -1889,4 +1939,60 @@ function ConvBreakdown({
       <p className="mt-2 text-[11px] text-subtle">Chi phí/conv = chi tiêu của dòng ÷ conv của hành động. Conv chính (cột Conv) chỉ gồm hành động được đặt làm chính trong Google Ads.</p>
     </div>
   );
+}
+
+// ── Impression share helpers ───────────────────────────────────────────────────────
+
+type CampaignHint = { id: "budget" | "rank"; text: string; title: string };
+
+/** Lost IS (budget) above this + the campaign converts well → "Nên tăng ngân sách". */
+const HINT_BUDGET_LOST = 0.2;
+/** Lost IS (rank) above this → "Cần cải thiện Quality Score / giá thầu". */
+const HINT_RANK_LOST = 0.3;
+
+/**
+ * Per-campaign insight chips. "Converts well" = at least 1 conversion in the range and a CPL no higher
+ * than the account's CPL for the same range (campaigns without conversions never get the budget hint).
+ */
+function shareHints(rows: LayerRow[], shares: Record<string, ShareCells>, account: Record<string, number>): Record<string, CampaignHint[]> {
+  const out: Record<string, CampaignHint[]> = {};
+  const accCpl = account.conversions > 0 ? (account.cost || 0) / account.conversions : null;
+  for (const r of rows) {
+    const s = shares[r.id];
+    if (!s) continue;
+    const list: CampaignHint[] = [];
+    const conv = r.metrics.conversions || 0;
+    const cpl = conv > 0 ? (r.metrics.cost || 0) / conv : null;
+    const convertsWell = cpl != null && (accCpl == null || cpl <= accCpl);
+    if (s.is_lost_budget != null && s.is_lost_budget > HINT_BUDGET_LOST && convertsWell) {
+      list.push({ id: "budget", text: "Nên tăng ngân sách", title: `Mất ${fmtShare(s.is_lost_budget)} lượt hiển thị vì ngân sách, CPL ${dong(cpl || 0)} ≤ CPL tài khoản` });
+    }
+    if (s.is_lost_rank != null && s.is_lost_rank > HINT_RANK_LOST) {
+      list.push({ id: "rank", text: "Cần cải thiện Quality Score / giá thầu", title: `Mất ${fmtShare(s.is_lost_rank)} lượt hiển thị vì xếp hạng quảng cáo (Ad Rank)` });
+    }
+    if (list.length) out[r.id] = list;
+  }
+  return out;
+}
+
+function HintChips({ hints }: { hints: CampaignHint[] }) {
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {hints.map((h) => (
+        <span key={h.id} title={h.title} className={cn("rounded-sm px-1.5 py-0.5 text-[11px] font-medium", h.id === "budget" ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn")}>{h.text}</span>
+      ))}
+    </span>
+  );
+}
+
+/** Change in percentage points; nothing when either side is missing or a "<10%" / ">90%" bound. */
+function shareDelta(key: string, cur: ShareCells | undefined, prev: ShareCells | undefined): { text: string; tone: "good" | "bad" | "flat" } | null {
+  const n = cur?.[key];
+  const p = prev?.[key];
+  if (n == null || p == null || shareBound(n) || shareBound(p)) return null;
+  const d = (n - p) * 100;
+  if (Math.abs(d) < 0.05) return { text: "= 0 đ%", tone: "flat" };
+  const up = d > 0;
+  const good = SHARE_LOWER_BETTER.has(key) ? !up : up;
+  return { text: `${up ? "▲" : "▼"} ${Math.abs(d).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} đ%`, tone: good ? "good" : "bad" };
 }
