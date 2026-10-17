@@ -14,19 +14,20 @@ export type Totals = {
 };
 
 export type Channel = { spend: number | null; leads: number | null; cpl: number | null };
-export type CampRow = { platform: "google" | "facebook"; name: string; spend: number; leads: number | null; cpl: number | null };
+export type CampRow = { platform: "google" | "facebook" | "chatgpt"; name: string; spend: number; leads: number | null; cpl: number | null };
 
 export type ReportData = {
   version: 1;
   client_name: string;
   period: { kind: "week" | "month" | "custom"; start: string; end: string; label: string };
   prev: { start: string; end: string; label: string };
-  accounts: { client_id: string; label: string; platform: "google" | "facebook" }[];
+  accounts: { client_id: string; label: string; platform: "google" | "facebook" | "chatgpt" }[];
   data_through: string | null;
   cur: Totals;
   prev_totals: Totals;
   targets: { cpl: number | null; cac: number | null; roas: number | null; leads: number | null; budget: number | null };
-  channels: { google: Channel | null; facebook: Channel | null };
+  /** chatgpt is absent on snapshots made before ChatGPT Ads existed. */
+  channels: { google: Channel | null; facebook: Channel | null; chatgpt?: Channel | null };
   campaigns: { top: CampRow[]; bottom: CampRow[]; no_lead: CampRow[] };
   /** Google "Nhật ký tối ưu"; null = no Google account. */
   work: { keywords_added: number; negatives_added: number; est_savings: number | null; est_terms: number; est_basis: string } | null;
@@ -78,6 +79,7 @@ export function summarize(d: ReportData): string[] {
   const parts: string[] = [];
   if (d.channels.facebook?.spend != null) parts.push(`Facebook ${dong(d.channels.facebook.spend)}`);
   if (d.channels.google?.spend != null) parts.push(`Google ${dong(d.channels.google.spend)}`);
+  if (d.channels.chatgpt?.spend != null) parts.push(`ChatGPT Ads ${dong(d.channels.chatgpt.spend)}`);
   const ds = delta(c.spend, p.spend);
   out.push(`Trong ${d.period.label}, tổng chi tiêu quảng cáo là ${dong(c.spend)}${parts.length > 1 ? ` (${parts.join(", ")})` : ""}${ds != null && Math.abs(ds) >= 0.005 ? `, ${ds > 0 ? "tăng" : "giảm"} ${pctAbs(ds)} so với kỳ trước` : ""}.`);
   if (c.leads != null) {

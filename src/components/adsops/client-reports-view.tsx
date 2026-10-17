@@ -47,12 +47,12 @@ function Builder({ scopes, canWrite, onCreated }: { scopes: ScopeOption[]; canWr
   return (
     <Card className="p-4">
       <h3 className="font-display text-lg font-semibold">Tạo báo cáo khách hàng</h3>
-      <p className="text-xs text-muted">Gộp Facebook + Google. Số liệu lấy từ dữ liệu AdsOps đã lưu (chỉ đọc), tóm tắt sinh theo mẫu cố định — không tự bịa số.</p>
+      <p className="text-xs text-muted">Gộp Facebook + Google + ChatGPT Ads. Số liệu lấy từ dữ liệu AdsOps đã lưu (chỉ đọc), tóm tắt sinh theo mẫu cố định — không tự bịa số.</p>
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label className="text-xs text-muted" title="Khách hàng = nhóm tài khoản trong Quản trị → Khách hàng (chỉ hiện khi bạn được giao toàn bộ tài khoản của khách).">Khách hàng / tài khoản<br />
           <select value={scope} onChange={(e) => setScope(e.target.value)} className={cn(inp, "min-w-64")}>
             {groups.length ? <optgroup label="Khách hàng (gộp tài khoản)">{groups.map((s) => <option key={s.id} value={`group:${s.id}`}>{s.label} ({s.accounts.length} TK)</option>)}</optgroup> : null}
-            <optgroup label="Từng tài khoản">{accounts.map((s) => <option key={s.id} value={`account:${s.id}`}>{s.label}{s.id.startsWith("fb_") ? " · FB" : " · Google"}</option>)}</optgroup>
+            <optgroup label="Từng tài khoản">{accounts.map((s) => <option key={s.id} value={`account:${s.id}`}>{s.label}{s.id.startsWith("fb_") ? " · FB" : s.id.startsWith("oa_") ? " · ChatGPT" : " · Google"}</option>)}</optgroup>
           </select>
         </label>
         <label className="text-xs text-muted">Kỳ báo cáo<br />
