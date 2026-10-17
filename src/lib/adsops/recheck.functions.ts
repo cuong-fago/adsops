@@ -30,6 +30,10 @@ export const recheckAccountFn = createServerFn({ method: "POST" })
     if (!(await acquireLock(`${data.clientId}:recheck`, 120))) {
       return { state: "cooldown", runway_ok: null, score_ok: null, error_vi: null };
     }
+    if (data.clientId.startsWith("oa_")) {
+      const m = await (await import("./openai-ads.server")).refreshOpenAIAccount(data.clientId);
+      return { state: "done", runway_ok: m.ok, score_ok: null, error_vi: m.error_vi };
+    }
     if (data.clientId.startsWith("fb_")) {
       const { refreshMetaAccount } = await import("./meta-ads.server");
       const m = await refreshMetaAccount(data.clientId);
@@ -73,16 +77,25 @@ export const recheckSpend10Fn = createServerFn({ method: "POST" })
     if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");
     const visible = data.clientIds.filter((id) => canSeeAccount(ctx, id));
     const fbIds = visible.filter((id) => id.startsWith("fb_"));
-    const ids = visible.filter((id) => !id.startsWith("fb_"));
+    const oaIds = visible.filter((id) => id.startsWith("oa_"));
+    const ids = visible.filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_"));
     const { acquireLock } = await import("./warehouse.server");
     const fbOut = { checked: 0, failed: 0, skipped: 0 };
     const fbRun = (async () => {
-      if (!fbIds.length) return;
       const { refreshMetaAccount } = await import("./meta-ads.server");
       for (const id of fbIds) {
         if (!(await acquireLock(`${id}:recheck`, 120))) { fbOut.skipped += 1; continue; }
         const r = await refreshMetaAccount(id).catch(() => null);
         if (r?.ok) fbOut.checked += 1; else fbOut.failed += 1;
+      }
+      // ChatGPT Ads accounts ride along with the Facebook counters (read-only GET pull).
+      if (oaIds.length) {
+        const { refreshOpenAIAccount } = await import("./openai-ads.server");
+        for (const id of oaIds) {
+          if (!(await acquireLock(`${id}:recheck`, 120))) { fbOut.skipped += 1; continue; }
+          const r = await refreshOpenAIAccount(id).catch(() => null);
+          if (r?.ok) fbOut.checked += 1; else fbOut.failed += 1;
+        }
       }
     })();
     const { resolveAdsConfig } = await import("./google-ads.server");

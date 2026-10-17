@@ -15,6 +15,9 @@ import type { BudgetPlan } from "./budget-plan.types.ts";
 const TZ = "Asia/Ho_Chi_Minh";
 type Acc = { client_id: string; label: string; customer_id_dashed: string };
 const isFb = (id: string) => id.startsWith("fb_");
+const isOa = (id: string) => id.startsWith("oa_");
+/** Google = neither Facebook nor ChatGPT Ads. */
+const isG = (id: string) => !isFb(id) && !isOa(id);
 const dmy = (s: string) => s.split("-").reverse().join("/");
 const daysIn = (m: string) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).getUTCDate(); };
 const mEnd = (m: string) => `${m}-${String(daysIn(m)).padStart(2, "0")}`;
@@ -98,15 +101,15 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
   const periodMonths = (() => { const out: string[] = []; let m = period.start.slice(0, 7); while (m <= period.end.slice(0, 7) && out.length < 24) { if (`${m}-01` >= period.start && mEnd(m) <= period.end) out.push(m); m = mAdd(m, 1); } return out; })();
   const entriesAll = await readEntries(ids, [...new Set([...periodMonths, ...lastFull, ...(() => { const o: string[] = []; let m = prev.start.slice(0, 7); while (m <= prev.end.slice(0, 7) && o.length < 24) { if (`${m}-01` >= prev.start && mEnd(m) <= prev.end) o.push(m); m = mAdd(m, 1); } return o; })()])]);
   const kpis = (s: string, e: string): Kpis => {
-    let g: Sum = { spend: null, leads: null }, f: Sum = { spend: null, leads: null };
+    let g: Sum = { spend: null, leads: null }, f: Sum = { spend: null, leads: null }, o: Sum = { spend: null, leads: null };
     let act = 0;
     const activeGroups = new Set<string>();
     for (const id of ids) {
       const v = sumDays(days.get(id), s, e);
-      if (isFb(id)) f = addSum(f, v); else g = addSum(g, v);
+      if (isFb(id)) f = addSum(f, v); else if (isOa(id)) o = addSum(o, v); else g = addSum(g, v);
       if (v.spend && v.spend > 0) { act++; activeGroups.add(groupOf.get(id)?.key || id); }
     }
-    const t = addSum(g, f);
+    const t = addSum(addSum(g, f), o);
     // Revenue: whole months inside [s, e] with an outcome entered.
     let rev: number | null = null, revSpend = 0, n = 0;
     let m = s.slice(0, 7);
@@ -119,7 +122,7 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
       revSpend += sumDays(days.get(id), `${mm}-01`, mEnd(mm)).spend || 0;
     }
     return {
-      spend: { total: t.spend, google: g.spend, facebook: f.spend }, leads: t.leads, cpl: cplOf(t),
+      spend: { total: t.spend, google: g.spend, facebook: f.spend, chatgpt: o.spend }, leads: t.leads, cpl: cplOf(t),
       active_accounts: act, active_clients: activeGroups.size,
       revenue: rev, roas: rev != null && revSpend > 0 ? rev / revSpend : null,
       revenue_basis: rev != null ? `${n} tài khoản-tháng đã nhập doanh thu` : months.length ? null : "Doanh thu nhập theo tháng: chỉ tính khi kỳ chứa trọn tháng.",
@@ -141,9 +144,9 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
   }
 
   const trend = trendMonths.map((m) => {
-    let g: number | null = null, f: number | null = null;
-    for (const id of ids) { const v = sumDays(days.get(id), `${m}-01`, mEnd(m)).spend; if (v == null) continue; if (isFb(id)) f = (f || 0) + v; else g = (g || 0) + v; }
-    return { month: m, google: g, facebook: f };
+    let g: number | null = null, f: number | null = null, o: number | null = null;
+    for (const id of ids) { const v = sumDays(days.get(id), `${m}-01`, mEnd(m)).spend; if (v == null) continue; if (isFb(id)) f = (f || 0) + v; else if (isOa(id)) o = (o || 0) + v; else g = (g || 0) + v; }
+    return { month: m, google: g, facebook: f, chatgpt: o };
   });
 
   const clientSpend: ClientSpend[] = [...groups.values()].map((gr) => {
@@ -155,7 +158,7 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
   const movers = clientSpend.filter((c) => c.delta != null && c.delta !== 0).sort((a, b) => Math.abs(b.delta!) - Math.abs(a.delta!)).slice(0, 10);
 
   // ── Alerts (stored data only) ──
-  const fbIds = ids.filter(isFb), gIds = ids.filter((i) => !isFb(i));
+  const fbIds = ids.filter(isFb), gIds = ids.filter(isG);
   const alerts = new Map<string, string[]>();
   const addAlert = (id: string, s: string) => { const l = alerts.get(id) || []; l.push(s); alerts.set(id, l); };
   const metaReadable = new Set<string>();
@@ -203,7 +206,7 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
     const ps = gr.ids.map((i) => pace.get(i)).filter((p) => p?.plan && p.status);
     push("pacing", ps.length ? ps.reduce((a, p) => a + (p!.status === "on_track" ? 100 : p!.status!.endsWith("warn") ? 60 : 20), 0) / ps.length : null, ps.length ? ps.map((p) => `${p!.pace != null ? `${p!.pace > 0 ? "+" : ""}${Math.round(p!.pace * 100)}%` : "—"}`).join(", ") : "Chưa đặt kế hoạch tháng");
     // Days since last optimization (Google change log).
-    const opts = gr.ids.filter((i) => !isFb(i)).map((i) => ov.get(i)?.last_opt_at).filter((x): x is string => Boolean(x));
+    const opts = gr.ids.filter(isG).map((i) => ov.get(i)?.last_opt_at).filter((x): x is string => Boolean(x));
     const dSince = opts.length ? Math.min(...opts.map((x) => dayDiff(x.slice(0, 10), today))) : null;
     push("opt_days", dSince == null ? null : dSince <= 7 ? 100 : dSince <= 14 ? 60 : dSince <= 21 ? 30 : 0, dSince == null ? "Không có nhật ký tối ưu (Google)" : `${dSince} ngày`);
     // Open alerts.
@@ -258,7 +261,7 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
     }
     if (over >= R.cplMonths) { pts += R.cplPoints; reasons.push(`CPL vượt mục tiêu ${over} tháng liên tiếp`); }
     // 3) No optimization ≥14 days (Google accounts whose change log has been pulled).
-    const gOv = gr.ids.filter((i) => !isFb(i)).map((i) => ov.get(i)).filter((o) => o && (o.last_opt_at || o.change_pulled_at));
+    const gOv = gr.ids.filter(isG).map((i) => ov.get(i)).filter((o) => o && (o.last_opt_at || o.change_pulled_at));
     if (gOv.length) {
       const lastOpt = gOv.map((o) => o!.last_opt_at).filter((x): x is string => Boolean(x)).sort().pop() || null;
       const d = lastOpt ? dayDiff(lastOpt.slice(0, 10), today) : null;
@@ -294,7 +297,7 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
     accounts_detail[id] = {
       label: label.get(id) || id, group_key: groupOf.get(id)?.key || `a:${id}`,
       spend: s.spend, leads: s.leads, cpl: cplOf(s), target_cpl: plansStart.get(id)?.target_cpl ?? null,
-      pace_status: pc?.plan && pc.status ? pc.status : null, alerts: alerts.get(id) || [], last_opt_at: isFb(id) ? null : ov.get(id)?.last_opt_at ?? null,
+      pace_status: pc?.plan && pc.status ? pc.status : null, alerts: alerts.get(id) || [], last_opt_at: !isG(id) ? null : ov.get(id)?.last_opt_at ?? null,
     };
   }
   return { accounts_detail, period, prev, data_through: through, cur, prev_kpis: prevK, new_accounts: newAcc, stopped_accounts: stopped, trend, top_clients: top, movers, health, churn };

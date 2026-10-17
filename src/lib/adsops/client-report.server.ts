@@ -13,6 +13,9 @@ const TZ = "Asia/Ho_Chi_Minh";
 const iso = (d: unknown) => (d == null ? null : d instanceof Date ? d.toISOString() : String(d));
 const ymd = (d: unknown) => (d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 const isFb = (id: string) => id.startsWith("fb_");
+const isOa = (id: string) => id.startsWith("oa_");
+const isG = (id: string) => !isFb(id) && !isOa(id);
+const platOf = (id: string): "google" | "facebook" | "chatgpt" => (isFb(id) ? "facebook" : isOa(id) ? "chatgpt" : "google");
 const daysIn = (m: string) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).getUTCDate(); };
 const dmy = (s: string) => s.split("-").reverse().join("/");
 const monthLast = (m: string) => `${m}-${String(daysIn(m)).padStart(2, "0")}`;
@@ -133,7 +136,7 @@ async function totalsFor(ids: string[], p: Period): Promise<{ t: Totals; per: Ma
 
 async function campaignsFor(ids: string[], p: Period): Promise<CampRow[]> {
   const sql = await getSql();
-  const g = ids.filter((i) => !isFb(i)), f = ids.filter(isFb);
+  const g = ids.filter(isG), f = ids.filter(isFb), o = ids.filter(isOa);
   const out: CampRow[] = [];
   if (g.length) {
     const rows = await sql.query<{ name: string; cost: unknown; conv: unknown }>(
@@ -150,13 +153,21 @@ async function campaignsFor(ids: string[], p: Period): Promise<CampRow[]> {
     ).catch(() => []);
     for (const r of rows) out.push({ platform: "facebook", name: String(r.name || "—"), spend: Number(r.cost || 0), leads: r.leads != null ? Number(r.leads) : r.messages != null ? Number(r.messages) : null, cpl: null });
   }
+  if (o.length) {
+    const rows = await sql.query<{ name: string; cost: unknown; conv: unknown }>(
+      `select coalesce(max(e.name), i.entity_id) as name, sum(i.spend) as cost, sum(i.conversions) as conv
+         from openai_insights_daily i left join openai_entities e on e.client_id = i.client_id and e.level = 'campaign' and e.entity_id = i.entity_id
+        where i.client_id = any($1::text[]) and i.level = 'campaign' and i.date between $2 and $3 group by i.entity_id`, [o, p.start, p.end],
+    ).catch(() => []);
+    for (const r of rows) out.push({ platform: "chatgpt", name: String(r.name || "—"), spend: Number(r.cost || 0), leads: r.conv == null ? null : Number(r.conv), cpl: null });
+  }
   for (const c of out) c.cpl = c.leads && c.leads > 0 && c.spend > 0 ? c.spend / c.leads : null;
   return out.filter((c) => c.spend > 0);
 }
 
 async function appendixFor(ids: string[], p: Period) {
   const sql = await getSql();
-  const g = ids.filter((i) => !isFb(i)), f = ids.filter(isFb);
+  const g = ids.filter(isG), f = ids.filter(isFb), o = ids.filter(isOa);
   let imp: number | null = null, clk: number | null = null, cost = 0;
   if (g.length) {
     const r = await sql.query<{ imp: unknown; clk: unknown; cost: unknown }>(
@@ -172,6 +183,12 @@ async function appendixFor(ids: string[], p: Period) {
     ).catch(() => []);
     if (r[0]?.imp != null) { imp = (imp || 0) + Number(r[0].imp); clk = (clk || 0) + Number(r[0].clk || 0); cost += Number(r[0].cost || 0); }
   }
+  if (o.length) {
+    const r = await sql.query<{ imp: unknown; clk: unknown; cost: unknown }>(
+      `select sum(impressions) as imp, sum(clicks) as clk, sum(spend) as cost from openai_insights_daily where client_id = any($1::text[]) and level = 'account' and date between $2 and $3`, [o, p.start, p.end],
+    ).catch(() => []);
+    if (r[0]?.imp != null) { imp = (imp || 0) + Number(r[0].imp); clk = (clk || 0) + Number(r[0].clk || 0); cost += Number(r[0].cost || 0); }
+  }
   return {
     impressions: imp, clicks: clk,
     cpm: imp && imp > 0 ? (cost / imp) * 1000 : null,
@@ -182,7 +199,7 @@ async function appendixFor(ids: string[], p: Period) {
 
 /** Keywords / negatives added in the period, and an ESTIMATE of savings from negatives. */
 async function workFor(ids: string[], p: Period): Promise<ReportData["work"]> {
-  const g = ids.filter((i) => !isFb(i));
+  const g = ids.filter(isG);
   if (!g.length) return null;
   const sql = await getSql();
   const ev = await sql.query<{ action: string; keyword_text: string | null; match_type: string | null }>(
@@ -227,6 +244,7 @@ async function hintsFor(ids: string[], labels: Map<string, string>, p: Period) {
   const tag = (id: string) => (many ? `${labels.get(id) || id}: ` : "");
   const timeout = <T,>(pr: Promise<T>, ms = 12_000) => Promise.race([pr, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
   await Promise.all(ids.map(async (id) => {
+    if (isOa(id)) return; // ChatGPT Ads: no stored alert/share/QS signals yet.
     if (isFb(id)) {
       const { metaAlertsFor } = await import("./meta-alerts.server.ts");
       const al = (await timeout(metaAlertsFor(id, labels.get(id) || id).catch(() => [])) || []);
@@ -265,8 +283,8 @@ export async function buildReport(scopeKind: "group" | "account", scopeId: strin
   const [cur, prev, camps, app, work, hints, name] = await Promise.all([
     totalsFor(ids, p), totalsFor(ids, pr), campaignsFor(ids, p), appendixFor(ids, p), workFor(ids, p).catch(() => null), hintsFor(ids, labels, p), scopeName(scopeKind, scopeId),
   ]);
-  const ch = (plat: "google" | "facebook"): Channel | null => {
-    const list = ids.filter((i) => (plat === "facebook") === isFb(i));
+  const ch = (plat: "google" | "facebook" | "chatgpt"): Channel | null => {
+    const list = ids.filter((i) => platOf(i) === plat);
     if (!list.length) return null;
     let s: number | null = null, l: number | null = null;
     for (const i of list) { const v = cur.per.get(i); if (v?.spend != null) s = (s || 0) + v.spend; if (v?.leads != null) l = (l || 0) + v.leads; }
@@ -298,9 +316,9 @@ export async function buildReport(scopeKind: "group" | "account", scopeId: strin
   return {
     version: 1, client_name: name,
     period: { ...p, label: periodLabel(p) }, prev: { ...pr, label: periodLabel(pr) },
-    accounts: ids.map((i) => ({ client_id: i, label: labels.get(i) || i, platform: isFb(i) ? "facebook" : "google" })),
+    accounts: ids.map((i) => ({ client_id: i, label: labels.get(i) || i, platform: platOf(i) })),
     data_through: cur.through, cur: cur.t, prev_totals: prev.t, targets,
-    channels: { google: ch("google"), facebook: ch("facebook") },
+    channels: { google: ch("google"), facebook: ch("facebook"), chatgpt: ch("chatgpt") },
     campaigns: { top, bottom, no_lead: noLead },
     work, suggestions: hints.suggestions,
     appendix: { ...app, is: hints.is, is_lost_budget: hints.lost, qs: hints.qs },
