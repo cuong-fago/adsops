@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
 import { recheckAccountFn, recheckSpend10Fn } from "@/lib/adsops/recheck.functions";
 import { readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-overview.functions";
+import { readPacingFn, type PacingRow } from "@/lib/adsops/budget-plan.functions";
+import { isRedPace } from "@/lib/adsops/budget-plan.types";
+import { PaceBadge } from "@/components/adsops/budget-pacing";
 import { autoPullChangeLogFn, checkSharedCountsFn } from "@/lib/adsops/change-log.functions";
 import { OPT_AMBER_DAYS, OPT_RED_DAYS } from "@/lib/adsops/accounts-overview.types";
 import { scoreTone } from "@/lib/adsops/optimization-score.types";
@@ -84,9 +87,11 @@ function latest(...v: Array<string | null>): string | null {
   return xs.length ? xs[xs.length - 1] : null;
 }
 
-type SortKey = "urgency" | "account" | "budget" | "score" | "opt" | "checked";
+type SortKey = "urgency" | "account" | "budget" | "score" | "opt" | "checked" | "pace";
 
-type TileId = "all" | "action" | "budget" | "score" | "opt";
+type TileId = "all" | "action" | "budget" | "score" | "opt" | "pace" | "noplan";
+/** Pacing per account (filled after load; tiles read it through this module-level map). */
+let PACE: Record<string, PacingRow> = {};
 /** One predicate per tile: the tile count and the filtered list use the same function. */
 const TILE_PRED: Record<TileId, (r: OverviewRow) => boolean> = {
   all: () => true,
@@ -94,6 +99,8 @@ const TILE_PRED: Record<TileId, (r: OverviewRow) => boolean> = {
   budget: (r) => budgetLevel(r) === "red",
   score: (r) => scoreLevel(r) === "red",
   opt: (r) => optLevel(r) === "red",
+  pace: (r) => isRedPace(PACE[r.client_id]?.status ?? null),
+  noplan: (r) => Boolean(PACE[r.client_id]) && !PACE[r.client_id].plan,
 };
 const TILE_SORT: Record<TileId, { key: SortKey; dir: 1 | -1 }> = {
   all: { key: "urgency", dir: -1 },
@@ -101,6 +108,8 @@ const TILE_SORT: Record<TileId, { key: SortKey; dir: 1 | -1 }> = {
   budget: { key: "budget", dir: 1 },
   score: { key: "score", dir: 1 },
   opt: { key: "opt", dir: -1 },
+  pace: { key: "pace", dir: -1 },
+  noplan: { key: "account", dir: 1 },
 };
 const TILE_LABEL: Record<TileId, string> = {
   all: "Tài khoản",
@@ -108,6 +117,8 @@ const TILE_LABEL: Record<TileId, string> = {
   budget: "Ngân sách dưới 3 ngày / sắp hết hạn",
   score: "Điểm tối ưu dưới 70%",
   opt: "Không tối ưu từ khoá ≥ 7 ngày",
+  pace: "Tiến độ ngân sách lệch > ±25%",
+  noplan: "Chưa đặt kế hoạch tháng",
 };
 
 export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAccount: (clientId: string) => void; selectedClientId?: string }) {
@@ -118,6 +129,15 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
   const onlyRed = tile === "action";
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "urgency", dir: -1 });
   const [epoch, setEpoch] = useState(0);
+  const [pace, setPace] = useState<Record<string, PacingRow>>({});
+  PACE = pace;
+  useEffect(() => {
+    let live = true;
+    readPacingFn({ data: {} })
+      .then((r) => { if (live) setPace(Object.fromEntries(r.rows.map((x) => [x.client_id, x]))); })
+      .catch(() => { /* column stays "—" */ });
+    return () => { live = false; };
+  }, [epoch]);
   const act = useActiveFilter(rows, (r) => r.client_id);
   // Scope: all accounts, or the picker's account after the user changes it here.
   // All accounts by default (each time the tab opens); only an actual picker change while here scopes to one account.
@@ -278,8 +298,10 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
       budget: list.filter(TILE_PRED.budget).length,
       score: list.filter(TILE_PRED.score).length,
       opt: list.filter(TILE_PRED.opt).length,
+      pace: list.filter(TILE_PRED.pace).length,
+      noplan: list.filter(TILE_PRED.noplan).length,
     };
-  }, [base]);
+  }, [base, pace]);
 
   function pickTile(id: TileId) {
     const next = id === tile || id === "all" ? "all" : id;
@@ -295,6 +317,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
         case "budget": return r.runway.runway_days;
         case "score": return r.score.score;
         case "opt": { const d = optDays(r); return d ?? (r.change_pulled_at ? 9999 : null); }
+        case "pace": { const p = pace[r.client_id]?.pace; return p == null ? null : Math.abs(p); }
         case "checked": { const t = latest(r.runway.checked_at, r.score.checked_at); return t ? Date.parse(t) : null; }
         default: return null;
       }
@@ -310,7 +333,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
       // Tie (e.g. same urgency): shortest budget runway first.
       return (a.runway.runway_days ?? Infinity) - (b.runway.runway_days ?? Infinity) || a.label.localeCompare(b.label, "vi");
     });
-  }, [base, tile, sort]);
+  }, [base, tile, sort, pace]);
 
   const toggle = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "opt" || key === "urgency" || key === "checked" ? -1 : 1 }));
@@ -437,13 +460,15 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
         </div>
       ) : null}
       {rows ? (
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
           {([
             ["all", "Tài khoản", counts.total, false],
             ["action", "Cần xử lý", counts.action, true],
             ["budget", "Ngân sách dưới 3 ngày / sắp hết hạn", counts.budget, true],
             ["score", "Điểm tối ưu dưới 70%", counts.score, true],
             ["opt", "Không tối ưu từ khoá ≥ 7 ngày", counts.opt, true],
+            ["pace", "Tiến độ ngân sách lệch > ±25%", counts.pace, true],
+            ["noplan", "Chưa đặt kế hoạch tháng", counts.noplan, false],
           ] as Array<[TileId, string, number, boolean]>).map(([id, label, n, warn]) => {
             const on = tile === id;
             return (
@@ -488,6 +513,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                 {head("budget", "Ngân sách còn")}
                 {head("score", "Điểm tối ưu")}
                 {head("opt", "Tối ưu từ khoá gần nhất")}
+                {head("pace", "Tiến độ ngân sách")}
                 {head("checked", "Kiểm tra lúc")}
                 <th className="sticky top-0 z-10 border-b border-line bg-row-hover px-2 py-2.5"><span className="sr-only">Kiểm tra lại</span></th>
               </tr>
@@ -512,6 +538,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                     <td className={td}>{budgetCell(r)}</td>
                     <td className={td}>{scoreCell(r)}</td>
                     <td className={td}>{optCell(r)}</td>
+                    <td className={td}>{pace[r.client_id] ? <PaceBadge r={pace[r.client_id]} /> : "—"}</td>
                     <td className={cn(td, "whitespace-nowrap text-xs text-muted")}>{checked ? formatSaigon(checked) : "—"}</td>
                     <td className={cn(td, "w-10 px-2")}>
                       <button
@@ -533,7 +560,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
               })}
               {!shown.length ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <EmptyState
                       title={tile !== "all" ? `Không có tài khoản nào: ${TILE_LABEL[tile]}.` : "Chưa có tài khoản."}
                       action={tile !== "all" ? <button type="button" onClick={() => pickTile("all")} className="inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset">Xem tất cả</button> : undefined}
