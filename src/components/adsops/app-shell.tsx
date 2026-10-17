@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
+import { MetaAlertsCard, type MetaFocus } from "@/components/adsops/meta-alerts-card";
 import { ClassifyView } from "@/components/adsops/classify-view";
 import { ClientPortal } from "@/components/adsops/client-portal";
 import type { PacePreview } from "@/components/adsops/budget-banner";
@@ -234,6 +235,8 @@ export function AdsOpsApp() {
   const clientIdRef = useRef("");
   clientIdRef.current = clientId;
   const [tab, setTab] = useState<TabId>("final");
+  /** Cảnh báo Facebook → "Xem dòng": account + row to open in the FB tab. */
+  const [metaFocus, setMetaFocus] = useState<MetaFocus | null>(null);
   /** Bumped by "Kiểm tra lại" so the budget / score pills re-read the stored result. */
   const [recheckN, setRecheckN] = useState(0);
   const [access, setAccess] = useState<AccessSnap | null>(null);
@@ -497,6 +500,12 @@ export function AdsOpsApp() {
     const ops = next === "final" || next === "proposals" || next === "guard" || next === "alerts";
     const list = next === "alerts" ? ALERT_SCENES : GATE_SCENES;
     if (!ops || !list.some((s) => s.id === scenario)) setScenario("");
+  }
+
+  function jumpMeta(f: MetaFocus) {
+    setMetaFocus(f);
+    setClientId(f.clientId);
+    goTab("analytics");
   }
 
   /** Strip pill → Cảnh báo, then scroll to that card once it renders. */
@@ -784,7 +793,17 @@ export function AdsOpsApp() {
         </div>
       ) : null;
       if (clientId.startsWith("fb_")) {
-        return <MetaAnalyticsView key={clientId} clientId={clientId} allowCompare={Boolean(access.caps.compare && access.kind === "staff")} />;
+        const focus = metaFocus && metaFocus.clientId === clientId ? metaFocus : null;
+        return (
+          <MetaAnalyticsView
+            key={clientId}
+            clientId={clientId}
+            allowCompare={Boolean(access.caps.compare && access.kind === "staff")}
+            staffAlerts={access.kind === "staff" && tabAllowed(access, "alerts")}
+            focus={focus}
+            onFocusDone={() => setMetaFocus(null)}
+          />
+        );
       }
       if (analyticsLoading && analytics === undefined) {
         return <p className="px-1 py-16 text-center text-sm text-muted">Đang mở Phân tích…</p>;
@@ -866,6 +885,7 @@ export function AdsOpsApp() {
           <>
             <BudgetRunwayCard canCheck={canCheck} />
             <OptimizationScoreCard canCheck={canCheck} />
+            <MetaAlertsCard onJump={tabAllowed(access, "analytics") ? jumpMeta : undefined} />
           </>
         ) : null;
       // No alert file: show only the budget runway card, never the empty connection panel.

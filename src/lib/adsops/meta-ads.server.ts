@@ -426,6 +426,11 @@ export async function refreshAllMeta(deadline: number): Promise<{ ok: boolean; a
         await syncMetaInsights(id, a.timezone_name);
         await deriveMetaChecks(id, a.timezone_name);
         await syncMetaStructure(id).catch((e: unknown) => errors.push(`${a.account_id} cấu trúc: ${e instanceof Error ? e.message : String(e)}`));
+        // Warm the 7-day reach cache (adset / ad frequency for Cảnh báo and the "7 ngày" view).
+        {
+          const y = addDaysYmd(ymdInTz(a.timezone_name || "Asia/Ho_Chi_Minh"), -1);
+          await metaReach(id, addDaysYmd(y, -6), y, a.timezone_name).catch(() => null);
+        }
         done += 1;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -523,7 +528,7 @@ export async function ensureMetaAccounts(timeoutMs = 8000): Promise<void> {
 
 const CAMPAIGN_FIELDS = "id,name,objective,status,effective_status,buying_type,daily_budget,lifetime_budget,bid_strategy,start_time,stop_time";
 const ADSET_FIELDS =
-  "id,name,campaign_id,status,effective_status,optimization_goal,billing_event,bid_strategy,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,promoted_object,destination_type";
+  "id,name,campaign_id,status,effective_status,learning_stage_info,optimization_goal,billing_event,bid_strategy,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,promoted_object,destination_type";
 const AD_FIELDS =
   "id,name,campaign_id,adset_id,status,effective_status,preview_shareable_link,creative{id,title,body,thumbnail_url,image_url,call_to_action_type,effective_object_story_id,object_story_spec,asset_feed_spec{titles,bodies,descriptions,call_to_action_types,link_urls}}";
 
