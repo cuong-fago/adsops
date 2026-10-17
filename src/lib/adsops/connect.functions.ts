@@ -321,3 +321,41 @@ export const readSharesFn = createServerFn({ method: "POST" })
       prevEnd: staffPrev ? data.prevEnd : null,
     });
   });
+
+function qsInput(data: unknown) {
+  const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+  const ymd = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+  const start = ymd(d.start), end = ymd(d.end);
+  if (!clientId || !start || !end || end < start) throw new Error("Thiếu khách / ngày");
+  const prevStart = ymd(d.prevStart), prevEnd = ymd(d.prevEnd);
+  return { clientId, start, end, prevStart, prevEnd: prevStart && prevEnd && prevEnd >= prevStart ? prevEnd : null };
+}
+
+/** Keyword Quality Score (latest daily snapshot; snapshots today on demand). Same visibility as Phân tích. */
+export const readQsFn = createServerFn({ method: "POST" })
+  .validator(qsInput)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertCap, assertAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertCap(ctx, "analytics", "Không có quyền xem Phân tích.");
+    assertAccount(ctx, data.clientId);
+    const m = await import("./google-qs.server.ts");
+    await m.ensureQs(data.clientId).catch(() => null);
+    return m.readQs(data.clientId, data.start, data.end);
+  });
+
+/** Wasted search-term spend (range aggregate, cached per range). Previous period: staff only. */
+export const readWasteFn = createServerFn({ method: "POST" })
+  .validator(qsInput)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertCap, assertAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertCap(ctx, "analytics", "Không có quyền xem Phân tích.");
+    assertAccount(ctx, data.clientId);
+    const staffPrev = ctx.principal.kind === "staff" && ctx.caps.compare && data.prevStart && data.prevEnd;
+    const m = await import("./google-qs.server.ts");
+    return m.readWaste(data.clientId, data.start, data.end, staffPrev ? { start: data.prevStart!, end: data.prevEnd! } : null);
+  });

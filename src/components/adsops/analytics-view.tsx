@@ -17,7 +17,9 @@ import {
   warehouseDates,
   windowCoverage,
 } from "@/lib/adsops/analytics";
-import { autoFillDeepFn, autoFillWarehouseFn, readConvActionsFn, readDeepLayerFn, readSharesFn } from "@/lib/adsops/connect.functions";
+import { autoFillDeepFn, autoFillWarehouseFn, readConvActionsFn, readDeepLayerFn, readQsFn, readSharesFn, readWasteFn } from "@/lib/adsops/connect.functions";
+import { QS_COMPONENT_RANK, QS_COMPONENT_VI, qsTone, type QsCell, type QsRead, type WasteRead } from "@/lib/adsops/google-qs.types";
+import { QS_TONE_CLASS, QsOverviewCard, WasteCard } from "@/components/adsops/google-insights";
 import { SHARE_HINT, SHARE_LABEL, SHARE_LOWER_BETTER, fmtShare, shareBound, type ShareCells, type ShareKey, type ShareRead } from "@/lib/adsops/google-share.types";
 import { convCategoryVi, type ActionCells, type ConvActionRead } from "@/lib/adsops/google-conv-actions.types";
 import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
@@ -553,6 +555,35 @@ export function AnalyticsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shareKey]);
   const shareData = shareSt.key === shareKey && shareSt.data && shareSt.data.layer === shareLayer ? shareSt.data : null;
+  // ── Quality Score (keyword tab + overview) and wasted search-term spend (search terms + overview) ──
+  const qsOn = tab === "keyword" || tab === "overview";
+  const qsKey = qsOn ? `${snap.client_id}|${start}|${end}` : "";
+  const [qsSt, setQsSt] = useState<{ key: string; data: QsRead | null; loading: boolean }>({ key: "", data: null, loading: false });
+  useEffect(() => {
+    if (!qsKey) return;
+    let cancelled = false;
+    setQsSt((cur) => (cur.key === qsKey ? cur : { key: qsKey, data: cur.data, loading: true }));
+    readQsFn({ data: { clientId: snap.client_id, start, end } })
+      .then((data) => { if (!cancelled) setQsSt({ key: qsKey, data, loading: false }); })
+      .catch(() => { if (!cancelled) setQsSt({ key: qsKey, data: null, loading: false }); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qsKey, deepEpoch]);
+  const qsData = qsSt.key === qsKey ? qsSt.data : null;
+  const wasteOn = tab === "search_term" || tab === "overview";
+  const wasteKey = wasteOn ? `${snap.client_id}|${start}|${end}|${prevStart}|${prevEnd}` : "";
+  const [wasteSt, setWasteSt] = useState<{ key: string; data: WasteRead | null; loading: boolean }>({ key: "", data: null, loading: false });
+  useEffect(() => {
+    if (!wasteKey) return;
+    let cancelled = false;
+    setWasteSt((cur) => (cur.key === wasteKey ? cur : { key: wasteKey, data: null, loading: true }));
+    readWasteFn({ data: { clientId: snap.client_id, start, end, prevStart: prevStart || null, prevEnd: prevEnd || null } })
+      .then((data) => { if (!cancelled) setWasteSt({ key: wasteKey, data, loading: false }); })
+      .catch(() => { if (!cancelled) setWasteSt({ key: wasteKey, data: null, loading: false }); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wasteKey]);
+  const wasteData = wasteSt.key === wasteKey ? wasteSt.data : null;
   const campaignHints = useMemo(
     () => (shareData && shareData.layer === "campaign" ? shareHints(campaignBlock?.rows || [], shareData.rows, account.rows[0]?.metrics || {}) : {}),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -696,6 +727,14 @@ export function AnalyticsView({
         <PeriodSection title={weeks.length ? "Từng tuần cạnh nhau" : monthN ? "Các tháng trước" : "Theo tháng"} cols={periodCols} blocks={periodBlocks} accountBlocks={periodAccountBlocks} groups={groups} layer={periodLayer} onLayerChange={setPeriodLayer} splitKnown={splitKnown} onWholeWarehouse={() => applyRange(warehouseStart, warehouseEnd)} onPickCampaign={(id) => { const pm = snap.campaigns.find((c) => c.id === id)?.pmax; setCampaignId(id); setAdGroupId(null); setTab(pm ? "search_term" : "ad_group"); }} />
       ) : null}
 
+      {tab === "overview" ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <QsOverviewCard data={qsData} loading={qsSt.loading} />
+          <WasteCard data={wasteData} loading={wasteSt.loading} compact />
+        </div>
+      ) : null}
+      {tableLayer === "search_term" ? <WasteCard data={wasteData} loading={wasteSt.loading} /> : null}
+
       {tableLayer ? (
         <section className={cn(card, "flex min-w-0 flex-col gap-3 p-3 md:p-4")}>
           {deepLayer ? (
@@ -756,7 +795,7 @@ export function AnalyticsView({
                     {retryBtn}
                   </div>
                 ) : null}
-                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={shownBlock || current} convDetail={convDetail} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} compare={shownCompare} storeKey={userKey} share={shareData && shareData.layer === tableLayer ? shareData : null} shareCompare={Boolean(prevRange)} hints={tableLayer === "campaign" ? campaignHints : undefined} />
+                <DataTable key={`${tableLayer}:${campaignId}:${adGroupId}`} layer={tableLayer} block={shownBlock || current} convDetail={convDetail} groups={groups} canDrill={tableLayer === "campaign" || tableLayer === "ad_group"} onDrill={drill} splitKnown={splitKnown} campaignNames={Object.fromEntries(snap.campaigns.map((c) => [c.id, c.name]))} query={tableQuery} onQueryChange={setTableQuery} scoped={scoped} totalAll={facets?.total_rows} emptyText={fillLayer ? deepEmptyText(fillLayer, current as DeepLayerBlock) : undefined} compare={shownCompare} storeKey={userKey} share={shareData && shareData.layer === tableLayer ? shareData : null} shareCompare={Boolean(prevRange)} hints={tableLayer === "campaign" ? campaignHints : undefined} qs={tableLayer === "keyword" ? qsData?.rows || null : null} />
               </div>
             );
           })()}
@@ -974,7 +1013,7 @@ function entityUnion(blocks: LayerBlock[]) {
 
 const scrollBox = "relative max-h-[70vh] overflow-auto overscroll-contain rounded-xl border border-line bg-paper shadow-sm";
 /** Metric columns shown by default (the rest: "Cột" → thêm). */
-const DEFAULT_METRIC_COLS = new Set(["cost", "impressions", "clicks", "ctr", "conversions", "cpc", "cost_per_conversion"]);
+const DEFAULT_METRIC_COLS = new Set(["cost", "impressions", "clicks", "ctr", "conversions", "cpc", "cost_per_conversion", "qs:qs"]);
 const COLS_KEY = "adsops:analytics:cols:v1:";
 const thBase = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-row-hover px-3 py-2.5 text-[13px] font-semibold text-muted";
 const stickyCol = "sticky left-0 z-[5] bg-paper shadow-[1px_0_0_var(--color-line)]";
@@ -1398,11 +1437,15 @@ type ColDef = {
   heat?: "cool" | "warm";
   strong?: boolean;
   hint?: string;
+  /** Extra text class per cell (e.g. QS colour). */
+  tone?: (r: LayerRow) => string | undefined;
 };
 
 function DataTable({
-  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText, compare = null, storeKey, convDetail, share = null, shareCompare = false, hints,
+  layer, block, groups, canDrill, onDrill, campaignNames, splitKnown = true, query: queryProp, onQueryChange, scoped = false, totalAll, emptyText, compare = null, storeKey, convDetail, share = null, shareCompare = false, hints, qs = null,
 }: {
+  /** Keyword Quality Score by keyword id (latest snapshot). */
+  qs?: Record<string, QsCell> | null;
   /** Impression-share values for this layer (range aggregate). */
   share?: ShareRead | null;
   /** Show share deltas (a previous period is being compared). */
@@ -1489,7 +1532,33 @@ function DataTable({
       total: layer === "campaign" ? () => fmtShare(share.account?.[k]) : () => "—",
     }));
   }, [share, layer]);
-  const cols = useMemo(() => [...baseCols, ...shareCols], [baseCols, shareCols]);
+  const qsCols: ColDef[] = useMemo(() => {
+    if (!qs || layer !== "keyword") return [];
+    const compCol = (key: "creative" | "post_click" | "ctr", label: string, hint: string): ColDef => ({
+      key: `qs:${key}`,
+      label,
+      hint,
+      cell: (r) => { const v = qs[r.id]?.[key]; return v ? QS_COMPONENT_VI[v] : "—"; },
+      sortVal: (r) => { const v = qs[r.id]?.[key]; return v ? QS_COMPONENT_RANK[v] : -1; },
+      total: () => "—",
+      tone: (r) => { const v = qs[r.id]?.[key]; return v === "BELOW_AVERAGE" ? "text-danger" : v === "ABOVE_AVERAGE" ? "text-ok" : undefined; },
+    });
+    return [
+      {
+        key: "qs:qs",
+        label: "QS",
+        hint: "Quality Score 1–10 (ảnh chụp hiện tại từ Google). ≤3 đỏ, 4–6 vàng, ≥7 xanh.",
+        cell: (r) => { const v = qs[r.id]?.qs; return v != null ? String(v) : "—"; },
+        sortVal: (r) => qs[r.id]?.qs ?? -1,
+        total: () => "—",
+        tone: (r) => { const t = qsTone(qs[r.id]?.qs); return t ? QS_TONE_CLASS[t] : undefined; },
+      },
+      compCol("creative", "Mức liên quan QC", "Mức độ liên quan của quảng cáo với từ khoá (creative_quality_score)."),
+      compCol("post_click", "Trải nghiệm trang đích", "Trải nghiệm trang đích sau click (post_click_quality_score)."),
+      compCol("ctr", "CTR dự kiến", "Khả năng quảng cáo được click khi hiển thị cho từ khoá (search_predicted_ctr)."),
+    ];
+  }, [qs, layer]);
+  const cols = useMemo(() => [...baseCols, ...qsCols, ...shareCols], [baseCols, qsCols, shareCols]);
 
   // ── "Cột": which columns are shown (remembered per user + layer) ──────────────────
   const optCols = useMemo(() => {
@@ -1719,7 +1788,7 @@ function DataTable({
                 {showCampaign ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-3 py-2.5 text-muted" title={campOf(row)}><span className="line-clamp-2 [overflow-wrap:anywhere]">{campOf(row) || "—"}</span></td> : null}
                 {showAdGroup ? <td className="min-w-[8rem] max-w-[11rem] border-b border-line/60 px-3 py-2.5 text-muted" title={row.ad_group_name || ""}><span className="line-clamp-2 [overflow-wrap:anywhere]">{row.ad_group_name || "—"}</span></td> : null}
                 {shownCols.map((c) => (
-                  <td key={c.key} className={cn("h-10 whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-right font-medium tabular-nums", c.strong && "font-medium")} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
+                  <td key={c.key} className={cn("h-10 whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-right font-medium tabular-nums", c.strong && "font-medium", c.tone?.(row))} style={c.heat ? heat(c.sortVal(row), colMax[c.key], c.heat, colMin[c.key]) : undefined}>
                     {c.key === "conversions" && convDetail ? (
                       <button
                         type="button"
