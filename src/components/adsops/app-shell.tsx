@@ -6,6 +6,7 @@ import { PacingAlertsCard } from "@/components/adsops/budget-pacing";
 import { ClassifyView } from "@/components/adsops/classify-view";
 import { ClientPortal } from "@/components/adsops/client-portal";
 import { ClientReportsView } from "@/components/adsops/client-reports-view";
+import { ManagerView } from "@/components/adsops/manager-view";
 import { reportDraftCountFn } from "@/lib/adsops/client-report.functions";
 import type { PacePreview } from "@/components/adsops/budget-banner";
 import { PermissionsPanel } from "@/components/adsops/permissions-panel";
@@ -41,7 +42,7 @@ import { MODULE_CAPABILITY, ROLE_LABEL_VI, formatSaigon } from "@/lib/adsops/per
 import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/cn";
 import {
-  BarChart3, Bell, BookOpen, CheckCircle2, Database, FileText, History, LayoutGrid, Lightbulb, ShieldCheck, Tags, Users,
+  BarChart3, Bell, Gauge, BookOpen, CheckCircle2, Database, FileText, History, LayoutGrid, Lightbulb, ShieldCheck, Tags, Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -94,7 +95,8 @@ type TabId =
   | "changelog"
   | "overview"
   | "members"
-  | "creports";
+  | "creports"
+  | "manager";
 
 const OPS_TABS: { id: TabId; label: string }[] = [
   { id: "final", label: "FINAL" },
@@ -157,6 +159,7 @@ const TAB_MODULES: Record<TabId, string[]> = {
   overview: [],
   members: [],
   creports: [],
+  manager: [],
 };
 
 const PACK_SLICE_KEYS = [
@@ -184,6 +187,8 @@ function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
   // Every staff role (view-as included); the server checks again. Never customer roles.
   if (id === "overview") return access.kind === "staff";
   // Báo cáo khách hàng: Admin, Trưởng phòng Ads, người tối ưu (server checks again).
+  // Bảng điều hành: Admin and Trưởng phòng Ads only (server checks again).
+  if (id === "manager") return access.kind === "staff" && (access.role === "admin" || access.role === "head_ads");
   if (id === "creports") return access.kind === "staff" && (access.role === "admin" || access.role === "head_ads" || access.role === "optimizer");
   // Old connect panel: never shown, so a stale "connect" tab falls back like any disallowed tab.
   if (id === "connect") return false;
@@ -763,6 +768,9 @@ export function AdsOpsApp() {
         />
       );
     }
+    if (shownTab === "manager") {
+      return <ManagerView onOpenAccount={tabAllowed(access, "analytics") ? (id) => { setClientId(id); goTab("analytics"); } : undefined} />;
+    }
     if (shownTab === "creports") {
       return <ClientReportsView />;
     }
@@ -1071,6 +1079,11 @@ export function AdsOpsApp() {
                 <NavTab icon={TAB_ICON.overview} active={shownTab === "overview"} onClick={() => goTab("overview")}>
                   Tổng quan tài khoản
                 </NavTab>
+                {tabAllowed(access, "manager") ? (
+                  <NavTab icon={Gauge} active={shownTab === "manager"} onClick={() => goTab("manager")}>
+                    Bảng điều hành
+                  </NavTab>
+                ) : null}
                 {tabAllowed(access, "creports") ? (
                   <NavTab icon={FileText} badge={reportDrafts || undefined} active={shownTab === "creports"} onClick={() => goTab("creports")}>
                     <span title={reportDrafts ? "Có báo cáo nháp cần duyệt" : undefined}>Báo cáo khách hàng</span>
