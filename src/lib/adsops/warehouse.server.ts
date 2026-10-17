@@ -706,6 +706,8 @@ export async function refreshWarehouseOnView(
       const start = addDaysYmd(today, -(days - 1));
       const core = await pullCore(cfg, customerId, start, today);
       await (await import("./google-conv-actions.server.ts")).pullConvActionsSafe(cfg, customerId, id, start, today);
+      // Keyword Quality Score: current-state snapshot once a day.
+      await (await import("./google-qs.server.ts")).snapshotQsSafe(cfg, customerId, id);
       const pulledAt = new Date().toISOString();
       const snap = buildSnap({
         clientId: id,
