@@ -10,6 +10,33 @@ import { AccountPicker } from "@/components/adsops/account-picker";
 import { fmtDay } from "@/lib/adsops/client-overview";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
+import { listPortalReportsFn } from "@/lib/adsops/client-report.functions";
+
+/** Published reports ("Đã gửi") whose accounts are all granted to this client user. Hidden when none. */
+function PortalReports() {
+  const [list, setList] = useState<{ id: number; title: string; start_date: string; end_date: string; sent_at: string | null }[]>([]);
+  useEffect(() => {
+    let live = true;
+    listPortalReportsFn().then((r) => { if (live) setList(r.reports); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  if (!list.length) return null;
+  const dmy = (s: string) => s.split("-").reverse().join("/");
+  return (
+    <section className="mb-4 rounded-xl bg-paper px-4 py-3 shadow-sheet">
+      <h2 className="text-sm font-semibold">Báo cáo định kỳ</h2>
+      <ul className="mt-1 divide-y divide-line text-sm">
+        {list.slice(0, 12).map((r) => (
+          <li key={r.id} className="flex flex-wrap items-center gap-2 py-1.5">
+            <span>{r.title}</span>
+            <span className="text-xs text-muted">{dmy(r.start_date)} – {dmy(r.end_date)}</span>
+            <a href={`/api/client-report?id=${r.id}`} target="_blank" rel="noopener" className="ml-auto text-sm font-medium text-accent hover:underline">Xem báo cáo</a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 type ClientRow = { client_id: string; display_name: string; customer_id_dashed?: string; alias?: string | null };
 
@@ -209,6 +236,7 @@ export function ClientPortal({
       </header>
 
       <main className="mx-auto max-w-[1800px] px-4 py-4 md:px-6 lg:px-8 md:py-6">
+        <PortalReports />
         {clients.length && clientId.startsWith("fb_") ? (
           <MetaAnalyticsView key={clientId} clientId={clientId} allowCompare={false} lang={lang} />
         ) : !clients.length ? (
