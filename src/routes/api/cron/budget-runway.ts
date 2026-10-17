@@ -43,6 +43,9 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const metaRun = metaConfigured()
     ? refreshAllMeta(started + SPEND_MS).catch((e: unknown) => ({ ok: false, accounts: 0, done: 0, inserted: 0, errors: [e instanceof Error ? e.message : String(e)] }))
     : Promise.resolve(null);
+  // Scheduled client reports: insert DRAFT placeholders only (a few SQL statements); data is built
+  // lazily when staff open the draft. Never sends anything to clients.
+  const reportDrafts = await (await import("@/lib/adsops/client-report.server")).ensureScheduledDrafts().catch((e: unknown) => ({ created: 0, error: e instanceof Error ? e.message : String(e) }));
   const { resolveAdsConfig } = await import("@/lib/adsops/google-ads.server");
   const cfg = await resolveAdsConfig();
   if (!cfg.ready) return Response.json({ ok: false, error: "google ads not configured", meta: await metaRun }, { status: 503, headers });
@@ -94,6 +97,7 @@ async function handle({ request }: { request: Request }): Promise<Response> {
     {
       ok: true,
       meta,
+      report_drafts: reportDrafts,
       total: queue.length,
       active: runwayQueue.length,
       spend10_checked: spend10.length,

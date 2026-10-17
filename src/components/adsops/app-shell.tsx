@@ -5,6 +5,8 @@ import { MetaAlertsCard, type MetaFocus } from "@/components/adsops/meta-alerts-
 import { PacingAlertsCard } from "@/components/adsops/budget-pacing";
 import { ClassifyView } from "@/components/adsops/classify-view";
 import { ClientPortal } from "@/components/adsops/client-portal";
+import { ClientReportsView } from "@/components/adsops/client-reports-view";
+import { reportDraftCountFn } from "@/lib/adsops/client-report.functions";
 import type { PacePreview } from "@/components/adsops/budget-banner";
 import { PermissionsPanel } from "@/components/adsops/permissions-panel";
 import {
@@ -91,7 +93,8 @@ type TabId =
   | "analytics"
   | "changelog"
   | "overview"
-  | "members";
+  | "members"
+  | "creports";
 
 const OPS_TABS: { id: TabId; label: string }[] = [
   { id: "final", label: "FINAL" },
@@ -153,6 +156,7 @@ const TAB_MODULES: Record<TabId, string[]> = {
   changelog: [],
   overview: [],
   members: [],
+  creports: [],
 };
 
 const PACK_SLICE_KEYS = [
@@ -179,6 +183,8 @@ function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
   if (id === "changelog") return Boolean(caps.changeLog);
   // Every staff role (view-as included); the server checks again. Never customer roles.
   if (id === "overview") return access.kind === "staff";
+  // Báo cáo khách hàng: Admin, Trưởng phòng Ads, người tối ưu (server checks again).
+  if (id === "creports") return access.kind === "staff" && (access.role === "admin" || access.role === "head_ads" || access.role === "optimizer");
   // Old connect panel: never shown, so a stale "connect" tab falls back like any disallowed tab.
   if (id === "connect") return false;
   const cap = MODULE_CAPABILITY[id];
@@ -262,6 +268,15 @@ export function AdsOpsApp() {
   const canPull = Boolean(caps?.pull && !access?.read_only);
   const canInstall = Boolean(access?.real_is_admin && !access?.read_only);
   const shownTab: TabId = access && !tabAllowed(access, tab) ? "report" : tab;
+  // "Có báo cáo nháp cần duyệt": draft count badge (report staff only; 0 for everyone else).
+  const [reportDrafts, setReportDrafts] = useState(0);
+  const reportStaff = Boolean(access && tabAllowed(access, "creports"));
+  useEffect(() => {
+    if (!reportStaff) return;
+    let live = true;
+    reportDraftCountFn().then((r) => { if (live) setReportDrafts(r.drafts); }).catch(() => {});
+    return () => { live = false; };
+  }, [reportStaff, shownTab]);
 
   const [dirEpoch, setDirEpoch] = useState(0);
   const [aliasDraft, setAliasDraft] = useState<string | null>(null);
@@ -748,6 +763,9 @@ export function AdsOpsApp() {
         />
       );
     }
+    if (shownTab === "creports") {
+      return <ClientReportsView />;
+    }
     if (shownTab === "changelog") {
       return <ChangeLogView clients={clients} clientId={clientId} canPull={Boolean(access.caps.changeLog && !access.read_only)} canDiagnose={Boolean(access.caps.grant && !access.read_only)} />;
     }
@@ -1053,6 +1071,11 @@ export function AdsOpsApp() {
                 <NavTab icon={TAB_ICON.overview} active={shownTab === "overview"} onClick={() => goTab("overview")}>
                   Tổng quan tài khoản
                 </NavTab>
+                {tabAllowed(access, "creports") ? (
+                  <NavTab icon={FileText} badge={reportDrafts || undefined} active={shownTab === "creports"} onClick={() => goTab("creports")}>
+                    <span title={reportDrafts ? "Có báo cáo nháp cần duyệt" : undefined}>Báo cáo khách hàng</span>
+                  </NavTab>
+                ) : null}
                 {opsTabs.length || caps?.analytics || caps?.changeLog ? <span aria-hidden className="mx-1.5 h-5 w-px shrink-0 self-center bg-line-strong" /> : null}
               </>
             ) : null}
