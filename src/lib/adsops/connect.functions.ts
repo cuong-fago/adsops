@@ -359,3 +359,39 @@ export const readWasteFn = createServerFn({ method: "POST" })
     const m = await import("./google-qs.server.ts");
     return m.readWaste(data.clientId, data.start, data.end, staffPrev ? { start: data.prevStart!, end: data.prevEnd! } : null);
   });
+
+function bdInput(data: unknown) {
+  const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+  const ymd = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+  const start = ymd(d.start), end = ymd(d.end);
+  if (!clientId || !start || !end || end < start) throw new Error("Thiếu khách / ngày");
+  const campaignId = typeof d.campaignId === "string" && /^\d+$/.test(d.campaignId) ? d.campaignId : null;
+  return { clientId, start, end, campaignId };
+}
+
+/** Device / hour / weekday / geo breakdown (range aggregate, cached per range + campaign). Same visibility as Phân tích. */
+export const readBreakdownFn = createServerFn({ method: "POST" })
+  .validator(bdInput)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertCap, assertAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertCap(ctx, "analytics", "Không có quyền xem Phân tích.");
+    assertAccount(ctx, data.clientId);
+    const m = await import("./google-breakdown.server.ts");
+    return m.readBreakdown(data.clientId, data.start, data.end, data.campaignId);
+  });
+
+/** Call details from call_view (area code only) + phone-call conversions. Same visibility as Phân tích. */
+export const readCallsFn = createServerFn({ method: "POST" })
+  .validator(bdInput)
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertCap, assertAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    assertCap(ctx, "analytics", "Không có quyền xem Phân tích.");
+    assertAccount(ctx, data.clientId);
+    const m = await import("./google-breakdown.server.ts");
+    return m.readCalls(data.clientId, data.start, data.end, data.campaignId);
+  });

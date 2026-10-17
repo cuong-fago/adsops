@@ -20,6 +20,7 @@ import {
 import { autoFillDeepFn, autoFillWarehouseFn, readConvActionsFn, readDeepLayerFn, readQsFn, readSharesFn, readWasteFn } from "@/lib/adsops/connect.functions";
 import { QS_COMPONENT_RANK, QS_COMPONENT_VI, qsTone, type QsCell, type QsRead, type WasteRead } from "@/lib/adsops/google-qs.types";
 import { QS_TONE_CLASS, QsOverviewCard, WasteCard } from "@/components/adsops/google-insights";
+import { BreakdownView, CallsView, useCalls } from "@/components/adsops/google-breakdown-view";
 import { SHARE_HINT, SHARE_LABEL, SHARE_LOWER_BETTER, fmtShare, shareBound, type ShareCells, type ShareKey, type ShareRead } from "@/lib/adsops/google-share.types";
 import { convCategoryVi, type ActionCells, type ConvActionRead } from "@/lib/adsops/google-conv-actions.types";
 import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
@@ -35,6 +36,8 @@ const SUBTABS = [
   { id: "ad_group", label: "Nhóm" },
   { id: "keyword", label: "Từ khoá" },
   { id: "search_term", label: "Search terms" },
+  { id: "breakdown", label: "Phân bổ" },
+  { id: "calls", label: "Cuộc gọi" },
 ] as const;
 
 type SubTab = (typeof SUBTABS)[number]["id"];
@@ -584,6 +587,10 @@ export function AnalyticsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wasteKey]);
   const wasteData = wasteSt.key === wasteKey ? wasteSt.data : null;
+  // "Cuộc gọi" tab only when the account has calls in the range (cached call_view read).
+  const callsProbe = useCalls(snap.client_id, start, end, "", true);
+  const hasCalls = Boolean(callsProbe.data && callsProbe.data.total > 0);
+  const campaignOpts = useMemo(() => [...snap.campaigns].map((c) => ({ id: c.id, name: c.name })).sort((a, b) => a.name.localeCompare(b.name, "vi")), [snap.campaigns]);
   const campaignHints = useMemo(
     () => (shareData && shareData.layer === "campaign" ? shareHints(campaignBlock?.rows || [], shareData.rows, account.rows[0]?.metrics || {}) : {}),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -708,7 +715,7 @@ export function AnalyticsView({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Segmented items={SUBTABS} value={tab} onChange={setTab} />
+            <Segmented items={SUBTABS.filter((s) => s.id !== "calls" || hasCalls || tab === "calls")} value={tab} onChange={setTab} />
             {prevNoteTop && (tab === "overview" || tableLayer === "campaign") ? (
               <span className={cn("inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium", prevNoteTop.warn ? "bg-warn-bg text-warn" : "bg-inset text-muted")}>{prevNoteTop.text}</span>
             ) : null}
@@ -733,6 +740,8 @@ export function AnalyticsView({
           <WasteCard data={wasteData} loading={wasteSt.loading} compact />
         </div>
       ) : null}
+      {tab === "breakdown" ? <BreakdownView clientId={snap.client_id} start={start} end={end} campaigns={campaignOpts} /> : null}
+      {tab === "calls" ? <CallsView clientId={snap.client_id} start={start} end={end} campaigns={campaignOpts} /> : null}
       {tableLayer === "search_term" ? <WasteCard data={wasteData} loading={wasteSt.loading} /> : null}
 
       {tableLayer ? (
