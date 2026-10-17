@@ -27,14 +27,19 @@ const F: Record<string, [string, string]> = {
   exact_is: ["metrics.search_exact_match_impression_share", "searchExactMatchImpressionShare"],
 };
 const KEYS: Record<Level, string[]> = {
-  account: ["is", "is_lost_budget", "is_lost_rank", "top_is", "abs_top_is", "top_pct", "abs_top_pct", "exact_is"],
+  // The customer resource rejects search_top / search_absolute_top impression share
+  // (PROHIBITED_METRIC_IN_SELECT_OR_WHERE_CLAUSE, seen in production): never request them here.
+  account: ["is", "is_lost_budget", "is_lost_rank", "top_pct", "abs_top_pct", "exact_is"],
   campaign: ["is", "is_lost_budget", "is_lost_rank", "top_is", "abs_top_is", "top_pct", "abs_top_pct", "exact_is"],
   ad_group: ["is", "is_lost_rank", "top_is", "abs_top_is", "top_pct", "abs_top_pct"],
   keyword: ["is", "is_lost_rank", "top_is", "abs_top_is", "top_pct", "abs_top_pct"],
 };
 
-function query(level: Level, start: string, end: string): string {
-  const fields = KEYS[level].map((k) => F[k][0]).join(", ");
+/** Minimal account set, used if Google rejects another account-level metric. */
+const ACCOUNT_SAFE = ["is", "is_lost_budget", "is_lost_rank"];
+
+function query(level: Level, start: string, end: string, keys: string[] = KEYS[level]): string {
+  const fields = keys.map((k) => F[k][0]).join(", ");
   const where = `segments.date BETWEEN '${start}' AND '${end}' AND metrics.impressions > 0`;
   if (level === "account") return `SELECT customer.id, ${fields} FROM customer WHERE ${where}`;
   if (level === "campaign") return `SELECT campaign.id, ${fields} FROM campaign WHERE ${where}`;
@@ -67,7 +72,13 @@ function cellsOf(level: Level, r: GaqlRow): ShareCells {
 async function fetchLevel(customerId: string, level: Level, start: string, end: string): Promise<Record<string, ShareCells>> {
   const cfg = await resolveAdsConfig();
   if (!cfg.ready) throw new Error("ads not configured");
-  const rows = await searchLeaf(cfg, customerId, query(level, start, end));
+  let rows: GaqlRow[];
+  try {
+    rows = await searchLeaf(cfg, customerId, query(level, start, end));
+  } catch (e) {
+    if (level !== "account" || !/PROHIBITED_METRIC/i.test(e instanceof Error ? e.message : String(e))) throw e;
+    rows = await searchLeaf(cfg, customerId, query(level, start, end, ACCOUNT_SAFE));
+  }
   const out: Record<string, ShareCells> = {};
   for (const r of rows) {
     const k = keyOf(level, r);
