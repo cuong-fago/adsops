@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowDown, ArrowUp, BarChart3, ChevronRight, ExternalLink } from "lucide-react";
+import { ArrowDown, ArrowUp, BarChart3, ChevronRight, Columns3, ExternalLink } from "lucide-react";
 import { STATUS_ORDER, adsetSummary, budgetOf, campaignMeta, creativeOf, statusVi } from "@/lib/adsops/meta-structure";
 import { readMetaAnalyticsFn, type MetaAnalytics, type MetaMetrics, type MetaRow } from "@/lib/adsops/meta-ads.functions";
 import { fmtDay, fmtMoney, fmtMoneyShort, fmtNum, fmtPct, fmtRange } from "@/lib/adsops/client-overview";
@@ -20,14 +20,48 @@ function daysAgo(n: number): string {
 }
 
 const PRESETS = [7, 14, 30, 90] as const;
-type KpiKey = "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "leads" | "messages" | "cpl" | "follows" | "cost_per_follow" | "page_engagement";
+type KpiKey =
+  | "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "leads" | "messages" | "cpl" | "follows" | "cost_per_follow" | "page_engagement"
+  | "reach" | "frequency" | "cpm" | "link_clicks" | "link_ctr" | "cost_per_link_click" | "lpv" | "lpv_rate"
+  | "video_3s" | "thruplay" | "hook_rate" | "hold_rate" | "ret25" | "ret50" | "ret75" | "ret100";
 /** Lower is better for cost metrics (delta colour flips). */
-const LOWER_BETTER: Partial<Record<KpiKey, true>> = { cpc: true, cpl: true, cost_per_follow: true };
+const LOWER_BETTER: Partial<Record<KpiKey, true>> = { cpc: true, cpl: true, cost_per_follow: true, cpm: true, cost_per_link_click: true };
+/** No good/bad colour on the delta (frequency: watch the level, not the direction). */
+const NEUTRAL: Partial<Record<KpiKey, true>> = { frequency: true };
+const MONEY = new Set<KpiKey>(["spend", "cpc", "cpl", "cost_per_follow", "cpm", "cost_per_link_click"]);
+const PCT = new Set<KpiKey>(["ctr", "link_ctr", "lpv_rate", "hook_rate", "hold_rate", "ret25", "ret50", "ret75", "ret100"]);
+/** Frequency ≥ these over a ~7-day window: amber / red. */
+const FREQ_WARN = 3;
+const FREQ_BAD = 4;
+/** Vietnamese tooltips for column / card headers. */
+const HINT: Partial<Record<KpiKey, string>> = {
+  reach: "Số người khác nhau đã thấy quảng cáo trong khoảng ngày (Meta tính cho cả khoảng, không cộng theo ngày).",
+  frequency: "Số lần trung bình mỗi người thấy quảng cáo = Hiển thị ÷ Tiếp cận. Trên 3 (vàng) / 4 (đỏ) trong ~7 ngày: dễ nhàm quảng cáo.",
+  cpm: "Chi phí cho 1.000 lượt hiển thị.",
+  link_clicks: "Lượt click vào liên kết trong quảng cáo (inline link clicks), không gồm click like / bình luận / xem ảnh.",
+  link_ctr: "Click liên kết ÷ Hiển thị.",
+  cost_per_link_click: "Chi tiêu ÷ Click liên kết.",
+  lpv: "Lượt xem trang đích: người click liên kết và trang tải xong (cần Pixel).",
+  lpv_rate: "Lượt xem trang đích ÷ Click liên kết: bao nhiêu click thực sự mở được trang.",
+  video_3s: "Lượt xem video ít nhất 3 giây (hoặc gần hết nếu video ngắn hơn).",
+  thruplay: "Lượt xem video tới 15 giây (hoặc hết video nếu ngắn hơn).",
+  hook_rate: "Tỷ lệ giữ chân 3 giây đầu = Lượt xem 3s ÷ Hiển thị. Cao = mở đầu video hút.",
+  hold_rate: "ThruPlay ÷ Lượt xem 3s. Cao = người xem ở lại sau đoạn mở đầu.",
+  ret25: "Lượt xem tới 25% video ÷ Lượt xem 3s.",
+  ret50: "Lượt xem tới 50% video ÷ Lượt xem 3s.",
+  ret75: "Lượt xem tới 75% video ÷ Lượt xem 3s.",
+  ret100: "Lượt xem hết video ÷ Lượt xem 3s.",
+  ctr: "Tất cả click ÷ Hiển thị.",
+  cpc: "Chi tiêu ÷ Tất cả click.",
+};
 
 const L = {
   vi: {
     spend: "Chi tiêu", impressions: "Hiển thị", clicks: "Click", ctr: "CTR", cpc: "CPC", leads: "Leads", messages: "Tin nhắn", cpl: "CPL",
     follows: "Lượt theo dõi Trang", cost_per_follow: "Chi phí / theo dõi", page_engagement: "Tương tác Trang",
+    reach: "Tiếp cận", frequency: "Tần suất", cpm: "CPM", link_clicks: "Click liên kết", link_ctr: "CTR liên kết",
+    cost_per_link_click: "CPC liên kết", lpv: "Xem trang đích", lpv_rate: "Tỷ lệ xem trang đích", video_3s: "Xem video 3s",
+    thruplay: "ThruPlay", hook_rate: "Hook rate", hold_rate: "Hold rate", ret25: "Xem 25%", ret50: "Xem 50%", ret75: "Xem 75%", ret100: "Xem 100%",
     days: (n: number) => `${n} ngày`, compare: "So kỳ trước", campaigns: "Chiến dịch", adsets: "Nhóm quảng cáo", campaign: "Chiến dịch", name: "Tên",
     daily: "Chi tiêu theo ngày", loading: "Đang tải Facebook Ads…", empty: "Chưa có dữ liệu Facebook Ads trong khoảng này.",
     emptyHint: "Dữ liệu kéo mỗi ngày qua cron (35 ngày gần nhất). Không đoán số: ô trống nghĩa là Meta không báo.",
@@ -36,6 +70,9 @@ const L = {
   en: {
     spend: "Spend", impressions: "Impressions", clicks: "Clicks", ctr: "CTR", cpc: "CPC", leads: "Leads", messages: "Messages", cpl: "CPL",
     follows: "Page follows", cost_per_follow: "Cost / follow", page_engagement: "Page engagement",
+    reach: "Reach", frequency: "Frequency", cpm: "CPM", link_clicks: "Link clicks", link_ctr: "Link CTR",
+    cost_per_link_click: "Cost / link click", lpv: "Landing page views", lpv_rate: "LPV rate", video_3s: "3s video views",
+    thruplay: "ThruPlay", hook_rate: "Hook rate", hold_rate: "Hold rate", ret25: "Viewed 25%", ret50: "Viewed 50%", ret75: "Viewed 75%", ret100: "Viewed 100%",
     days: (n: number) => `${n} days`, compare: "Compare previous", campaigns: "Campaigns", adsets: "Ad sets", campaign: "Campaign", name: "Name",
     daily: "Daily spend", loading: "Loading Facebook Ads…", empty: "No Facebook Ads data in this range.",
     emptyHint: "Pulled daily by cron (last 35 days). Blank cells mean Meta did not report a value.",
@@ -73,13 +110,17 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
   const cur = data?.currency || "VND";
   const fmt = (k: KpiKey, v: number | null | undefined): string => {
     if (v == null) return "";
-    if (k === "spend" || k === "cpc" || k === "cpl" || k === "cost_per_follow") return fmtMoney(lang, v, cur);
-    if (k === "ctr") return fmtPct(lang, v);
+    if (MONEY.has(k)) return fmtMoney(lang, v, cur);
+    if (PCT.has(k)) return fmtPct(lang, v);
+    if (k === "frequency") return v.toLocaleString(lang === "en" ? "en-US" : "vi-VN", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
     return fmtNum(lang, v);
   };
   const showPrev = allowCompare && compare && data?.prev;
+  // Frequency colours only make sense over ~a week (longer ranges naturally have higher frequency).
+  const freqCtx = days <= 7;
 
   return (
+    <FreqContext.Provider value={freqCtx}>
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="accent" dot={false}>Facebook</Badge>
@@ -125,7 +166,7 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
           {data.state?.error ? <ErrorState title={tx.err} message={data.state.error} /> : null}
           <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8", loading && "opacity-60")}>
             {kpiOrder(data).map((k) => (
-              <Kpi key={k} label={tx[k]} value={fmt(k, data.totals[k])} prev={showPrev ? fmt(k, data.prev![k]) : null} delta={showPrev ? delta(data.totals[k], data.prev![k], k) : null} />
+              <Kpi key={k} label={tx[k]} hint={HINT[k]} tone={freqTone(k, data.totals[k], freqCtx)} value={fmt(k, data.totals[k])} prev={showPrev ? fmt(k, data.prev![k]) : null} delta={showPrev ? delta(data.totals[k], data.prev![k], k) : null} />
             ))}
           </div>
           <Card className="p-4">
@@ -184,25 +225,32 @@ export function MetaAnalyticsView({ clientId, allowCompare, lang = "vi" }: { cli
         </>
       )}
     </div>
+    </FreqContext.Provider>
   );
 }
 
-function delta(cur: number | null, prev: number | null, k: KpiKey): { text: string; good: boolean } | null {
+const FreqContext = createContext(false);
+function freqTone(k: KpiKey, v: number | null | undefined, on: boolean): string | null {
+  if (k !== "frequency" || v == null || !on) return null;
+  return v > FREQ_BAD ? "text-danger font-semibold" : v > FREQ_WARN ? "text-warn font-semibold" : null;
+}
+
+function delta(cur: number | null, prev: number | null, k: KpiKey): { text: string; good: boolean | null } | null {
   if (cur == null || prev == null || prev === 0) return null;
   const d = (cur - prev) / prev;
   const up = d >= 0;
-  return { text: `${up ? "+" : ""}${(d * 100).toFixed(1)}%`, good: LOWER_BETTER[k] ? !up : up };
+  return { text: `${up ? "+" : ""}${(d * 100).toFixed(1)}%`, good: NEUTRAL[k] ? null : LOWER_BETTER[k] ? !up : up };
 }
 
-function Kpi({ label, value, prev, delta: dl }: { label: string; value: string; prev: string | null; delta: { text: string; good: boolean } | null }) {
+function Kpi({ label, value, prev, delta: dl, hint, tone }: { label: string; value: string; prev: string | null; delta: { text: string; good: boolean | null } | null; hint?: string; tone?: string | null }) {
   return (
     <Card className="px-3 py-3">
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="mt-1 truncate text-lg font-semibold tabular-nums text-ink" title={value}>{value || "\u00a0"}</p>
+      <p className={cn("text-xs font-medium text-muted", hint && "cursor-help underline decoration-dotted underline-offset-2")} title={hint}>{label}</p>
+      <p className={cn("mt-1 truncate text-lg font-semibold tabular-nums text-ink", tone)} title={value}>{value || "\u00a0"}</p>
       {prev != null ? (
         <p className="mt-0.5 truncate text-xs tabular-nums text-muted">
           {prev || "—"}
-          {dl ? <span className={cn("ml-1 font-medium", dl.good ? "text-ok" : "text-danger")}>{dl.text}</span> : null}
+          {dl ? <span className={cn("ml-1 font-medium", dl.good == null ? "text-muted" : dl.good ? "text-ok" : "text-danger")}>{dl.text}</span> : null}
         </p>
       ) : null}
     </Card>
@@ -211,10 +259,70 @@ function Kpi({ label, value, prev, delta: dl }: { label: string; value: string; 
 
 type Extra = { head: string; cell: (r: MetaRow) => ReactNode; muted?: boolean };
 type Fmt = (k: KpiKey, v: number | null | undefined) => string;
-const ALL_COLS = ["spend", "impressions", "clicks", "ctr", "cpc", "follows", "cost_per_follow", "page_engagement", "leads", "messages", "cpl"] as const satisfies readonly (keyof MetaMetrics)[];
-/** Core columns always; result columns only when some row in this table has a value (blank otherwise). */
-const CORE = new Set<KpiKey>(["spend", "impressions", "clicks", "ctr", "cpc"]);
-const colsFor = (rows: MetaRow[]) => ALL_COLS.filter((c) => CORE.has(c) || rows.some((r) => r[c] != null));
+const ALL_COLS = [
+  "spend", "impressions", "reach", "frequency", "cpm", "clicks", "ctr", "cpc",
+  "link_clicks", "link_ctr", "cost_per_link_click", "lpv", "lpv_rate",
+  "follows", "cost_per_follow", "page_engagement", "leads", "messages", "cpl",
+  "video_3s", "hook_rate", "thruplay", "hold_rate", "ret25", "ret50", "ret75", "ret100",
+] as const satisfies readonly (keyof MetaMetrics)[];
+/** Core columns always (when chosen); the rest only when some row in this table has a value (blank otherwise). */
+const CORE = new Set<KpiKey>(["spend", "impressions", "clicks", "ctr", "cpc", "cpm"]);
+const DEFAULT_COLS = new Set<KpiKey>([
+  "spend", "impressions", "reach", "frequency", "cpm", "clicks", "ctr", "cpc",
+  "follows", "cost_per_follow", "page_engagement", "leads", "messages", "cpl", "hook_rate", "hold_rate",
+]);
+const colsFor = (rows: MetaRow[], chosen: Set<KpiKey> = DEFAULT_COLS) =>
+  ALL_COLS.filter((c) => chosen.has(c) && (CORE.has(c) || rows.some((r) => r[c] != null)));
+
+/** "Cột" choice per table, remembered in this browser. */
+function useColumnChoice(table: string) {
+  const key = `adsops:fb-cols:v1:${table}`;
+  const [chosen, setChosen] = useState<Set<KpiKey>>(DEFAULT_COLS);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw) setChosen(new Set((JSON.parse(raw) as string[]).filter((k): k is KpiKey => (ALL_COLS as readonly string[]).includes(k))));
+    } catch { /* ignore */ }
+  }, [key]);
+  const toggle = (k: KpiKey) =>
+    setChosen((s) => {
+      const n = new Set(s);
+      n.has(k) ? n.delete(k) : n.add(k);
+      try { window.localStorage.setItem(key, JSON.stringify([...n])); } catch { /* ignore */ }
+      return n;
+    });
+  const reset = () => { setChosen(new Set(DEFAULT_COLS)); try { window.localStorage.removeItem(key); } catch { /* ignore */ } };
+  return { chosen, toggle, reset };
+}
+
+function ColumnPicker({ cc, tx }: { cc: ReturnType<typeof useColumnChoice>; tx: (typeof L)[Lang] }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  return (
+    <div ref={box} className="relative ml-auto">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 text-xs font-medium text-muted hover:text-ink">
+        <Columns3 className="size-3.5" /> Cột
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-full z-40 mt-1 max-h-96 w-64 overflow-auto rounded-lg border border-line bg-paper py-1 shadow-sheet">
+          {ALL_COLS.map((k) => (
+            <label key={k} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-ink hover:bg-inset" title={HINT[k]}>
+              <input type="checkbox" className="size-4 accent-accent" checked={cc.chosen.has(k)} onChange={() => cc.toggle(k)} />
+              {tx[k]}
+            </label>
+          ))}
+          <button type="button" onClick={cc.reset} className="mt-1 block w-full border-t border-line px-3 py-2 text-left text-xs font-medium text-accent hover:bg-inset">Mặc định</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * KPI cards: core always; result metrics only if reported. Follow metrics lead when the account
@@ -227,7 +335,10 @@ function kpiOrder(d: MetaAnalytics): KpiKey[] {
   const follow: KpiKey[] = ["follows", "cost_per_follow", "page_engagement"];
   const lead: KpiKey[] = ["leads", "cpl", "messages"];
   const results = (followFirst ? [...follow, ...lead] : [...lead, ...follow]).filter((k) => t[k] != null || (k === "leads" && t.follows == null));
-  return [...(followFirst ? ["spend", ...results.slice(0, 2), "impressions", "clicks", "ctr", "cpc", ...results.slice(2)] : ["spend", "impressions", "clicks", "ctr", "cpc", ...results])] as KpiKey[];
+  const delivery: KpiKey[] = ["reach", "frequency", "cpm"];
+  return [...(followFirst
+    ? ["spend", ...results.slice(0, 2), "impressions", ...delivery, "clicks", "ctr", "cpc", ...results.slice(2)]
+    : ["spend", "impressions", ...delivery, "clicks", "ctr", "cpc", ...results])] as KpiKey[];
 }
 
 function budgetText(r: MetaRow, cur: string, lang: Lang): string | null {
@@ -285,7 +396,7 @@ function MetricHead({ k, label, sort, click, compare }: { k: KpiKey; label: stri
   return (
     <th className="px-3 py-2 text-right font-medium" aria-sort={sort?.key === k ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
       <span className="inline-flex items-center justify-end gap-1">
-        <button type="button" onClick={() => click(k, "value")} className="inline-flex items-center gap-0.5 hover:text-ink">{label}{icon("value")}</button>
+        <button type="button" title={HINT[k]} onClick={() => click(k, "value")} className={cn("inline-flex items-center gap-0.5 hover:text-ink", HINT[k] && "underline decoration-dotted underline-offset-2")}>{label}{icon("value")}</button>
         {compare ? (
           <button type="button" title="Sắp xếp theo % thay đổi" onClick={() => click(k, "change")} className="inline-flex items-center rounded px-1 text-[11px] text-subtle hover:bg-paper hover:text-ink">Δ%{icon("change")}</button>
         ) : null}
@@ -297,13 +408,15 @@ function MetricHead({ k, label, sort, click, compare }: { k: KpiKey; label: stri
 function MetricCell({ r, k, fmt, compare }: { r: MetaRow; k: KpiKey; fmt: Fmt; compare: boolean }) {
   const cur = r.tag === "gone" ? "" : fmt(k, r[k]);
   const ch = compare ? changeOf(r, k) : null;
-  const good = ch == null ? null : LOWER_BETTER[k] ? ch < 0 : ch > 0;
+  const good = ch == null || NEUTRAL[k] ? null : LOWER_BETTER[k] ? ch < 0 : ch > 0;
   const prevText = compare && r.prev ? fmt(k, r.prev[k]) : "";
+  const freqOn = useContext(FreqContext);
+  const tone = r.tag === "gone" ? null : freqTone(k, r[k], freqOn);
   return (
     <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink" title={prevText ? `Kỳ trước: ${prevText}` : undefined}>
-      <span className="block">{cur}</span>
+      <span className={cn("block", tone)}>{cur}</span>
       {ch != null && Math.abs(ch) >= 0.0005 ? (
-        <span className={cn("block text-xs font-medium", good ? "text-ok" : "text-danger")}>{`${ch > 0 ? "+" : ""}${(ch * 100).toFixed(1)}%`}</span>
+        <span className={cn("block text-xs font-medium", good == null ? "text-muted" : good ? "text-ok" : "text-danger")}>{`${ch > 0 ? "+" : ""}${(ch * 100).toFixed(1)}%`}</span>
       ) : ch != null ? <span className="block text-xs text-muted">0%</span> : null}
     </td>
   );
@@ -383,7 +496,8 @@ function RowsTable({
   const { sorted, sort, click } = useSorted(sf.shown, compare);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const cols = colsFor(sf.shown);
+  const cc = useColumnChoice(title === tx.campaigns ? "campaign" : "adset");
+  const cols = colsFor(sf.shown, cc.chosen);
   const span = 1 + extra.length + cols.length;
   const { ref: scrollRef, w: visibleW } = useVisibleWidth();
   return (
@@ -393,6 +507,7 @@ function RowsTable({
           {title} <span className="font-normal text-muted">({sf.sel.size ? `${sf.shown.length}/${rows.length}` : rows.length})</span>
         </p>
         <StatusChips f={sf} />
+        <ColumnPicker cc={cc} tx={tx} />
       </div>
       {sf.shown.length ? (
         <div ref={scrollRef} className="overflow-x-auto">
@@ -498,7 +613,8 @@ function AdsTable({
   // Status counts follow the campaign / ad set filter.
   const sf = useStatusFilter(byParent);
   const shown = sf.shown;
-  const cols = colsFor(shown);
+  const cc = useColumnChoice("ad");
+  const cols = colsFor(shown, cc.chosen);
   const { sorted, sort, click } = useSorted(shown, compare);
   const filtered = Boolean(filter.campaign || filter.adset || sf.sel.size);
   return (
@@ -532,6 +648,7 @@ function AdsTable({
         {filtered ? (
           <button type="button" onClick={() => { setFilter({ campaign: "", adset: "" }); sf.clear(); }} className="text-xs font-medium text-accent hover:underline">Bỏ lọc</button>
         ) : null}
+        <ColumnPicker cc={cc} tx={tx} />
         <div className="basis-full" />
         <StatusChips f={sf} />
       </div>
