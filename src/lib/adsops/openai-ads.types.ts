@@ -9,8 +9,11 @@ export type OAMetrics = {
   cpc: number | null;
   cpm: number | null;
   cpa: number | null;
+  /** Range-level (from OpenAI live); null when unavailable. */
+  reach?: number | null;
+  frequency?: number | null;
 };
-export type OANode = { id: string; name: string | null; status: string | null; m: OAMetrics; prev: OAMetrics | null };
+export type OANode = { id: string; name: string | null; status: string | null; m: OAMetrics; prev: OAMetrics | null; title?: string | null; link?: string | null; body?: string | null; delivered?: boolean };
 export type OAAdGroup = OANode & { ads: OANode[] };
 export type OACampaign = OANode & { ad_groups: OAAdGroup[] };
 export type OAView = {

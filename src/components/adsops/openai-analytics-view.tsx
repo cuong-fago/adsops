@@ -26,16 +26,19 @@ const PRESETS: Array<{ n: number; label: string }> = [
   { n: 30, label: "30 ngày" },
   { n: 90, label: "90 ngày" },
 ];
-const KPIS: K[] = ["spend", "impressions", "clicks", "ctr", "cpc", "cpm", "conversions", "cpa", "sales"];
-const COLS: K[] = ["spend", "impressions", "clicks", "ctr", "cpc", "cpm", "conversions", "cpa"];
+const KPIS: K[] = ["spend", "impressions", "reach", "frequency", "clicks", "ctr", "cpc", "cpm", "conversions", "cpa", "sales"];
+const COLS: K[] = ["spend", "impressions", "reach", "frequency", "clicks", "ctr", "cpc", "cpm", "conversions", "cpa"];
 const LABEL: Record<K, string> = {
   spend: "Chi tiêu", impressions: "Hiển thị", clicks: "Click", ctr: "CTR", cpc: "CPC", cpm: "CPM",
+  reach: "Phạm vi tiếp cận", frequency: "Tần suất",
   conversions: "Chuyển đổi", cpa: "Chi phí / chuyển đổi", sales: "Doanh số ghi nhận",
 };
 const HINT: Record<K, string> = {
   spend: "Chi phí quảng cáo ChatGPT Ads trong khoảng ngày (tiền tệ của tài khoản).",
   impressions: "Số lần quảng cáo hiển thị trong ChatGPT.",
   clicks: "Số lượt click vào quảng cáo.",
+  reach: "Số người khác nhau đã thấy quảng cáo trong cả khoảng ngày (OpenAI tính cho cả khoảng, không cộng theo ngày).",
+  frequency: "Số lần trung bình mỗi người thấy quảng cáo = Hiển thị ÷ Phạm vi tiếp cận.",
   ctr: "Click ÷ Hiển thị.",
   cpc: "Chi tiêu ÷ Click.",
   cpm: "Chi phí cho 1.000 lượt hiển thị.",
@@ -49,7 +52,7 @@ const LOWER = new Set<K>(["cpc", "cpm", "cpa"]);
 const STATUS_VI: Record<string, string> = { active: "Đang chạy", paused: "Tạm dừng", archived: "Lưu trữ", deleted: "Đã xoá", pending: "Chờ duyệt", draft: "Nháp" };
 const statusVi = (s: string | null) => (s ? STATUS_VI[s] || s : "");
 
-function delta(c: number | null, p: number | null, k: K): { text: string; good: boolean } | null {
+function delta(c: number | null | undefined, p: number | null | undefined, k: K): { text: string; good: boolean } | null {
   if (c == null || p == null || p === 0) return null;
   const d = (c - p) / p;
   return { text: `${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)}%`, good: LOWER.has(k) ? d < 0 : d >= 0 };
@@ -81,7 +84,9 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
   }, [clientId, range, nonce, allowCompare, compare]);
 
   const cur = data?.currency || "VND";
-  const fmt = (k: K, v: number | null | undefined) => (v == null ? "" : MONEY.has(k) ? fmtMoney("vi", v, cur) : PCT.has(k) ? fmtPct("vi", v) : fmtNum("vi", v));
+  const fmt = (k: K, v: number | null | undefined) =>
+    v == null ? "" : MONEY.has(k) ? fmtMoney("vi", v, cur) : PCT.has(k) ? fmtPct("vi", v)
+      : k === "frequency" ? v.toLocaleString("vi-VN", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) : fmtNum("vi", v);
   const showPrev = Boolean(allowCompare && compare && data?.prev_totals);
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const chart = (data?.daily || []).map((d) => ({ d: fmtDay(d.date).slice(0, 5), "Chi tiêu": d.spend, "Hiển thị": d.impressions }));
@@ -101,14 +106,17 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
             <div className="min-w-0">
               <p className="truncate font-medium text-ink" title={n.name || n.id}>{n.name || n.id || "—"}</p>
               <p className="text-xs text-muted">{label}{n.status ? ` · ${statusVi(n.status)}` : ""}{kids ? ` · ${kids}` : ""}</p>
+              {n.title ? <p className="truncate text-xs text-ink" title={n.body || n.title}>{n.title}</p> : null}
+              {n.link ? <a href={n.link} target="_blank" rel="noopener noreferrer" className="block max-w-[360px] truncate text-xs text-accent hover:underline" title={n.link}>{n.link.replace(/^https?:\/\//, "").split("?")[0]}</a> : null}
             </div>
           </div>
         </td>
         {COLS.map((k) => {
           const dl = showPrev && n.prev ? delta(n.m[k], n.prev[k], k) : null;
           return (
-            <td key={k} className="px-2 py-1.5 text-right tabular-nums">
-              {fmt(k, n.m[k])}
+            <td key={k} className={cn("px-2 py-1.5 text-right tabular-nums", !n.delivered && n.m[k] == null && "text-muted")}>
+              {/* No delivery in range (OpenAI returns no row): "-" like Ads Manager. */}
+              {!n.delivered && n.m[k] == null ? "-" : fmt(k, n.m[k])}
               {dl ? <div className={cn("text-xs", dl.good ? "text-ok" : "text-danger")}>{dl.text}</div> : null}
             </td>
           );

@@ -28,29 +28,41 @@ export async function readOpenAIView(clientId: string, start: string, end: strin
   const days = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
   const prevEnd = compare ? addDaysYmd(start, -1) : null;
   const prevStart = compare && prevEnd ? addDaysYmd(prevEnd, -(days - 1)) : null;
-  const [cur, prev, ents, daily] = await Promise.all([
+  const [cur, prev, ents, daily, reach] = await Promise.all([
     agg(clientId, start, end),
     prevStart && prevEnd ? agg(clientId, prevStart, prevEnd) : Promise.resolve([] as Row[]),
-    sql.query<{ level: string; entity_id: string; campaign_id: string | null; ad_group_id: string | null; name: string | null; status: string | null }>(
-      `select level, entity_id, campaign_id, ad_group_id, name, status from openai_entities where client_id = $1`,
+    sql.query<{ level: string; entity_id: string; campaign_id: string | null; ad_group_id: string | null; name: string | null; status: string | null; raw: { title?: string; link?: string; body?: string } | null }>(
+      `select level, entity_id, campaign_id, ad_group_id, name, status, raw from openai_entities where client_id = $1`,
       [clientId],
     ),
     sql.query<{ date: unknown; spend: unknown; impressions: unknown; clicks: unknown; conversions: unknown }>(
       `select date, spend, impressions, clicks, conversions from openai_insights_daily where client_id = $1 and level = 'account' and date between $2 and $3 order by date`,
       [clientId, start, end],
     ),
+    (await import("./openai-ads.server.ts")).liveReach(clientId, start, end).catch(() => new Map<string, { reach: number | null; frequency: number | null }>()),
   ]);
   const key = (l: string, id: string) => `${l}|${id}`;
   const curBy = new Map(cur.map((r) => [key(r.level, r.entity_id), r]));
   const prevBy = new Map(prev.map((r) => [key(r.level, r.entity_id), r]));
-  const node = (level: string, id: string, name: string | null, status: string | null): OANode => ({
-    id,
-    name,
-    status,
-    m: metricsOf(curBy.get(key(level, id))),
-    prev: compare ? metricsOf(prevBy.get(key(level, id))) : null,
-  });
   const meta = new Map(ents.map((e) => [key(e.level, e.entity_id), e]));
+  const withReach = (m: OAMetrics, k: string): OAMetrics => {
+    const r = reach.get(k);
+    return { ...m, reach: r?.reach ?? null, frequency: r?.frequency ?? null };
+  };
+  const node = (level: string, id: string, name: string | null, status: string | null): OANode => {
+    const raw = meta.get(key(level, id))?.raw || null;
+    return {
+      id,
+      name,
+      status,
+      m: withReach(metricsOf(curBy.get(key(level, id))), key(level, id)),
+      prev: compare ? metricsOf(prevBy.get(key(level, id))) : null,
+      title: raw?.title ?? null,
+      link: raw?.link ?? null,
+      body: raw?.body ?? null,
+      delivered: curBy.has(key(level, id)),
+    };
+  };
   // Entities = structure ∪ anything with delivery in range.
   const ids = (level: string) => new Set([...ents.filter((e) => e.level === level).map((e) => e.entity_id), ...cur.filter((r) => r.level === level).map((r) => r.entity_id)]);
   const parentC = (level: string, id: string) => meta.get(key(level, id))?.campaign_id || curBy.get(key(level, id))?.campaign_id || null;
@@ -102,7 +114,7 @@ export async function readOpenAIView(clientId: string, start: string, end: strin
     end,
     prev_start: prevStart,
     prev_end: prevEnd,
-    totals: metricsOf(totalsRow),
+    totals: withReach(metricsOf(totalsRow), totalsRow ? key("account", totalsRow.entity_id) : [...reach.keys()].find((x) => x.startsWith("account|")) || ""),
     prev_totals: compare ? metricsOf(prevRow) : null,
     daily: daily.map((d) => ({ date: ymd(d.date) || "", spend: n(d.spend), impressions: n(d.impressions), clicks: n(d.clicks), conversions: n(d.conversions) })),
     campaigns: campaigns.sort((a, b) => (b.m.spend ?? -1) - (a.m.spend ?? -1) || (b.m.impressions ?? -1) - (a.m.impressions ?? -1)),

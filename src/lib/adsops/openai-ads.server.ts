@@ -160,7 +160,7 @@ export async function listConnections(): Promise<OAKeyRow[]> {
 // ── structure ─────────────────────────────────────────────────────────────────
 
 type ListResp<T> = { data?: T[]; has_more?: boolean; last_id?: string | null };
-type Entity = { id: string; name?: string | null; status?: string | null; title?: string | null };
+type Entity = { id: string; name?: string | null; status?: string | null; title?: string | null; creative?: { title?: string | null; body?: string | null; target_url?: string | null } | null };
 
 async function listAll<T extends { id: string }>(key: string, path: string): Promise<T[]> {
   const out: T[] = [];
@@ -174,7 +174,36 @@ async function listAll<T extends { id: string }>(key: string, path: string): Pro
   return out;
 }
 
-async function syncStructure(clientId: string, key: string): Promise<{ campaigns: number; ad_groups: number; ads: number }> {
+type ZeroRow = { ad_group_id?: string; ad_id?: string; campaign_id?: string; ad_title?: string | null; ad_link?: string | null };
+
+/**
+ * Parent ids for EVERY ad group / ad (list endpoints don't carry them, and entities without delivery have
+ * no daily rows). Insights with includes[]=zero_impression_items returns one row per entity, delivered or not.
+ */
+async function zeroRows(key: string, level: "ad_group" | "ad", tz: string): Promise<ZeroRow[]> {
+  const until = ymdInTz(tz);
+  const since = addDaysYmd(until, -364);
+  const fields = level === "ad" ? ["ad.id", "ad_group.id", "campaign.id", "ad.title", "ad.link"] : ["ad_group.id", "campaign.id"];
+  const out: ZeroRow[] = [];
+  let after: string | undefined;
+  for (let i = 0; i < 20; i++) {
+    const r = await oaGet<{ data?: ZeroRow[]; has_more?: boolean; last_id?: string | null }>(key, "/v1/ad_account/insights", {
+      time_granularity: "none",
+      aggregation_level: level,
+      "includes[]": "zero_impression_items",
+      "fields[]": fields,
+      "time_ranges[]": JSON.stringify({ type: "date_range", since, until }),
+      limit: 2000,
+      after,
+    });
+    out.push(...(r.data || []));
+    if (!r.has_more || !r.last_id) break;
+    after = r.last_id;
+  }
+  return out;
+}
+
+async function syncStructure(clientId: string, key: string, tz = DEFAULT_TZ): Promise<{ campaigns: number; ad_groups: number; ads: number }> {
   const sql = await getSql();
   const [c, g, a] = await Promise.all([
     listAll<Entity>(key, "/v1/campaigns"),
@@ -183,17 +212,33 @@ async function syncStructure(clientId: string, key: string): Promise<{ campaigns
   ]);
   const put = async (level: string, rows: Entity[]) => {
     for (const e of rows) {
+      const raw = e.creative ? { title: e.creative.title ?? null, body: e.creative.body ?? null, link: e.creative.target_url ?? null } : null;
       await sql.query(
-        `insert into openai_entities (client_id, level, entity_id, name, status, updated_at)
-         values ($1,$2,$3,$4,$5, now())
-         on conflict (client_id, level, entity_id) do update set name = excluded.name, status = excluded.status, updated_at = now()`,
-        [clientId, level, e.id, e.name || e.title || null, e.status || null],
+        `insert into openai_entities (client_id, level, entity_id, name, status, raw, updated_at)
+         values ($1,$2,$3,$4,$5,$6::jsonb, now())
+         on conflict (client_id, level, entity_id) do update set name = excluded.name, status = excluded.status,
+           raw = coalesce(excluded.raw, openai_entities.raw), updated_at = now()`,
+        [clientId, level, e.id, e.name || e.title || null, e.status || null, raw ? JSON.stringify(raw) : null],
       );
     }
   };
   await put("campaign", c);
   await put("ad_group", g);
   await put("ad", a);
+  const [zg, za] = await Promise.all([zeroRows(key, "ad_group", tz).catch(() => []), zeroRows(key, "ad", tz).catch(() => [])]);
+  for (const r of zg) {
+    if (!r.ad_group_id) continue;
+    await sql.query(`update openai_entities set campaign_id = coalesce($3, campaign_id) where client_id = $1 and level = 'ad_group' and entity_id = $2`, [clientId, r.ad_group_id, r.campaign_id || null]);
+  }
+  for (const r of za) {
+    if (!r.ad_id) continue;
+    await sql.query(
+      `update openai_entities set campaign_id = coalesce($3, campaign_id), ad_group_id = coalesce($4, ad_group_id),
+         raw = coalesce(raw, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object('title', $5::text, 'link', $6::text))
+       where client_id = $1 and level = 'ad' and entity_id = $2`,
+      [clientId, r.ad_id, r.campaign_id || null, r.ad_group_id || null, r.ad_title ?? null, r.ad_link ?? null],
+    );
+  }
   return { campaigns: c.length, ad_groups: g.length, ads: a.length };
 }
 
@@ -302,7 +347,7 @@ export async function refreshOpenAIAccount(clientId: string): Promise<{ ok: bool
     const st = await sql.query<{ insights_through: unknown }>(`select insights_through from openai_account_state where client_id = $1`, [clientId]);
     const until = ymdInTz(tz);
     const since = addDaysYmd(until, -((st[0]?.insights_through ? REFRESH_DAYS : INITIAL_DAYS) - 1));
-    await syncStructure(clientId, k.key);
+    await syncStructure(clientId, k.key, tz);
     const rows = await syncInsights(clientId, k.key, tz, since, until);
     await sql.query(
       `update openai_account_state set insights_through = $2, history_from = least(coalesce(history_from, $3::date), $3::date), checked_at = now(), error = null where client_id = $1`,
@@ -337,6 +382,40 @@ export async function refreshAllOpenAI(deadline: number): Promise<{ accounts: nu
     else errors.push(`${id}: ${r.error_vi}`);
   }
   return { accounts: ids.length, done, errors };
+}
+
+/**
+ * Reach / frequency for a date range (not additive across days, so not stored daily). One GET per level,
+ * read-only, best effort: any failure → empty map (shown blank).
+ */
+export async function liveReach(clientId: string, start: string, end: string): Promise<Map<string, { reach: number | null; frequency: number | null }>> {
+  const out = new Map<string, { reach: number | null; frequency: number | null }>();
+  const k = await keyFor(clientId).catch(() => null);
+  if (!k) return out;
+  const sql = await getSql();
+  const st = await sql.query<{ timezone: string | null }>(`select timezone from openai_account_state where client_id = $1`, [clientId]).catch(() => []);
+  const today = ymdInTz(st[0]?.timezone || DEFAULT_TZ);
+  const until = end > today ? today : end;
+  if (start > until) return out;
+  await Promise.all(LEVELS.map(async (level) => {
+    try {
+      const r = await oaGet<InsResp>(k.key, "/v1/ad_account/insights", {
+        time_granularity: "none",
+        aggregation_level: level,
+        "fields[]": [`${level}.id`, `${level}.reach`, `${level}.frequency`],
+        "time_ranges[]": JSON.stringify({ type: "date_range", since: start, until }),
+        limit: 2000,
+      }, 8000);
+      const lv = level === "ad_account" ? "account" : level;
+      for (const x of r.data || []) {
+        const id = String(x[`${level}_id`] || "");
+        if (id) out.set(`${lv}|${id}`, { reach: num(x.reach), frequency: num(x.frequency) });
+      }
+    } catch {
+      /* blank */
+    }
+  }));
+  return out;
 }
 
 export { OpenAIAdsError };
