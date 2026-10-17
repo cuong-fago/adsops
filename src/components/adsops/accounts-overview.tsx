@@ -360,7 +360,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
     let main: string;
     if (!w.checked_at) main = "—";
     else if (w.kind === "error") main = "Chưa kiểm tra được";
-    else if (w.kind === "no_budget") main = r.client_id.startsWith("fb_") ? "Không đặt giới hạn chi tiêu" : "Google không cung cấp số dư";
+    else if (w.kind === "no_budget") main = r.client_id.startsWith("fb_") ? "Không đặt giới hạn chi tiêu" : r.client_id.startsWith("oa_") ? "ChatGPT Ads không cung cấp số dư" : "Google không cung cấp số dư";
     else if (w.infinite || w.status === "infinite") main = "Không giới hạn";
     else if (w.status === "no_spend") main = "Không tiêu 7 ngày qua";
     else if (w.runway_days != null) main = `${num(w.runway_days, 1)} ngày`;
