@@ -9,6 +9,8 @@ import { addDaysYmd, ymdInTz } from "./warehouse.server.ts";
 import { oaConversionsReport, oaGet, OpenAIAdsError } from "./openai-ads-http.server.ts";
 
 export const OA_PREFIX = "oa_";
+/** Bump when the stored entity metadata shape changes: the view re-pulls accounts with older rows. */
+export const OA_META_VERSION = 2;
 export const isOpenAIId = (id: string) => id.startsWith(OA_PREFIX);
 export const oaClientId = (adAccountId: string) => `${OA_PREFIX}${adAccountId.replace(/^adacct_/, "").toLowerCase().replace(/[^a-z0-9]/g, "")}`;
 const DEFAULT_TZ = "Asia/Ho_Chi_Minh";
@@ -223,7 +225,7 @@ async function syncStructure(clientId: string, key: string, tz = DEFAULT_TZ): Pr
   ]);
   const put = async (level: string, rows: Entity[]) => {
     for (const e of rows) {
-      const raw = { obj: sanitize(e), ...(e.creative ? { title: e.creative.title ?? null, body: e.creative.body ?? null, link: e.creative.target_url ?? null, has_image: Boolean(e.creative.image_url || (e.creative as Record<string, unknown>).file_id) } : {}) };
+      const raw = { v: OA_META_VERSION, obj: sanitize(e), ...(e.creative ? { title: e.creative.title ?? null, body: e.creative.body ?? null, link: e.creative.target_url ?? null, has_image: Boolean(e.creative.image_url || (e.creative as Record<string, unknown>).file_id) } : {}) };
       await sql.query(
         `insert into openai_entities (client_id, level, entity_id, name, status, raw, updated_at)
          values ($1,$2,$3,$4,$5,$6::jsonb, now())
@@ -436,8 +438,24 @@ export async function liveReach(clientId: string, start: string, end: string): P
  * Creative image for one ad: GET /v1/ads/{id} returns a short-lived signed creative.image_url
  * (OpenAI file storage). Fetched server-side (GET only) so the browser never needs the key. null if none.
  */
+const imgCache = new Map<string, { at: number; body: ArrayBuffer; type: string }>();
+const IMG_TTL_MS = 10 * 60 * 1000;
+
 export async function adImage(clientId: string, adId: string): Promise<{ body: ArrayBuffer; type: string } | null> {
   if (!/^ad_[A-Za-z0-9]+$/.test(adId)) return null;
+  const ck = `${clientId}|${adId}`;
+  const hit = imgCache.get(ck);
+  if (hit && Date.now() - hit.at < IMG_TTL_MS) return hit;
+  const got = await fetchAdImage(clientId, adId);
+  if (got) {
+    if (imgCache.size > 200) imgCache.clear();
+    imgCache.set(ck, { at: Date.now(), ...got });
+  }
+  return got;
+}
+
+/** Always asks OpenAI for a FRESH signed URL (they expire), then downloads it. */
+async function fetchAdImage(clientId: string, adId: string): Promise<{ body: ArrayBuffer; type: string } | null> {
   const k = await keyFor(clientId);
   if (!k) return null;
   const sql = await getSql();

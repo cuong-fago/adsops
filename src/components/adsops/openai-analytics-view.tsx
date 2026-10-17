@@ -109,7 +109,7 @@ export function OpenAIAnalyticsView({ clientId, allowCompare }: { clientId: stri
                   <ChevronRight className={cn("size-4 transition-transform", open.has(id) && "rotate-90")} />
                 </button>
               ) : <span className="inline-block w-4" />}
-              {depth === 2 ? <Thumb clientId={clientId} adId={n.id} has={Boolean(info?.has_image)} managerUrl={data?.manager_url || null} /> : null}
+              {depth === 2 ? <Thumb clientId={clientId} adId={n.id} has managerUrl={data?.manager_url || null} /> : null}
               <div className="min-w-0 max-w-[320px]">
                 <p className="truncate font-medium text-ink" title={n.name || n.id}>{n.name || n.id || "—"}</p>
                 <p className="text-xs text-muted">{label}{n.status ? ` · ${statusVi(n.status)}` : ""}{info?.review ? ` · ${info.review}` : ""}{kids ? ` · ${kids}` : ""}</p>
@@ -288,7 +288,7 @@ function DetailPanel({ level, n, clientId, managerUrl }: { level: string; n: OAN
   const lines = info?.details || [];
   return (
     <div className="flex flex-col gap-3 text-sm md:flex-row">
-      {level === "ad" ? <Thumb clientId={clientId} adId={n.id} has={Boolean(info?.has_image)} managerUrl={managerUrl} big /> : null}
+      {level === "ad" ? <Thumb clientId={clientId} adId={n.id} has managerUrl={managerUrl} big /> : null}
       <div className="min-w-0 flex-1">
         <p className="mb-2 font-semibold text-ink">{n.name || n.id}<span className="ml-2 text-xs font-normal text-muted">{n.id}</span></p>
         {lines.length ? (

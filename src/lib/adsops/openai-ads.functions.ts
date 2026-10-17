@@ -28,16 +28,21 @@ export const readOpenAIViewFn = createServerFn({ method: "POST" })
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
     const st = await sql.query<{ insights_through: unknown }>(`select insights_through from openai_account_state where client_id = $1`, [data.clientId]).catch(() => []);
-    // Re-pull metadata once when any entity still lacks its parent (pre-#79 data, or a new ad group/ad).
-    const orphan = await sql.query<{ n: number }>(
-      `select count(*)::int as n from openai_entities where client_id = $1 and ((level = 'ad' and ad_group_id is null) or (level = 'ad_group' and campaign_id is null) or raw is null or raw->'obj' is null)`,
-      [data.clientId],
+    // Re-pull when never pulled, when any ad/ad group lacks its parent, or when stored metadata is an older
+    // shape (no version / version < OA_META_VERSION). Own lock key per version so an older lock can't block it.
+    const { OA_META_VERSION } = await import("./openai-ads.server");
+    const stale = await sql.query<{ n: number }>(
+      `select count(*)::int as n from openai_entities where client_id = $1 and (
+         (level = 'ad' and ad_group_id is null) or (level = 'ad_group' and campaign_id is null)
+         or raw is null or coalesce((raw->>'v')::int, 0) < $2)`,
+      [data.clientId, OA_META_VERSION],
     ).catch(() => [{ n: 0 }]);
-    if (!st[0]?.insights_through || (orphan[0]?.n ?? 0) > 0) {
-      // Never pulled yet: one read-only pull now (locked so parallel viewers don't stampede).
+    if (!st[0]?.insights_through || (stale[0]?.n ?? 0) > 0) {
       const { acquireLock } = await import("./warehouse.server");
-      if (await acquireLock(`${data.clientId}:oa-first`, 900)) {
-        await (await import("./openai-ads.server")).refreshOpenAIAccount(data.clientId).catch(() => null);
+      if (await acquireLock(`${data.clientId}:oa-meta-v${OA_META_VERSION}`, 120)) {
+        const r = await (await import("./openai-ads.server")).refreshOpenAIAccount(data.clientId).catch((e: unknown) => ({ ok: false, error_vi: String(e) }));
+        if (!r.ok) console.error("[openai-ads] re-pull failed", data.clientId, r.error_vi);
+        else console.log("[openai-ads] metadata re-pulled", data.clientId);
       }
     }
     return (await import("./openai-analytics.server")).readOpenAIView(data.clientId, data.start, data.end, withPrev);
