@@ -35,13 +35,15 @@ function Editor({ r, onDone }: { r: PacingRow; onDone: (msg?: string) => void })
   const [plan, setPlan] = useState(r.plan ? String(r.plan.planned_budget) : "");
   const [conv, setConv] = useState(r.plan?.target_conv != null ? String(r.plan.target_conv) : "");
   const [cpl, setCpl] = useState(r.plan?.target_cpl != null ? String(r.plan.target_cpl) : "");
+  const [cac, setCac] = useState(r.plan?.target_cac != null ? String(r.plan.target_cac) : "");
+  const [roas, setRoas] = useState(r.plan?.target_roas != null ? String(r.plan.target_roas) : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const digits = (s: string) => s.replace(/[^\d.]/g, "");
   async function run(action: "save" | "delete") {
     setBusy(true); setErr("");
     try {
-      await savePlanFn({ data: { clientId: r.client_id, month: r.month, action, plannedBudget: digits(plan), targetConv: digits(conv), targetCpl: digits(cpl) } });
+      await savePlanFn({ data: { clientId: r.client_id, month: r.month, action, plannedBudget: digits(plan), targetConv: digits(conv), targetCpl: digits(cpl), targetCac: digits(cac), targetRoas: digits(roas) } });
       onDone();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   }
@@ -51,6 +53,8 @@ function Editor({ r, onDone }: { r: PacingRow; onDone: (msg?: string) => void })
       <label className="text-xs text-muted">Ngân sách kế hoạch (VND)<input inputMode="numeric" value={plan} onChange={(e) => setPlan(e.target.value)} className={inp} placeholder="vd 30000000" /></label>
       <label className="text-xs text-muted">Mục tiêu {r.conv_label.toLowerCase()} (tuỳ chọn)<input inputMode="numeric" value={conv} onChange={(e) => setConv(e.target.value)} className={inp} /></label>
       <label className="text-xs text-muted">CPL mục tiêu (VND, tuỳ chọn)<input inputMode="numeric" value={cpl} onChange={(e) => setCpl(e.target.value)} className={inp} /></label>
+      <label className="text-xs text-muted">CAC mục tiêu (VND, tuỳ chọn)<input inputMode="numeric" value={cac} onChange={(e) => setCac(e.target.value)} className={inp} /></label>
+      <label className="text-xs text-muted">ROAS thực mục tiêu (lần, tuỳ chọn)<input inputMode="decimal" value={roas} onChange={(e) => setRoas(e.target.value)} className={inp} placeholder="vd 3" /></label>
       <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
         <button type="button" disabled={busy} onClick={() => void run("save")} className="h-8 rounded-md bg-accent px-3 text-sm font-medium text-white disabled:opacity-60">Lưu</button>
         <button type="button" disabled={busy} onClick={() => onDone()} className="h-8 rounded-md border border-line bg-paper px-3 text-sm">Huỷ</button>

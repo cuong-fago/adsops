@@ -17,9 +17,7 @@ async function assertStaff(ctx: Ctx) {
  * Never while viewing-as.
  */
 async function editorFor(ctx: Ctx): Promise<(id: string) => boolean> {
-  const { canSeeAccount } = await import("./permissions.server");
-  const role = ctx.principal.role;
-  return (id: string) => !ctx.readOnly && canSeeAccount(ctx, id) && (role === "admin" || role === "head_ads" || role === "optimizer");
+  return (await import("./plan-access.server")).planEditor(ctx);
 }
 
 function monthOf(v: unknown, fallback: string): string {
@@ -62,10 +60,12 @@ export const savePlanFn = createServerFn({ method: "POST" })
     const planned = pos(d.plannedBudget);
     const tconv = pos(d.targetConv);
     const tcpl = pos(d.targetCpl);
+    const tcac = pos(d.targetCac);
+    const troas = pos(d.targetRoas);
     if (!clientId || typeof d.month !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(d.month)) throw new Error("Thiếu tài khoản / tháng");
     if (action === "save" && (planned == null || Number.isNaN(planned) || planned <= 0)) throw new Error("Ngân sách kế hoạch phải là số dương (VND).");
-    if (Number.isNaN(tconv) || Number.isNaN(tcpl)) throw new Error("Mục tiêu phải là số không âm.");
-    return { clientId, month: d.month, action, planned: planned as number, tconv, tcpl } as const;
+    if (Number.isNaN(tconv) || Number.isNaN(tcpl) || Number.isNaN(tcac) || Number.isNaN(troas)) throw new Error("Mục tiêu phải là số không âm.");
+    return { clientId, month: d.month, action, planned: planned as number, tconv, tcpl, tcac, troas } as const;
   })
   .middleware([principalMiddleware])
   .handler(async ({ context, data }): Promise<{ ok: boolean; message: string | null }> => {
@@ -81,6 +81,6 @@ export const savePlanFn = createServerFn({ method: "POST" })
       const ok = await m.copyPrevPlan(data.clientId, data.month, by);
       return { ok, message: ok ? null : "Tháng trước chưa có kế hoạch." };
     }
-    await m.savePlan({ client_id: data.clientId, month: data.month, planned_budget: data.planned, target_conv: data.tconv, target_cpl: data.tcpl }, by);
+    await m.savePlan({ client_id: data.clientId, month: data.month, planned_budget: data.planned, target_conv: data.tconv, target_cpl: data.tcpl, target_cac: data.tcac, target_roas: data.troas }, by);
     return { ok: true, message: null };
   });

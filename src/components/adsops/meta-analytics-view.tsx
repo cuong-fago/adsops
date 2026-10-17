@@ -1,6 +1,7 @@
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { alertBadge, type MetaFocus } from "@/components/adsops/meta-alerts-card";
 import { PacingCard } from "@/components/adsops/budget-pacing";
+import { BusinessCard } from "@/components/adsops/business-outcomes";
 import type { MetaAlert } from "@/lib/adsops/meta-alerts.types";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowDown, ArrowUp, BarChart3, ChevronRight, Columns3, ExternalLink } from "lucide-react";
@@ -234,6 +235,7 @@ export function MetaAnalyticsView({
       </div>
 
       <PacingCard clientId={clientId} />
+      <BusinessCard clientId={clientId} />
       {error ? (
         <ErrorState title={tx.err} message={error} onRetry={() => setNonce((n) => n + 1)} />
       ) : loading && !data ? (

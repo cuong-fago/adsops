@@ -3,6 +3,8 @@ import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
 import { recheckAccountFn, recheckSpend10Fn } from "@/lib/adsops/recheck.functions";
 import { readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-overview.functions";
 import { readPacingFn, type PacingRow } from "@/lib/adsops/budget-plan.functions";
+import { readBusinessAllFn, type BizMetrics } from "@/lib/adsops/outcomes.functions";
+import { ImportDialog } from "@/components/adsops/business-outcomes";
 import { isRedPace } from "@/lib/adsops/budget-plan.types";
 import { PaceBadge } from "@/components/adsops/budget-pacing";
 import { autoPullChangeLogFn, checkSharedCountsFn } from "@/lib/adsops/change-log.functions";
@@ -136,6 +138,14 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
     readPacingFn({ data: {} })
       .then((r) => { if (live) setPace(Object.fromEntries(r.rows.map((x) => [x.client_id, x]))); })
       .catch(() => { /* column stays "—" */ });
+    return () => { live = false; };
+  }, [epoch]);
+  const [biz, setBiz] = useState<{ month: string; rows: Record<string, BizMetrics> } | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const bizM = biz ? `${biz.month.slice(5)}/${biz.month.slice(0, 4)}` : "";
+  useEffect(() => {
+    let live = true;
+    readBusinessAllFn().then((r) => { if (live) setBiz(r); }).catch(() => { /* staff only; columns hidden */ });
     return () => { live = false; };
   }, [epoch]);
   const act = useActiveFilter(rows, (r) => r.client_id);
@@ -442,6 +452,12 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
         </label>
         </div>
       </div>
+      {biz ? (
+        <div className="flex justify-end">
+          <button type="button" onClick={() => setImportOpen(true)} title="Nhập lead hợp lệ, khách chốt, doanh thu từ file CSV / Excel" className="inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-sm hover:bg-inset">Tải số liệu kinh doanh</button>
+        </div>
+      ) : null}
+      {importOpen ? <ImportDialog onClose={(changed) => { setImportOpen(false); if (changed) setEpoch((n) => n + 1); }} /> : null}
       {bulk || rowState.__summary?.msg ? <p className="text-xs text-muted">{bulk || rowState.__summary?.msg}</p> : null}
       {rows && selectedRow ? (
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -514,6 +530,13 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                 {head("score", "Điểm tối ưu")}
                 {head("opt", "Tối ưu từ khoá gần nhất")}
                 {head("pace", "Tiến độ ngân sách")}
+                {biz ? (
+                  <>
+                    <th className={th} title={`Khách chốt tháng ${bizM}`}>KH chốt {bizM}</th>
+                    <th className={th} title={`Doanh thu nhập tay / tải file, tháng ${bizM}`}>Doanh thu {bizM}</th>
+                    <th className={th} title="ROAS thực = doanh thu ÷ chi tiêu tháng">ROAS thực</th>
+                  </>
+                ) : null}
                 {head("checked", "Kiểm tra lúc")}
                 <th className="sticky top-0 z-10 border-b border-line bg-row-hover px-2 py-2.5"><span className="sr-only">Kiểm tra lại</span></th>
               </tr>
@@ -539,6 +562,17 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                     <td className={td}>{scoreCell(r)}</td>
                     <td className={td}>{optCell(r)}</td>
                     <td className={td}>{pace[r.client_id] ? <PaceBadge r={pace[r.client_id]} /> : "—"}</td>
+                    {biz ? (() => {
+                      const b = biz.rows[r.client_id];
+                      if (!b?.has_outcome) return <td className={cn(td, "text-xs text-subtle")} colSpan={3}>Chưa nhập số liệu</td>;
+                      return (
+                        <>
+                          <td className={cn(td, "tabular-nums")}>{b.closed ?? "—"}</td>
+                          <td className={cn(td, "tabular-nums whitespace-nowrap")}>{b.revenue != null ? `${Math.round(b.revenue).toLocaleString("vi-VN")}đ` : "—"}</td>
+                          <td className={cn(td, "tabular-nums")}>{b.roas != null ? `${b.roas.toFixed(2)}×` : "—"}</td>
+                        </>
+                      );
+                    })() : null}
                     <td className={cn(td, "whitespace-nowrap text-xs text-muted")}>{checked ? formatSaigon(checked) : "—"}</td>
                     <td className={cn(td, "w-10 px-2")}>
                       <button
@@ -560,7 +594,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
               })}
               {!shown.length ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={biz ? 10 : 7}>
                     <EmptyState
                       title={tile !== "all" ? `Không có tài khoản nào: ${TILE_LABEL[tile]}.` : "Chưa có tài khoản."}
                       action={tile !== "all" ? <button type="button" onClick={() => pickTile("all")} className="inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset">Xem tất cả</button> : undefined}

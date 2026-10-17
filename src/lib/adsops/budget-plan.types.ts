@@ -1,5 +1,5 @@
 /** Monthly budget plan + pacing (Google + Facebook). Shared by server and browser. */
-export type BudgetPlan = { client_id: string; month: string; planned_budget: number; target_conv: number | null; target_cpl: number | null; updated_by: string | null; updated_at: string | null };
+export type BudgetPlan = { client_id: string; month: string; planned_budget: number; target_conv: number | null; target_cpl: number | null; target_cac: number | null; target_roas: number | null; updated_by: string | null; updated_at: string | null };
 
 export type PacingStatus = "on_track" | "fast_warn" | "fast_bad" | "slow_warn" | "slow_bad";
 

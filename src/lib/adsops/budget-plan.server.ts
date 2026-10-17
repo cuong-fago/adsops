@@ -21,14 +21,14 @@ const n = (v: unknown) => (v == null ? null : Number(v));
 function toPlan(r: Record<string, unknown>): BudgetPlan {
   return {
     client_id: String(r.client_id), month: String(r.month), planned_budget: Number(r.planned_budget),
-    target_conv: n(r.target_conv), target_cpl: n(r.target_cpl), updated_by: (r.updated_by as string) || null,
+    target_conv: n(r.target_conv), target_cpl: n(r.target_cpl), target_cac: n(r.target_cac), target_roas: n(r.target_roas), updated_by: (r.updated_by as string) || null,
     updated_at: r.updated_at ? (r.updated_at instanceof Date ? r.updated_at.toISOString() : String(r.updated_at)) : null,
   };
 }
 
-type Day = { client_id: string; date: string; cost: number; conv: number | null };
+export type Day = { client_id: string; date: string; cost: number; conv: number | null };
 
-async function dailySpend(ids: string[], from: string, to: string): Promise<Map<string, Day[]>> {
+export async function dailySpend(ids: string[], from: string, to: string): Promise<Map<string, Day[]>> {
   const sql = await getSql();
   const g = ids.filter((id) => !id.startsWith("fb_"));
   const f = ids.filter((id) => id.startsWith("fb_"));
@@ -108,13 +108,13 @@ export async function pacingFor(ids: string[], month: string, canEdit: (id: stri
   });
 }
 
-export async function savePlan(p: { client_id: string; month: string; planned_budget: number; target_conv: number | null; target_cpl: number | null }, by: string): Promise<void> {
+export async function savePlan(p: { client_id: string; month: string; planned_budget: number; target_conv: number | null; target_cpl: number | null; target_cac?: number | null; target_roas?: number | null }, by: string): Promise<void> {
   const sql = await getSql();
   await sql.query(
-    `insert into adsops_budget_plan (client_id, month, planned_budget, target_conv, target_cpl, updated_by) values ($1,$2,$3,$4,$5,$6)
+    `insert into adsops_budget_plan (client_id, month, planned_budget, target_conv, target_cpl, target_cac, target_roas, updated_by) values ($1,$2,$3,$4,$5,$6,$7,$8)
      on conflict (client_id, month) do update set planned_budget = excluded.planned_budget, target_conv = excluded.target_conv,
-       target_cpl = excluded.target_cpl, updated_by = excluded.updated_by, updated_at = now()`,
-    [p.client_id, p.month, p.planned_budget, p.target_conv, p.target_cpl, by],
+       target_cpl = excluded.target_cpl, target_cac = excluded.target_cac, target_roas = excluded.target_roas, updated_by = excluded.updated_by, updated_at = now()`,
+    [p.client_id, p.month, p.planned_budget, p.target_conv, p.target_cpl, p.target_cac ?? null, p.target_roas ?? null, by],
   );
 }
 
@@ -127,6 +127,6 @@ export async function deletePlan(clientId: string, month: string): Promise<void>
 export async function copyPrevPlan(clientId: string, month: string, by: string): Promise<boolean> {
   const prev = (await readPlans([clientId], prevMonth(month))).get(clientId);
   if (!prev) return false;
-  await savePlan({ client_id: clientId, month, planned_budget: prev.planned_budget, target_conv: prev.target_conv, target_cpl: prev.target_cpl }, by);
+  await savePlan({ client_id: clientId, month, planned_budget: prev.planned_budget, target_conv: prev.target_conv, target_cpl: prev.target_cpl, target_cac: prev.target_cac, target_roas: prev.target_roas }, by);
   return true;
 }
