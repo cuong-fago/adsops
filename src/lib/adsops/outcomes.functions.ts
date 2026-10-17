@@ -141,6 +141,7 @@ export const importOutcomesFn = createServerFn({ method: "POST" })
     for (const c of vis) {
       key.set(c.client_id.toLowerCase(), c);
       if (c.platform === "facebook") { const n = c.client_id.replace(/^fb_/, ""); key.set(n, c); key.set(`act_${n}`, c); }
+      else if (c.platform === "openai") { const n = c.client_id.replace(/^oa_/, ""); key.set(n, c); key.set(`adacct_${n}`, c); }
       else { const dg = c.customer_id_dashed.replace(/\D/g, ""); if (dg.length === 10) key.set(dg, c); }
     }
     const resolve = (raw: string) => {
