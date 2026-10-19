@@ -57,7 +57,8 @@ export type ReportListRow = {
   links: { id: number; expires_at: string; revoked: boolean; views: number }[];
 };
 
-export type ScopeOption = { kind: "group" | "account"; id: string; label: string; accounts: string[]; schedule: "weekly" | "monthly" | null };
+export type ScopeMember = { id: string; label: string; name: string | null; ext: string | null; platform: "google" | "facebook" | "chatgpt" };
+export type ScopeOption = { kind: "group" | "account"; id: string; label: string; accounts: string[]; schedule: "weekly" | "monthly" | null; members: ScopeMember[] };
 
 export const STATUS_VI: Record<"draft" | "sent", string> = { draft: "Nháp", sent: "Đã gửi" };
 

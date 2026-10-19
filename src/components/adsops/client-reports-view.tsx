@@ -6,6 +6,7 @@ import {
 } from "@/lib/adsops/client-report.functions";
 import { STATUS_VI } from "@/lib/adsops/client-report.types";
 import { cn } from "@/lib/cn";
+import { ScopeCombobox, pushRecent } from "@/components/adsops/scope-combobox";
 import { Badge, Card, EmptyState } from "@/components/adsops/ui";
 
 const dmy = (s: string) => s.split("-").reverse().join("/");
@@ -34,7 +35,7 @@ function Builder({ scopes, canWrite, onCreated }: { scopes: ScopeOption[]; canWr
   async function create() {
     if (!cur) return;
     setBusy(true); setMsg("");
-    try { const r = await createClientReportFn({ data: { scopeKind: cur.kind, scopeId: cur.id, period: kind, ...range } }); onCreated(r.id); }
+    try { const r = await createClientReportFn({ data: { scopeKind: cur.kind, scopeId: cur.id, period: kind, ...range } }); pushRecent(`${cur.kind}:${cur.id}`); onCreated(r.id); }
     catch (e) { setMsg(err(e)); } finally { setBusy(false); }
   }
   async function schedule(freq: string) {
@@ -43,17 +44,13 @@ function Builder({ scopes, canWrite, onCreated }: { scopes: ScopeOption[]; canWr
     try { await setReportScheduleFn({ data: { scopeKind: cur.kind, scopeId: cur.id, freq: freq || null } }); cur.schedule = (freq || null) as ScopeOption["schedule"]; setMsg(freq ? "Đã bật tạo bản nháp tự động." : "Đã tắt tạo tự động."); }
     catch (e) { setMsg(err(e)); }
   }
-  const groups = scopes.filter((s) => s.kind === "group"), accounts = scopes.filter((s) => s.kind === "account");
   return (
     <Card className="p-4">
       <h3 className="font-display text-lg font-semibold">Tạo báo cáo khách hàng</h3>
       <p className="text-xs text-muted">Gộp Facebook + Google + ChatGPT Ads. Số liệu lấy từ dữ liệu AdsOps đã lưu (chỉ đọc), tóm tắt sinh theo mẫu cố định — không tự bịa số.</p>
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label className="text-xs text-muted" title="Khách hàng = nhóm tài khoản trong Quản trị → Khách hàng (chỉ hiện khi bạn được giao toàn bộ tài khoản của khách).">Khách hàng / tài khoản<br />
-          <select value={scope} onChange={(e) => setScope(e.target.value)} className={cn(inp, "min-w-64")}>
-            {groups.length ? <optgroup label="Khách hàng (gộp tài khoản)">{groups.map((s) => <option key={s.id} value={`group:${s.id}`}>{s.label} ({s.accounts.length} TK)</option>)}</optgroup> : null}
-            <optgroup label="Từng tài khoản">{accounts.map((s) => <option key={s.id} value={`account:${s.id}`}>{s.label}{s.id.startsWith("fb_") ? " · FB" : s.id.startsWith("oa_") ? " · ChatGPT" : " · Google"}</option>)}</optgroup>
-          </select>
+          <ScopeCombobox scopes={scopes} value={scope} onChange={setScope} />
         </label>
         <label className="text-xs text-muted">Kỳ báo cáo<br />
           <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className={inp}><option value="week">Tuần</option><option value="month">Tháng</option><option value="custom">Tuỳ chọn</option></select>
@@ -207,7 +204,7 @@ export function ClientReportsView() {
                     <td><Badge tone={r.status === "sent" ? "ok" : "warn"}>{STATUS_VI[r.status]}</Badge>{r.sent_at ? <span className="block text-[11px] text-subtle">{new Date(r.sent_at).toLocaleDateString("vi-VN")}</span> : null}</td>
                     <td className="text-xs text-muted">{r.links.filter((l) => !l.revoked && new Date(l.expires_at) > new Date()).length || "—"}</td>
                     <td className="whitespace-nowrap text-xs text-muted">{r.updated_at ? new Date(r.updated_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }) : "—"}</td>
-                    <td><button type="button" onClick={() => setOpen(r.id)} className={btn}>Mở</button></td>
+                    <td><button type="button" onClick={() => { pushRecent(`${r.scope_kind}:${r.scope_id}`); setOpen(r.id); }} className={btn}>Mở</button></td>
                   </tr>
                 ))}
               </tbody>
