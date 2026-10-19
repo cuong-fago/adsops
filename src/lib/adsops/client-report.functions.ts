@@ -41,9 +41,20 @@ export const listClientReportsFn = createServerFn({ method: "POST" })
     const r = await import("./client-report.server.ts");
     const ids = await visibleIds(ctx);
     const [groups, labels, sched, reports] = await Promise.all([r.groupsFor(ids), r.accountLabels(ids), r.readSchedules(), r.listReports((a) => canSeeAccount(ctx, a))]);
+    // Searchable facts per account (name, CID / act id / OpenAI id) for the picker; visible accounts only.
+    const { getSql } = await import("@/lib/db");
+    const facts = new Map<string, { name: string | null; ext: string | null }>();
+    try {
+      const rows = await (await getSql()).query<{ id: string; display_name: string | null; external_id: string | null; customer_id: string | null }>(
+        `select id, display_name, external_id, customer_id from ad_accounts where id = any($1::text[])`, [ids],
+      );
+      for (const x of rows) facts.set(x.id, { name: x.display_name, ext: x.customer_id || x.external_id });
+    } catch { /* picker still works on labels */ }
+    const plat = (i: string) => (i.startsWith("fb_") ? "facebook" as const : i.startsWith("oa_") ? "chatgpt" as const : "google" as const);
+    const member = (i: string) => ({ id: i, label: labels.get(i) || i, name: facts.get(i)?.name ?? null, ext: facts.get(i)?.ext ?? null, platform: plat(i) });
     const scopes: ScopeOption[] = [
-      ...groups.sort((a, b) => a.name.localeCompare(b.name, "vi")).map((g) => ({ kind: "group" as const, id: g.id, label: g.name, accounts: g.members, schedule: sched.get(`group:${g.id}`) ?? null })),
-      ...ids.map((i) => ({ kind: "account" as const, id: i, label: labels.get(i) || i, accounts: [i], schedule: sched.get(`account:${i}`) ?? null })).sort((a, b) => a.label.localeCompare(b.label, "vi")),
+      ...groups.sort((a, b) => a.name.localeCompare(b.name, "vi")).map((g) => ({ kind: "group" as const, id: g.id, label: g.name, accounts: g.members, schedule: sched.get(`group:${g.id}`) ?? null, members: g.members.map(member) })),
+      ...ids.map((i) => ({ kind: "account" as const, id: i, label: labels.get(i) || i, accounts: [i], schedule: sched.get(`account:${i}`) ?? null, members: [member(i)] })).sort((a, b) => a.label.localeCompare(b.label, "vi")),
     ];
     return { scopes, reports, drafts: reports.filter((x) => x.status === "draft").length, can_write: !ctx.readOnly };
   });
