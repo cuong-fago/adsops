@@ -395,3 +395,20 @@ export const readCallsFn = createServerFn({ method: "POST" })
     const m = await import("./google-breakdown.server.ts");
     return m.readCalls(data.clientId, data.start, data.end, data.campaignId);
   });
+
+/** "Xu hướng 3 tháng" for one Google account. Staff only (never client roles). Read-only GAQL, cached 6 h. */
+export const readGoogleTrendFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+    if (!/^[a-z0-9_]+$/.test(clientId) || clientId.startsWith("fb_") || clientId.startsWith("oa_")) throw new Error("Tài khoản Google không hợp lệ");
+    return { clientId };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertAccount, ForbiddenError } = await import("./permissions.server");
+    const ctx = context.access;
+    if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");
+    assertAccount(ctx, data.clientId);
+    return (await import("./google-trend.server.ts")).readTrend(data.clientId);
+  });

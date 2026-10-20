@@ -23,6 +23,7 @@ import { QS_TONE_CLASS, QsOverviewCard, WasteCard } from "@/components/adsops/go
 import { BreakdownView, CallsView, useCalls } from "@/components/adsops/google-breakdown-view";
 import { PacingCard } from "@/components/adsops/budget-pacing";
 import { BusinessCard } from "@/components/adsops/business-outcomes";
+import { GoogleTrendCard } from "@/components/adsops/google-trend-card";
 import { SHARE_HINT, SHARE_LABEL, SHARE_LOWER_BETTER, fmtShare, shareBound, type ShareCells, type ShareKey, type ShareRead } from "@/lib/adsops/google-share.types";
 import { convCategoryVi, type ActionCells, type ConvActionRead } from "@/lib/adsops/google-conv-actions.types";
 import { addDays, formatRangeVi, moneyPlain, num, pct, statusVi } from "@/lib/adsops/format";
@@ -738,6 +739,7 @@ export function AnalyticsView({
 
       {tab === "overview" ? <PacingCard clientId={snap.client_id} /> : null}
       {tab === "overview" ? <BusinessCard clientId={snap.client_id} /> : null}
+      {tab === "overview" && allowCompare ? <GoogleTrendCard clientId={snap.client_id} /> : null}
       {tab === "overview" ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <QsOverviewCard data={qsData} loading={qsSt.loading} />
