@@ -21,7 +21,7 @@ export type AccessClient = {
   status?: string;
   adapter?: string;
   /** Ad platform; absent = Google. */
-  platform?: "google" | "facebook" | "openai";
+  platform?: "google" | "facebook" | "openai" | "tiktok";
 };
 
 export type AccessSnap = {

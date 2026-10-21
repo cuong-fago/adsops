@@ -11,6 +11,7 @@ import { fmtDay } from "@/lib/adsops/client-overview";
 import { formatSaigon } from "@/lib/adsops/permissions.types";
 import { cn } from "@/lib/cn";
 import { OpenAIAnalyticsView } from "@/components/adsops/openai-analytics-view";
+import { TikTokAnalyticsView } from "@/components/adsops/tiktok-analytics-view";
 import { listPortalReportsFn } from "@/lib/adsops/client-report.functions";
 
 /** Published reports ("Đã gửi") whose accounts are all granted to this client user. Hidden when none. */
@@ -240,6 +241,8 @@ export function ClientPortal({
         <PortalReports />
         {clients.length && clientId.startsWith("fb_") ? (
           <MetaAnalyticsView key={clientId} clientId={clientId} allowCompare={false} lang={lang} />
+        ) : clients.length && clientId.startsWith("tt_") ? (
+          <TikTokAnalyticsView key={clientId} clientId={clientId} allowCompare={false} />
         ) : clients.length && clientId.startsWith("oa_") ? (
           <OpenAIAnalyticsView key={clientId} clientId={clientId} allowCompare={false} />
         ) : !clients.length ? (

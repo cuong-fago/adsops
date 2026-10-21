@@ -37,7 +37,7 @@ function toTM(m: SnapMonth, th: NeedThresholds): TrendMonth {
 
 export async function readNeeds(accounts: Array<{ client_id: string; label: string }>, opts: { canFilterOwner: boolean; canEdit: boolean; canUpdate: boolean; canCompute: boolean; me: string }): Promise<NeedsRead> {
   const th = await readThresholds();
-  const ids = accounts.map((a) => a.client_id).filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_"));
+  const ids = accounts.map((a) => a.client_id).filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_") && !id.startsWith("tt_"));
   const sql = await getSql();
   const st = await sql.query<{ key: string; status: NeedStatus; note: string | null; value_at_done: number | null; updated_by: string | null; updated_at: unknown }>(
     `select key, status, note, value_at_done, updated_by, updated_at from needs_action_status where client_id = any($1::text[])`, [ids]).catch(() => []);

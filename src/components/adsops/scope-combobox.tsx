@@ -22,7 +22,7 @@ function Hl({ text, q }: { text: string; q: string }): ReactNode {
 }
 
 const isCidLike = (s: string) => /^[\d\s-]{9,}$/.test(s.trim()) || /^act_\d+$/.test(s.trim());
-const BADGE = { google: ["Google", "bg-inset text-muted"], facebook: ["Facebook", "bg-[#e7f0fd] text-[#1d4ed8]"], chatgpt: ["ChatGPT", "bg-[#e6f6f1] text-[#0d7a5f]"] } as const;
+const BADGE = { google: ["Google", "bg-inset text-muted"], facebook: ["Facebook", "bg-[#e7f0fd] text-[#1d4ed8]"], chatgpt: ["ChatGPT", "bg-[#e6f6f1] text-[#0d7a5f]"], tiktok: ["TikTok", "bg-[#fde8ef] text-[#be123c]"] } as const;
 const keyOf = (s: ScopeOption) => `${s.kind}:${s.id}`;
 const RECENT_KEY = "adsops.report.recentScopes";
 

@@ -207,5 +207,28 @@ export async function withPulledMccClients(
   } catch {
     /* migration 0028 not applied yet: skip ChatGPT Ads */
   }
+  // TikTok Ads advertisers connected via OAuth (tiktok-ads.server.ts; platform 'tiktok', id tt_<advertiser_id>). Same grant model.
+  try {
+    const tt = await sql<{ id: string; display_name: string; external_id: string | null; status: string | null; alias: string | null }>`
+      select id, display_name, external_id, status, alias from ad_accounts where platform = 'tiktok'
+    `;
+    for (const r of tt) {
+      if (!/^tt_\d+$/.test(r.id)) continue;
+      if (allowed !== "all" && !allowed.has(r.id)) continue;
+      const prev = by.get(r.id);
+      by.set(r.id, {
+        ...(prev || {}),
+        client_id: r.id,
+        display_name: r.display_name || prev?.display_name || r.id,
+        customer_id_dashed: `${r.external_id || r.id} · TikTok`,
+        status: r.status || undefined,
+        adapter: "live",
+        alias: (r.alias || "").trim() || prev?.alias || undefined,
+        platform: "tiktok" as const,
+      });
+    }
+  } catch {
+    /* migration 0033 not applied yet: skip TikTok Ads */
+  }
   return { ...dir, clients: [...by.values()] };
 }

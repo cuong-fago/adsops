@@ -10,20 +10,21 @@ type PickerClient = {
   customer_id_dashed?: string | null;
   alias?: string | null;
   mcc_id_dashed?: string | null;
-  platform?: "google" | "facebook" | "openai";
+  platform?: "google" | "facebook" | "openai" | "tiktok";
 };
 
 function PlatformBadge({ id, platform }: { id: string; platform?: string }) {
   const fb = platform === "facebook" || id.startsWith("fb_");
   const oa = platform === "openai" || id.startsWith("oa_");
+  const tt = platform === "tiktok" || id.startsWith("tt_");
   return (
     <span
       className={cn(
         "mr-2 inline-flex h-5 items-center rounded px-1.5 align-middle text-[11px] font-semibold",
-        fb ? "bg-[#e7f0fd] text-[#1d4ed8]" : oa ? "bg-[#e6f6f1] text-[#0d7a5f]" : "bg-inset text-muted",
+        fb ? "bg-[#e7f0fd] text-[#1d4ed8]" : tt ? "bg-[#fde8ef] text-[#be123c]" : oa ? "bg-[#e6f6f1] text-[#0d7a5f]" : "bg-inset text-muted",
       )}
     >
-      {fb ? "Facebook" : oa ? "ChatGPT" : "Google"}
+      {fb ? "Facebook" : tt ? "TikTok" : oa ? "ChatGPT" : "Google"}
     </span>
   );
 }

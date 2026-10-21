@@ -387,7 +387,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin }: {
     let main: string;
     if (!w.checked_at) main = "—";
     else if (w.kind === "error") main = "Chưa kiểm tra được";
-    else if (w.kind === "no_budget") main = r.client_id.startsWith("fb_") ? "Không đặt giới hạn chi tiêu" : r.client_id.startsWith("oa_") ? "ChatGPT Ads không cung cấp số dư" : "Google không cung cấp số dư";
+    else if (w.kind === "no_budget") main = r.client_id.startsWith("fb_") ? "Không đặt giới hạn chi tiêu" : r.client_id.startsWith("oa_") ? "ChatGPT Ads không cung cấp số dư" : r.client_id.startsWith("tt_") ? "TikTok Ads không cung cấp số dư" : "Google không cung cấp số dư";
     else if (w.infinite || w.status === "infinite") main = "Không giới hạn";
     else if (w.status === "no_spend") main = "Không tiêu 7 ngày qua";
     else if (w.runway_days != null) main = `${num(w.runway_days, 1)} ngày`;
@@ -593,7 +593,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin }: {
                     <td className={td}>{pace[r.client_id] ? <PaceBadge r={pace[r.client_id]} /> : "—"}</td>
                     {trend ? (
                       <td className={cn(td, "text-sm")}>
-                        {r.client_id.startsWith("fb_") || r.client_id.startsWith("oa_") ? <span className="text-subtle">-</span> : (
+                        {r.client_id.startsWith("fb_") || r.client_id.startsWith("oa_") || r.client_id.startsWith("tt_") ? <span className="text-subtle">-</span> : (
                           <span className="inline-flex items-center gap-1">
                             <TrendBadge s={trend[r.client_id]} />
                             {isAdmin ? (
