@@ -22,7 +22,10 @@ export const LOW_CLICKS = 100;
 /** Hierarchical trend (Loại → Chiến dịch → Nhóm QC / Nhóm tài sản). */
 export type ChannelKey = "search" | "pmax" | "shopping" | "video" | "display" | "demand_gen" | "other";
 export const CHANNEL_LABEL: Record<ChannelKey, string> = { search: "Search", pmax: "PMax", shopping: "Shopping", video: "YouTube/Video", display: "Display", demand_gen: "Demand Gen", other: "Khác" };
+import type { ConvByMonth } from "./google-conv-groups.ts";
 export type TreeRow = {
+  conv?: ConvByMonth | null;
+  vtc?: Record<string, number> | null;
   id: string;
   name: string;
   status: string | null;
@@ -44,6 +47,8 @@ export type ChannelGroup = {
   diagnoses: TrendDiag[];
   worst: number | null;
   campaigns: TreeRow[];
+  conv?: ConvByMonth | null;
+  vtc?: Record<string, number> | null;
 };
 export type TrendTreeRead = {
   client_id: string;
@@ -52,7 +57,8 @@ export type TrendTreeRead = {
   groups: ChannelGroup[];
   /** Spend share by channel per month (all campaigns), null when the month has no spend. */
   mix: Array<{ month: string; total: number | null; shares: Array<{ channel: ChannelKey; spend: number; share: number }> }>;
+  conv_error?: string | null;
   fetched_at: string | null;
   error: string | null;
 };
-export type TrendChildrenRead = { kind: "ad_group" | "asset_group"; rows: TreeRow[]; error: string | null };
+export type TrendChildrenRead = { kind: "ad_group" | "asset_group"; rows: TreeRow[]; error: string | null; conv_error?: string | null };
