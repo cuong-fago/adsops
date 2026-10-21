@@ -449,3 +449,40 @@ export const readGoogleTrendChildrenFn = createServerFn({ method: "POST" })
     await assertTrendStaff(context.access, data.clientId);
     return (await import("./google-trend-tree.server.ts")).readTrendChildren(data.clientId, data.campaignId, data.pmax);
   });
+
+/** Conversion actions of a Google account with standard group (auto + manual override). Staff only; edit flag for Admin / Trưởng phòng Ads. */
+export const readConvGroupsFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+    if (!trendIdOk(clientId)) throw new Error("Tài khoản Google không hợp lệ");
+    return { clientId };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const ctx = context.access;
+    await assertTrendStaff(ctx, data.clientId);
+    const canEdit = (ctx.principal.role === "admin" || ctx.principal.role === "head_ads") && !ctx.readOnly;
+    return (await import("./google-conv-groups.server.ts")).readConvActions(data.clientId, canEdit);
+  });
+
+/** Set / clear the manual conversion group (AdsOps DB only; never written to Google). Admin / Trưởng phòng Ads only. */
+export const setConvGroupFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+    const actionId = typeof d.actionId === "string" ? d.actionId.trim() : "";
+    const g = d.group;
+    if (!trendIdOk(clientId)) throw new Error("Tài khoản Google không hợp lệ");
+    if (!/^\d{1,20}$/.test(actionId)) throw new Error("Hành động chuyển đổi không hợp lệ");
+    if (g !== null && !["call", "zalo", "messenger", "form", "purchase", "other"].includes(String(g))) throw new Error("Nhóm không hợp lệ");
+    return { clientId, actionId, group: g as import("./google-conv-groups.ts").ConvGroup | null };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { ForbiddenError, actorLabel } = await import("./permissions.server");
+    const ctx = context.access;
+    await assertTrendStaff(ctx, data.clientId);
+    if (!(ctx.principal.role === "admin" || ctx.principal.role === "head_ads") || ctx.readOnly) throw new ForbiddenError("Chỉ Admin / Trưởng phòng Ads được sửa nhóm chuyển đổi.");
+    return (await import("./google-conv-groups.server.ts")).setConvGroup(data.clientId, data.actionId, data.group, actorLabel(ctx.principal));
+  });

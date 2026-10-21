@@ -6,6 +6,7 @@ import { getSql } from "@/lib/db";
 import { resolveAdsConfig } from "./google-ads.server.ts";
 import { asRec, customerIdFor, searchLeaf, ymdInTz } from "./warehouse.server.ts";
 import { daysIn, diagnose, mAdd, num, toMonth, type Raw } from "./google-trend.server.ts";
+import type { ConvByMonth } from "./google-conv-groups.ts";
 import type { ChannelGroup, ChannelKey, TreeRow, TrendChildrenRead, TrendMonth, TrendTreeRead } from "./google-trend.types.ts";
 
 const TZ = "Asia/Ho_Chi_Minh";
@@ -16,14 +17,14 @@ const ORDER: ChannelKey[] = ["search", "pmax", "shopping", "video", "display", "
 const chOf = (s: string): ChannelKey => CH[s] || "other";
 const mLabel = (m: string) => `T${Number(m.slice(5))}/${m.slice(2, 4)}`;
 
-function window() {
+export function window() {
   const today = ymdInTz(TZ);
   const cur = today.slice(0, 7);
   const months = [mAdd(cur, -3), mAdd(cur, -2), mAdd(cur, -1)];
   return { today, cur, months, start: `${months[0]}-01`, elapsed: Number(today.slice(8, 10)) };
 }
 
-async function cached<T>(clientId: string, level: string, start: string, end: string, load: () => Promise<T>): Promise<{ v: T; at: string }> {
+export async function cached<T>(clientId: string, level: string, start: string, end: string, load: () => Promise<T>): Promise<{ v: T; at: string }> {
   const sql = await getSql();
   const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
   const parse = (p: unknown) => (typeof p === "string" ? JSON.parse(p) : p) as T;
@@ -123,6 +124,11 @@ export async function readTrendTree(clientId: string): Promise<TrendTreeRead> {
     return { ...base, error: e instanceof Error ? e.message : String(e) };
   }
   const rows = buildRows(leaves, w);
+  let convErr: string | null = null;
+  try {
+    const cl = await (await import("./google-conv-groups.server.ts")).readConvLeaves(clientId, "campaign");
+    for (const r of rows) { r.conv = cl.conv[r.id] || {}; r.vtc = cl.vtc[r.id] || null; }
+  } catch (e) { convErr = e instanceof Error ? e.message : String(e); }
   const groups: ChannelGroup[] = [];
   for (const ch of ORDER) {
     const rs = rows.filter((r) => r.channel === ch);
@@ -130,10 +136,17 @@ export async function readTrendTree(clientId: string): Promise<TrendTreeRead> {
     const like = rs.filter((r) => !r.excluded_label);
     const agg = new Map<string, Raw>();
     for (const r of like) for (const [mo, x] of r._raw) agg.set(mo, add(agg.get(mo), x, mo));
+    let gconv: ConvByMonth | null = convErr ? null : {};
+    let gvtc: Record<string, number> | null = null;
+    for (const r of like) {
+      if (gconv && r.conv) for (const [mo, acts] of Object.entries(r.conv)) for (const [a, [c1, c2]] of Object.entries(acts)) { const cell = (gconv[mo] ||= {}); const p = cell[a] || [0, 0]; cell[a] = [p[0] + c1, p[1] + c2]; }
+      if (r.vtc) { gvtc ||= {}; for (const [mo, n] of Object.entries(r.vtc)) gvtc[mo] = (gvtc[mo] || 0) + n; }
+    }
+    if (!gconv) gvtc = null;
     const lm = w.months.map((mo) => toMonth(agg.get(mo), mo, false, daysIn(mo)));
     groups.push({
       channel: ch, like: lm, like_current: toMonth(agg.get(w.cur), w.cur, true, w.elapsed), like_count: like.length, total_count: rs.length,
-      diagnoses: like.length ? diagnose(lm) : [], worst: like.length ? worstOf(lm) : null, campaigns: sortRows(rs.map(strip)),
+      diagnoses: like.length ? diagnose(lm) : [], worst: like.length ? worstOf(lm) : null, campaigns: sortRows(rs.map(strip)), conv: gconv, vtc: gvtc,
     });
   }
   groups.sort((a, b) => (b.worst ?? -Infinity) - (a.worst ?? -Infinity));
@@ -143,7 +156,7 @@ export async function readTrendTree(clientId: string): Promise<TrendTreeRead> {
     const total = [...per.values()].reduce((s, v) => s + v, 0);
     return { month: mo, total: total > 0 ? total : null, shares: total > 0 ? ORDER.filter((c) => per.has(c)).map((c) => ({ channel: c, spend: per.get(c)!, share: per.get(c)! / total })) : [] };
   });
-  return { ...base, groups, mix, fetched_at: at };
+  return { ...base, groups, mix, conv_error: convErr, fetched_at: at };
 }
 
 /** Lazy children of one campaign: asset groups for PMax, ad groups otherwise. */
@@ -157,7 +170,13 @@ export async function readTrendChildren(clientId: string, campaignId: string, pm
     : `SELECT ad_group.id, ad_group.name, ad_group.status, campaign.advertising_channel_type, segments.month, metrics.clicks, metrics.conversions, metrics.cost_micros FROM ad_group WHERE campaign.id = ${campaignId} AND segments.date BETWEEN '${w.start}' AND '${w.today}'`;
   try {
     const { v } = await cached(clientId, `trend3m_${pmax ? "asg" : "ag"}_${campaignId}`, w.start, w.today, () => query(customerId, gaql, pmax ? "assetGroup" : "adGroup"));
-    return { kind, rows: sortRows(buildRows(v, w).map(strip)), error: null };
+    const rows = buildRows(v, w);
+    let convErr: string | null = null;
+    try {
+      const cl = await (await import("./google-conv-groups.server.ts")).readConvLeaves(clientId, pmax ? "asset_group" : "ad_group", campaignId);
+      for (const r of rows) r.conv = cl.conv[r.id] || {};
+    } catch (e) { convErr = e instanceof Error ? e.message : String(e); }
+    return { kind, rows: sortRows(rows.map(strip)), error: null, conv_error: convErr };
   } catch (e) {
     return { kind, rows: [], error: e instanceof Error ? e.message : String(e) };
   }
