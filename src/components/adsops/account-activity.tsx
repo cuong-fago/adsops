@@ -4,13 +4,27 @@ import { cn } from "@/lib/cn";
 
 const KEY = "adsops.showInactive";
 const EVT = "adsops-show-inactive";
-let cache: { at: number; p: Promise<Record<string, AccountActivity>> } | null = null;
+let cache: { at: number; p: Promise<{ accounts: Record<string, AccountActivity>; can_show_inactive: boolean }> } | null = null;
 
-function loadActivity(): Promise<Record<string, AccountActivity>> {
+function loadRead() {
   if (!cache || Date.now() - cache.at > 5 * 60_000) {
-    cache = { at: Date.now(), p: readAccountActivityFn().then((r) => r.accounts).catch(() => ({})) };
+    cache = { at: Date.now(), p: readAccountActivityFn().then((r) => ({ accounts: r.accounts, can_show_inactive: r.can_show_inactive === true })).catch(() => ({ accounts: {}, can_show_inactive: false })) };
   }
   return cache.p;
+}
+function loadActivity(): Promise<Record<string, AccountActivity>> {
+  return loadRead().then((r) => r.accounts);
+}
+
+/** Server decides: only a real Admin may show hidden (inactive) accounts. False while loading. */
+export function useCanShowInactive(): boolean {
+  const [ok, setOk] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void loadRead().then((r) => { if (alive) setOk(r.can_show_inactive); });
+    return () => { alive = false; };
+  }, []);
+  return ok;
 }
 
 /** Drop the cached activity so the next read sees fresh hide / re-include decisions (after a recheck). */
@@ -31,6 +45,7 @@ export function useAccountActivity(): Record<string, AccountActivity> | null {
 
 /** "Hiện cả tài khoản không hoạt động": one setting for every list, remembered in localStorage. */
 export function useShowInactive(): [boolean, (v: boolean) => void] {
+  const canShow = useCanShowInactive();
   const read = () => {
     try { return window.localStorage.getItem(KEY) === "1"; } catch { return false; }
   };
@@ -47,7 +62,8 @@ export function useShowInactive(): [boolean, (v: boolean) => void] {
     setShow(v);
     window.dispatchEvent(new Event(EVT));
   };
-  return [show, set];
+  // Non-admins: inactive accounts always stay hidden (a stale "1" in localStorage is ignored).
+  return [canShow && show, canShow ? set : () => {}];
 }
 
 export function isInactive(map: Record<string, AccountActivity> | null, id: string): boolean {
@@ -64,7 +80,8 @@ export function useActiveFilter<T>(rows: T[] | null, idOf: (r: T) => string, kee
 }
 
 export function InactiveToggle({ show, onChange, count, className }: { show: boolean; onChange: (v: boolean) => void; count: number; className?: string }) {
-  if (!count && !show) return null;
+  const canShow = useCanShowInactive();
+  if (!canShow || (!count && !show)) return null;
   return (
     <label className={cn("inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-line bg-paper px-3 text-sm", className)}>
       <input type="checkbox" checked={show} onChange={(e) => onChange(e.target.checked)} className="accent-[var(--color-accent)]" />

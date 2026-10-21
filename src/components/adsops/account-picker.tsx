@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronsUpDown, Search } from "lucide-react";
 import { accountMatchesFilter, accountOptionLabel, compareAccountsByAlias } from "@/lib/adsops/account-label";
 import { cn } from "@/lib/cn";
-import { InactiveBadge, isInactive, useAccountActivity, useShowInactive } from "@/components/adsops/account-activity";
+import { InactiveBadge, isInactive, useAccountActivity, useCanShowInactive, useShowInactive } from "@/components/adsops/account-activity";
 
 type PickerClient = {
   client_id: string;
@@ -49,6 +49,7 @@ export function AccountPicker({
   const sorted = useMemo(() => [...clients].sort(compareAccountsByAlias), [clients]);
   const activity = useAccountActivity();
   const [showInactive, setShowInactive] = useShowInactive();
+  const canShowInactive = useCanShowInactive();
   // Inactive accounts: hidden unless toggled or searched for; the selected one always stays; listed last.
   const inactiveCount = sorted.filter((c) => isInactive(activity, c.client_id)).length;
   const filtered = useMemo(() => {
@@ -146,7 +147,7 @@ export function AccountPicker({
           ) : (
             <li className="px-3 py-2 text-sm text-muted">Không có tài khoản khớp.</li>
           )}
-          {inactiveCount ? (
+          {inactiveCount && canShowInactive ? (
             <li className="border-t border-line">
               <button type="button" onClick={() => setShowInactive(!showInactive)} className="block w-full px-3 py-2 text-left text-xs font-medium text-muted hover:bg-inset">
                 {showInactive ? "Ẩn tài khoản không hoạt động" : `Hiện cả tài khoản không hoạt động (${inactiveCount})`}
