@@ -31,7 +31,8 @@ import {
 } from "@/lib/adsops/access.functions";
 import { adminUpdateAdAccount, stopViewAs } from "@/lib/adsops/admin.functions";
 import { AccountPicker } from "@/components/adsops/account-picker";
-import { BrandMark, NavTab } from "@/components/adsops/brand";
+import { BrandMark } from "@/components/adsops/brand";
+import { NavBar, type NavEntry, type NavItem } from "@/components/adsops/nav-bar";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
 import { AccountsOverview } from "@/components/adsops/accounts-overview";
 import { BUDGET_CARD_ID, BudgetRunwayCard, BudgetStrip } from "@/components/adsops/budget-runway-card";
@@ -1107,59 +1108,26 @@ export function AdsOpsApp() {
         </div>
         {access && access.role !== "pending" ? (
           <div className="border-t border-line bg-paper">
-          <nav aria-label="Điều hướng" className="mx-auto flex max-w-[1800px] items-center gap-1.5 overflow-x-auto px-4 py-2 md:px-6 lg:px-8 [scrollbar-width:none]">
-            {access.kind === "staff" ? (
-              <>
-                <NavTab icon={TAB_ICON.overview} active={shownTab === "overview"} onClick={() => goTab("overview")}>
-                  Tổng quan tài khoản
-                </NavTab>
-                {tabAllowed(access, "needs") ? (
-                  <NavTab icon={Bell} active={shownTab === "needs"} onClick={() => goTab("needs")}>
-                    Cần xử lý (3 tháng)
-                  </NavTab>
-                ) : null}
-                {tabAllowed(access, "manager") ? (
-                  <NavTab icon={Gauge} active={shownTab === "manager"} onClick={() => goTab("manager")}>
-                    Bảng điều hành
-                  </NavTab>
-                ) : null}
-                {tabAllowed(access, "creports") ? (
-                  <NavTab icon={FileText} badge={reportDrafts || undefined} active={shownTab === "creports"} onClick={() => goTab("creports")}>
-                    <span title={reportDrafts ? "Có báo cáo nháp cần duyệt" : undefined}>Báo cáo khách hàng</span>
-                  </NavTab>
-                ) : null}
-                {opsTabs.length || caps?.analytics || caps?.changeLog ? <span aria-hidden className="mx-1.5 h-5 w-px shrink-0 self-center bg-line-strong" /> : null}
-              </>
-            ) : null}
-            {opsTabs.length ? (
-              <span className="hidden shrink-0 self-center px-1 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
-                {viewer ? "Báo cáo" : "Vận hành"}
-              </span>
-            ) : null}
-            {opsTabs.map((item) => (
-              <NavTab key={item.id} icon={TAB_ICON[item.id]} badge={item.id === "alerts" ? alertCount : undefined} active={shownTab === item.id} onClick={() => goTab(item.id)}>
-                {item.label}
-              </NavTab>
-            ))}
-            {caps?.analytics || caps?.changeLog ? (
-              <>
-                {opsTabs.length ? <span aria-hidden className="mx-1.5 h-5 w-px shrink-0 self-center bg-line-strong" /> : null}
-                <span className="hidden shrink-0 self-center px-1 text-[11px] font-semibold uppercase tracking-wider text-subtle sm:inline">
-                  Phân tích
-                </span>
-                {caps?.analytics ? (
-                  <NavTab icon={TAB_ICON.analytics} active={shownTab === "analytics"} onClick={() => goTab("analytics")}>
-                    Phân tích
-                    {firing ? <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger" /> : null}
-                  </NavTab>
-                ) : null}
-                {caps?.changeLog ? (
-                  <NavTab icon={TAB_ICON.changelog} active={shownTab === "changelog"} onClick={() => goTab("changelog")}>
-                    Nhật ký tối ưu
-                  </NavTab>
-                ) : null}
-              </>
-            ) : null}
+          <nav aria-label="Điều hướng" className="mx-auto flex max-w-[1800px] items-center px-4 py-2 md:px-6 lg:px-8">
+            <NavBar entries={(() => {
+              const tab = (id: TabId, label: string, icon?: NavItem["icon"], extra: Partial<NavItem> = {}): NavItem => ({ id, label, text: label, icon, active: shownTab === id, onClick: () => goTab(id), ...extra });
+              const out: NavEntry[] = [];
+              if (access.kind === "staff") {
+                out.push({ kind: "tab", item: tab("overview", "Tổng quan tài khoản", TAB_ICON.overview) });
+                if (tabAllowed(access, "needs")) out.push({ kind: "tab", item: tab("needs", "Cần xử lý (3 tháng)", Bell) });
+                if (tabAllowed(access, "manager")) out.push({ kind: "tab", item: tab("manager", "Bảng điều hành", Gauge) });
+                if (tabAllowed(access, "creports")) out.push({ kind: "tab", item: tab("creports", "Báo cáo khách hàng", FileText, { badge: reportDrafts || undefined }) });
+              }
+              const ops = opsTabs.map((it) => tab(it.id, it.label, TAB_ICON[it.id], { badge: it.id === "alerts" ? alertCount || undefined : undefined }));
+              if (ops.length === 1) out.push({ kind: "tab", item: ops[0] });
+              else if (ops.length) out.push({ kind: "group", id: "ops", label: viewer ? "Báo cáo" : "Vận hành", items: ops });
+              const ana: NavItem[] = [];
+              if (caps?.analytics) ana.push(tab("analytics", "Phân tích", TAB_ICON.analytics, { dot: Boolean(firing) }));
+              if (caps?.changeLog) ana.push(tab("changelog", "Nhật ký tối ưu", TAB_ICON.changelog));
+              if (ana.length === 1) out.push({ kind: "tab", item: ana[0] });
+              else if (ana.length) out.push({ kind: "group", id: "ana", label: "Phân tích", items: ana });
+              return out;
+            })()} />
           </nav>
           </div>
         ) : null}
