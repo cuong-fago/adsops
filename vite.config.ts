@@ -207,6 +207,7 @@ export default defineConfig(({ command, isPreview }) => ({
             vercel: {
               functionRules: {
                 "/api/cron/budget-runway": { maxDuration: 300 },
+                "/api/cron/google-trend": { maxDuration: 300 },
               },
             },
             // AdsOps data lives in server-data/adsops and is copied into the

@@ -110,7 +110,7 @@ function buildRows(leaves: Leaf[], w: ReturnType<typeof window>): Array<TreeRow 
 const strip = ({ _raw, ...r }: TreeRow & { _raw: unknown }): TreeRow => (void _raw, r);
 const sortRows = (rs: TreeRow[]) => rs.sort((a, b) => (a.excluded_label ? 1 : 0) - (b.excluded_label ? 1 : 0) || (b.worst ?? -Infinity) - (a.worst ?? -Infinity) || (b.months[2].spend ?? 0) - (a.months[2].spend ?? 0));
 
-export async function readTrendTree(clientId: string): Promise<TrendTreeRead> {
+export async function readTrendTree(clientId: string, opts: { conv?: boolean } = {}): Promise<TrendTreeRead> {
   const w = window();
   const base: TrendTreeRead = { client_id: clientId, months: w.months, current_month: w.cur, groups: [], mix: [], fetched_at: null, error: null };
   const customerId = customerIdFor(clientId);
@@ -125,7 +125,7 @@ export async function readTrendTree(clientId: string): Promise<TrendTreeRead> {
   }
   const rows = buildRows(leaves, w);
   let convErr: string | null = null;
-  try {
+  if (opts.conv !== false) try {
     const cl = await (await import("./google-conv-groups.server.ts")).readConvLeaves(clientId, "campaign");
     for (const r of rows) { r.conv = cl.conv[r.id] || {}; r.vtc = cl.vtc[r.id] || null; }
   } catch (e) { convErr = e instanceof Error ? e.message : String(e); }

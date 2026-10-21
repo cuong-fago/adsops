@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
+import { TrendBadge } from "@/components/adsops/google-trend-snapshot-ui";
+import { readTrendSnapshotsFn, recomputeTrendFn } from "@/lib/adsops/connect.functions";
+import type { TrendSnapshot } from "@/lib/adsops/google-trend-snapshot.types";
 import { recheckAccountFn, recheckSpend10Fn } from "@/lib/adsops/recheck.functions";
 import { readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-overview.functions";
 import { readPacingFn, type PacingRow } from "@/lib/adsops/budget-plan.functions";
@@ -89,9 +92,11 @@ function latest(...v: Array<string | null>): string | null {
   return xs.length ? xs[xs.length - 1] : null;
 }
 
-type SortKey = "urgency" | "account" | "budget" | "score" | "opt" | "checked" | "pace";
+type SortKey = "urgency" | "account" | "budget" | "score" | "opt" | "checked" | "pace" | "trend";
 
-type TileId = "all" | "action" | "budget" | "score" | "opt" | "pace" | "noplan";
+type TileId = "all" | "action" | "budget" | "score" | "opt" | "pace" | "noplan" | "trend";
+/** 3T snapshots (module-level like PACE so tile predicates can read it). */
+let TREND: Record<string, TrendSnapshot> = {};
 /** Pacing per account (filled after load; tiles read it through this module-level map). */
 let PACE: Record<string, PacingRow> = {};
 /** One predicate per tile: the tile count and the filtered list use the same function. */
@@ -103,6 +108,7 @@ const TILE_PRED: Record<TileId, (r: OverviewRow) => boolean> = {
   opt: (r) => optLevel(r) === "red",
   pace: (r) => isRedPace(PACE[r.client_id]?.status ?? null),
   noplan: (r) => Boolean(PACE[r.client_id]) && !PACE[r.client_id].plan,
+  trend: (r) => TREND[r.client_id]?.verdict === "worse",
 };
 const TILE_SORT: Record<TileId, { key: SortKey; dir: 1 | -1 }> = {
   all: { key: "urgency", dir: -1 },
@@ -112,6 +118,7 @@ const TILE_SORT: Record<TileId, { key: SortKey; dir: 1 | -1 }> = {
   opt: { key: "opt", dir: -1 },
   pace: { key: "pace", dir: -1 },
   noplan: { key: "account", dir: 1 },
+  trend: { key: "trend", dir: -1 },
 };
 const TILE_LABEL: Record<TileId, string> = {
   all: "Tài khoản",
@@ -121,9 +128,10 @@ const TILE_LABEL: Record<TileId, string> = {
   opt: "Không tối ưu từ khoá ≥ 7 ngày",
   pace: "Tiến độ ngân sách lệch > ±25%",
   noplan: "Chưa đặt kế hoạch tháng",
+  trend: "Xu hướng 3T xấu đi",
 };
 
-export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAccount: (clientId: string) => void; selectedClientId?: string }) {
+export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin }: { onOpenAccount: (clientId: string) => void; selectedClientId?: string; isAdmin?: boolean }) {
   const [rows, setRows] = useState<OverviewRow[] | null>(null);
   const [error, setError] = useState("");
   // Summary tile filter; "Cần xử lý" checkbox is the "action" tile.
@@ -141,6 +149,23 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
     return () => { live = false; };
   }, [epoch]);
   const [biz, setBiz] = useState<{ month: string; rows: Record<string, BizMetrics> } | null>(null);
+  const [trend, setTrend] = useState<Record<string, TrendSnapshot> | null>(null);
+  TREND = trend || {};
+  useEffect(() => {
+    let live = true;
+    readTrendSnapshotsFn().then((r) => { if (live) setTrend(r.rows); }).catch(() => { /* staff only; column hidden */ });
+    return () => { live = false; };
+  }, [epoch]);
+  const [trendBusy, setTrendBusy] = useState<Record<string, boolean>>({});
+  async function recomputeTrend(id: string) {
+    setTrendBusy((s) => ({ ...s, [id]: true }));
+    try {
+      const s = await recomputeTrendFn({ data: { clientId: id } });
+      setTrend((t) => ({ ...(t || {}), [id]: s }));
+    } catch (e) {
+      setTrend((t) => ({ ...(t || {}), [id]: { client_id: id, month: null, verdict: "error", score: null, primary_channel: null, channels: [], alerts: [], error: e instanceof Error ? e.message : String(e), computed_at: new Date().toISOString() } }));
+    } finally { setTrendBusy((s) => ({ ...s, [id]: false })); }
+  }
   const [importOpen, setImportOpen] = useState(false);
   const bizM = biz ? `${biz.month.slice(5)}/${biz.month.slice(0, 4)}` : "";
   useEffect(() => {
@@ -310,8 +335,9 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
       opt: list.filter(TILE_PRED.opt).length,
       pace: list.filter(TILE_PRED.pace).length,
       noplan: list.filter(TILE_PRED.noplan).length,
+      trend: list.filter(TILE_PRED.trend).length,
     };
-  }, [base, pace]);
+  }, [base, pace, trend]);
 
   function pickTile(id: TileId) {
     const next = id === tile || id === "all" ? "all" : id;
@@ -328,6 +354,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
         case "score": return r.score.score;
         case "opt": { const d = optDays(r); return d ?? (r.change_pulled_at ? 9999 : null); }
         case "pace": { const p = pace[r.client_id]?.pace; return p == null ? null : Math.abs(p); }
+        case "trend": { const s = trend?.[r.client_id]; return s?.score ?? null; }
         case "checked": { const t = latest(r.runway.checked_at, r.score.checked_at); return t ? Date.parse(t) : null; }
         default: return null;
       }
@@ -343,7 +370,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
       // Tie (e.g. same urgency): shortest budget runway first.
       return (a.runway.runway_days ?? Infinity) - (b.runway.runway_days ?? Infinity) || a.label.localeCompare(b.label, "vi");
     });
-  }, [base, tile, sort, pace]);
+  }, [base, tile, sort, pace, trend]);
 
   const toggle = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "opt" || key === "urgency" || key === "checked" ? -1 : 1 }));
@@ -476,7 +503,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
         </div>
       ) : null}
       {rows ? (
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
           {([
             ["all", "Tài khoản", counts.total, false],
             ["action", "Cần xử lý", counts.action, true],
@@ -485,6 +512,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
             ["opt", "Không tối ưu từ khoá ≥ 7 ngày", counts.opt, true],
             ["pace", "Tiến độ ngân sách lệch > ±25%", counts.pace, true],
             ["noplan", "Chưa đặt kế hoạch tháng", counts.noplan, false],
+            ...(trend ? [["trend", "Xu hướng 3T xấu đi", counts.trend, true] as [TileId, string, number, boolean]] : []),
           ] as Array<[TileId, string, number, boolean]>).map(([id, label, n, warn]) => {
             const on = tile === id;
             return (
@@ -530,6 +558,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                 {head("score", "Điểm tối ưu")}
                 {head("opt", "Tối ưu từ khoá gần nhất")}
                 {head("pace", "Tiến độ ngân sách")}
+                {trend ? head("trend", "Xu hướng 3T") : null}
                 {biz ? (
                   <>
                     <th className={th} title={`Khách chốt tháng ${bizM}`}>KH chốt {bizM}</th>
@@ -562,6 +591,20 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
                     <td className={td}>{scoreCell(r)}</td>
                     <td className={td}>{optCell(r)}</td>
                     <td className={td}>{pace[r.client_id] ? <PaceBadge r={pace[r.client_id]} /> : "—"}</td>
+                    {trend ? (
+                      <td className={cn(td, "text-sm")}>
+                        {r.client_id.startsWith("fb_") || r.client_id.startsWith("oa_") ? <span className="text-subtle">-</span> : (
+                          <span className="inline-flex items-center gap-1">
+                            <TrendBadge s={trend[r.client_id]} />
+                            {isAdmin ? (
+                              <button type="button" disabled={trendBusy[r.client_id]} onClick={() => void recomputeTrend(r.client_id)} title="Tính lại xu hướng 3T ngay (chỉ đọc Google Ads)" aria-label="Tính lại" className="text-muted hover:text-ink disabled:opacity-50">
+                                <RefreshCw className={cn("size-3", trendBusy[r.client_id] && "animate-spin")} />
+                              </button>
+                            ) : null}
+                          </span>
+                        )}
+                      </td>
+                    ) : null}
                     {biz ? (() => {
                       const b = biz.rows[r.client_id];
                       if (!b?.has_outcome) return <td className={cn(td, "text-xs text-subtle")} colSpan={3}>Chưa nhập số liệu</td>;
@@ -594,7 +637,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId }: { onOpenAc
               })}
               {!shown.length ? (
                 <tr>
-                  <td colSpan={biz ? 10 : 7}>
+                  <td colSpan={(biz ? 10 : 7) + (trend ? 1 : 0)}>
                     <EmptyState
                       title={tile !== "all" ? `Không có tài khoản nào: ${TILE_LABEL[tile]}.` : "Chưa có tài khoản."}
                       action={tile !== "all" ? <button type="button" onClick={() => pickTile("all")} className="inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset">Xem tất cả</button> : undefined}

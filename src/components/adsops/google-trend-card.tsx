@@ -50,12 +50,12 @@ export function GoogleTrendCard({ clientId }: { clientId: string }) {
     readGoogleTrendFn({ data: { clientId } }).then((r) => { if (live) setD(r); }).catch((e: unknown) => { if (live) setErr(e instanceof Error ? e.message : String(e)); });
     return () => { live = false; };
   }, [clientId]);
-  if (err) return <Card className="p-4"><p className="text-sm font-semibold">Xu hướng 3 tháng</p><p className="text-sm text-danger">{err}</p></Card>;
-  if (!d) return <Card className="p-4"><p className="text-sm font-semibold">Xu hướng 3 tháng</p><p className="text-sm text-muted">Đang tải…</p></Card>;
+  if (err) return <Card id="google-trend-card" className="scroll-mt-4 p-4"><p className="text-sm font-semibold">Xu hướng 3 tháng</p><p className="text-sm text-danger">{err}</p></Card>;
+  if (!d) return <Card id="google-trend-card" className="scroll-mt-4 p-4"><p className="text-sm font-semibold">Xu hướng 3 tháng</p><p className="text-sm text-muted">Đang tải…</p></Card>;
   const cols: TrendMonth[] = partial && d.current ? [...d.months, d.current] : d.months;
   const th = "px-3 py-1.5 text-right font-medium whitespace-nowrap";
   return (
-    <Card className="p-4">
+    <Card id="google-trend-card" className="scroll-mt-4 p-4">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-semibold text-ink" title="Toàn tài khoản (cộng mọi loại chiến dịch; xem bảng Theo loại chiến dịch để so sánh cùng loại). 3 tháng dương lịch đã trọn gần nhất. Dữ liệu Google Ads (chỉ đọc), làm mới mỗi 6 giờ. Chỉ nhân sự thấy.">Xu hướng 3 tháng</p>
         <span className="rounded bg-accent-soft px-1.5 text-[11px] font-semibold text-accent">Nội bộ</span>

@@ -486,3 +486,34 @@ export const setConvGroupFn = createServerFn({ method: "POST" })
     if (!(ctx.principal.role === "admin" || ctx.principal.role === "head_ads") || ctx.readOnly) throw new ForbiddenError("Chỉ Admin / Trưởng phòng Ads được sửa nhóm chuyển đổi.");
     return (await import("./google-conv-groups.server.ts")).setConvGroup(data.clientId, data.actionId, data.group, actorLabel(ctx.principal));
   });
+
+/** Nightly "Xu hướng 3T" snapshots for every Google account this staff member can see. Staff only. */
+export const readTrendSnapshotsFn = createServerFn({ method: "POST" })
+  .middleware([principalMiddleware])
+  .handler(async ({ context }) => {
+    const { ForbiddenError, canSeeAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");
+    const { loadWorkspaceDirectory } = await import("./access.server");
+    const { withPulledMccClients } = await import("./mcc-import.server");
+    const dir = await withPulledMccClients(await loadWorkspaceDirectory(ctx), ctx.allowed);
+    const ids = dir.clients.map((c) => c.client_id).filter((id) => canSeeAccount(ctx, id) && trendIdOk(id));
+    return { rows: await (await import("./google-trend-snapshot.server.ts")).readSnapshots(ids) };
+  });
+
+/** "Tính lại" one account's 3T snapshot now (read-only GAQL; uses the 6 h cache). Admin only. */
+export const recomputeTrendFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+    if (!trendIdOk(clientId)) throw new Error("Tài khoản Google không hợp lệ");
+    return { clientId };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { ForbiddenError } = await import("./permissions.server");
+    const ctx = context.access;
+    await assertTrendStaff(ctx, data.clientId);
+    if (ctx.principal.role !== "admin" || ctx.readOnly) throw new ForbiddenError("Chỉ Admin được tính lại.");
+    return (await import("./google-trend-snapshot.server.ts")).computeSnapshot(data.clientId);
+  });
