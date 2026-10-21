@@ -412,3 +412,40 @@ export const readGoogleTrendFn = createServerFn({ method: "POST" })
     assertAccount(ctx, data.clientId);
     return (await import("./google-trend.server.ts")).readTrend(data.clientId);
   });
+
+const trendIdOk = (s: string) => /^[a-z0-9_]+$/.test(s) && !s.startsWith("fb_") && !s.startsWith("oa_");
+async function assertTrendStaff(ctx: Parameters<typeof import("./permissions.server").assertAccount>[0], clientId: string) {
+  const { assertAccount, ForbiddenError } = await import("./permissions.server");
+  if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");
+  assertAccount(ctx, clientId);
+}
+
+/** Trend by Loại chiến dịch → Chiến dịch (Google, staff only, read-only GAQL, cached 6 h). */
+export const readGoogleTrendTreeFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+    if (!trendIdOk(clientId)) throw new Error("Tài khoản Google không hợp lệ");
+    return { clientId };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    await assertTrendStaff(context.access, data.clientId);
+    return (await import("./google-trend-tree.server.ts")).readTrendTree(data.clientId);
+  });
+
+/** Lazy ad groups / asset groups (PMax) of one campaign for the trend table. Staff only. */
+export const readGoogleTrendChildrenFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
+    const campaignId = typeof d.campaignId === "string" ? d.campaignId.trim() : "";
+    if (!trendIdOk(clientId)) throw new Error("Tài khoản Google không hợp lệ");
+    if (!/^\d{1,20}$/.test(campaignId)) throw new Error("Chiến dịch không hợp lệ");
+    return { clientId, campaignId, pmax: d.pmax === true };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    await assertTrendStaff(context.access, data.clientId);
+    return (await import("./google-trend-tree.server.ts")).readTrendChildren(data.clientId, data.campaignId, data.pmax);
+  });

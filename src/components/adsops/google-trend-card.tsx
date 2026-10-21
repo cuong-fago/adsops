@@ -4,6 +4,7 @@ import type { TrendMonth, TrendRead } from "@/lib/adsops/google-trend.types";
 import { LOW_CLICKS, LOW_CONV } from "@/lib/adsops/google-trend.types";
 import { Card } from "@/components/adsops/ui";
 import { cn } from "@/lib/cn";
+import { GoogleTrendTree } from "@/components/adsops/google-trend-tree";
 
 type K = "cpc" | "cpa" | "cvr";
 const ROWS: Array<{ k: K; label: string; hint: string; upBad: boolean }> = [
@@ -56,7 +57,7 @@ export function GoogleTrendCard({ clientId }: { clientId: string }) {
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-semibold text-ink" title="3 tháng dương lịch đã trọn gần nhất. Dữ liệu Google Ads (chỉ đọc), làm mới mỗi 6 giờ. Chỉ nhân sự thấy.">Xu hướng 3 tháng</p>
+        <p className="text-sm font-semibold text-ink" title="Toàn tài khoản (cộng mọi loại chiến dịch; xem bảng Theo loại chiến dịch để so sánh cùng loại). 3 tháng dương lịch đã trọn gần nhất. Dữ liệu Google Ads (chỉ đọc), làm mới mỗi 6 giờ. Chỉ nhân sự thấy.">Xu hướng 3 tháng</p>
         <span className="rounded bg-accent-soft px-1.5 text-[11px] font-semibold text-accent">Nội bộ</span>
         {d.current ? (
           <label className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted" title="Thêm tháng hiện tại (chưa trọn tháng). CPC / giá/chuyển đổi / tỷ lệ là tỷ lệ nên so được; click, chuyển đổi, chi phí hiện thêm mức trung bình/ngày.">
@@ -120,6 +121,7 @@ export function GoogleTrendCard({ clientId }: { clientId: string }) {
       ) : (
         <p className="mt-2 text-xs text-muted">Không có chẩn đoán tự động{d.months.some((m) => m.low_data) ? " (có tháng ít dữ liệu nên không đánh giá)" : ""}.</p>
       )}
+      <GoogleTrendTree clientId={clientId} partial={partial && !!d.current} />
     </Card>
   );
 }

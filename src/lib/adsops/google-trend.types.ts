@@ -18,3 +18,41 @@ export type TrendRead = { client_id: string; currency: string; months: TrendMont
 
 export const LOW_CONV = 5;
 export const LOW_CLICKS = 100;
+
+/** Hierarchical trend (Loại → Chiến dịch → Nhóm QC / Nhóm tài sản). */
+export type ChannelKey = "search" | "pmax" | "shopping" | "video" | "display" | "demand_gen" | "other";
+export const CHANNEL_LABEL: Record<ChannelKey, string> = { search: "Search", pmax: "PMax", shopping: "Shopping", video: "YouTube/Video", display: "Display", demand_gen: "Demand Gen", other: "Khác" };
+export type TreeRow = {
+  id: string;
+  name: string;
+  status: string | null;
+  channel: ChannelKey;
+  months: TrendMonth[]; // 3 complete months
+  current: TrendMonth;
+  /** Not present in all 3 months → excluded from trend/diagnosis. E.g. "Mới từ T9/26". */
+  excluded_label: string | null;
+  /** Largest bad-direction MoM change (T vs T-1) across CPC/CPA/CVR; null = not evaluable. */
+  worst: number | null;
+};
+export type ChannelGroup = {
+  channel: ChannelKey;
+  /** Like-for-like aggregate: only campaigns with data in all 3 months. */
+  like: TrendMonth[];
+  like_current: TrendMonth;
+  like_count: number;
+  total_count: number;
+  diagnoses: TrendDiag[];
+  worst: number | null;
+  campaigns: TreeRow[];
+};
+export type TrendTreeRead = {
+  client_id: string;
+  months: string[];
+  current_month: string;
+  groups: ChannelGroup[];
+  /** Spend share by channel per month (all campaigns), null when the month has no spend. */
+  mix: Array<{ month: string; total: number | null; shares: Array<{ channel: ChannelKey; spend: number; share: number }> }>;
+  fetched_at: string | null;
+  error: string | null;
+};
+export type TrendChildrenRead = { kind: "ad_group" | "asset_group"; rows: TreeRow[]; error: string | null };

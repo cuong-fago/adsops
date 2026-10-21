@@ -9,15 +9,15 @@ import { LOW_CLICKS, LOW_CONV, type TrendDiag, type TrendMonth, type TrendRead }
 
 const TZ = "Asia/Ho_Chi_Minh";
 const LEVEL = "trend3m";
-type Raw = { month: string; clicks: number; conversions: number; cost: number; lost_rank: number | null };
+export type Raw = { month: string; clicks: number; conversions: number; cost: number; lost_rank: number | null };
 
-const mAdd = (m: string, n: number) => {
+export const mAdd = (m: string, n: number) => {
   const [y, mo] = m.split("-").map(Number);
   const d = new Date(Date.UTC(y, mo - 1 + n, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 };
-const daysIn = (m: string) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).getUTCDate(); };
-const num = (v: unknown) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+export const daysIn = (m: string) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).getUTCDate(); };
+export const num = (v: unknown) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 
 async function fetchMonths(customerId: string, start: string, end: string): Promise<Raw[]> {
   const cfg = await resolveAdsConfig();
@@ -48,7 +48,7 @@ async function fetchMonths(customerId: string, start: string, end: string): Prom
   return [...by.values()];
 }
 
-function toMonth(r: Raw | undefined, month: string, partial: boolean, days: number): TrendMonth {
+export function toMonth(r: Raw | undefined, month: string, partial: boolean, days: number): TrendMonth {
   if (!r) return { month, partial, days, clicks: null, conversions: null, spend: null, cpc: null, cpa: null, cvr: null, lost_rank_is: null, low_data: true };
   return {
     month, partial, days,
