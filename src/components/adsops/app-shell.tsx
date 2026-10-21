@@ -3,6 +3,7 @@ import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
 import { OpenAIAnalyticsView } from "@/components/adsops/openai-analytics-view";
 import { MetaAlertsCard, type MetaFocus } from "@/components/adsops/meta-alerts-card";
+import { GoogleTrendAlertsCard, TREND_CARD_ID } from "@/components/adsops/google-trend-snapshot-ui";
 import { PacingAlertsCard } from "@/components/adsops/budget-pacing";
 import { ClassifyView } from "@/components/adsops/classify-view";
 import { ClientPortal } from "@/components/adsops/client-portal";
@@ -760,6 +761,7 @@ export function AdsOpsApp() {
       return (
         <AccountsOverview
           selectedClientId={clientId}
+          isAdmin={access.kind === "staff" && access.role === "admin" && !access.read_only}
           onOpenAccount={(id) => {
             setClientId(id);
             setAliasDraft(null);
@@ -921,6 +923,17 @@ export function AdsOpsApp() {
               onOpenAccount={tabAllowed(access, "analytics") ? (id) => { setClientId(id); goTab("analytics"); } : undefined}
             />
             <MetaAlertsCard onJump={tabAllowed(access, "analytics") ? jumpMeta : undefined} />
+            <GoogleTrendAlertsCard
+              labels={Object.fromEntries(clients.map((c) => [c.client_id, c.alias ? `${c.alias} — ${c.display_name}` : c.display_name]))}
+              onOpen={tabAllowed(access, "analytics") ? (id) => {
+                setClientId(id);
+                goTab("analytics");
+                // The trend card mounts after the account loads: retry the scroll for a few seconds.
+                let n = 0;
+                const tick = () => { const el = document.getElementById(TREND_CARD_ID); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); else if (n++ < 40) setTimeout(tick, 200); };
+                setTimeout(tick, 200);
+              } : undefined}
+            />
           </>
         ) : null;
       // No alert file: show only the budget runway card, never the empty connection panel.
