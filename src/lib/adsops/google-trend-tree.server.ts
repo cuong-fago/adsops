@@ -10,7 +10,7 @@ import type { ConvByMonth } from "./google-conv-groups.ts";
 import type { ChannelGroup, ChannelKey, TreeRow, TrendChildrenRead, TrendMonth, TrendTreeRead } from "./google-trend.types.ts";
 
 const TZ = "Asia/Ho_Chi_Minh";
-type Leaf = { id: string; name: string; status: string | null; channel: string; month: string; clicks: number; conversions: number; cost: number };
+type Leaf = { parent?: string; id: string; name: string; status: string | null; channel: string; month: string; clicks: number; conversions: number; cost: number };
 
 const CH: Record<string, ChannelKey> = { SEARCH: "search", PERFORMANCE_MAX: "pmax", SHOPPING: "shopping", VIDEO: "video", DISPLAY: "display", DEMAND_GEN: "demand_gen", DISCOVERY: "demand_gen" };
 const ORDER: ChannelKey[] = ["search", "pmax", "shopping", "video", "display", "demand_gen", "other"];
@@ -64,7 +64,7 @@ async function query(customerId: string, gaql: string, ent: "campaign" | "adGrou
     if (!id || !/^\d{4}-\d{2}$/.test(m)) continue;
     const x = asRec(r.metrics);
     out.push({
-      id, name: String(e.name ?? id), status: e.status ? String(e.status) : null, channel: String(c.advertisingChannelType ?? ""),
+      parent: c.id != null ? String(c.id) : undefined, id, name: String(e.name ?? id), status: e.status ? String(e.status) : null, channel: String(c.advertisingChannelType ?? ""),
       month: m, clicks: num(x.clicks) || 0, conversions: num(x.conversions) || 0, cost: (num(x.costMicros) || 0) / 1_000_000,
     });
   }
@@ -101,7 +101,7 @@ function buildRows(leaves: Leaf[], w: ReturnType<typeof window>): Array<TreeRow 
     const label = all ? null : first > 0 ? `Mới từ ${mLabel(w.months[first])}` : first === -1 ? (hasData(m.get(w.cur)) ? `Mới từ ${mLabel(w.cur)}` : "Không có dữ liệu") : "Không đủ 3 tháng";
     const ms = w.months.map((mo) => toMonth(m.get(mo), mo, false, daysIn(mo)));
     return {
-      id: l.id, name: l.name, status: l.status, channel: chOf(l.channel), months: ms,
+      id: l.id, parent_id: l.parent ?? null, name: l.name, status: l.status, channel: chOf(l.channel), months: ms,
       current: toMonth(m.get(w.cur), w.cur, true, w.elapsed),
       excluded_label: label, worst: all ? worstOf(ms) : null, _raw: m,
     };
@@ -180,4 +180,22 @@ export async function readTrendChildren(clientId: string, campaignId: string, pm
   } catch (e) {
     return { kind, rows: [], error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Every ad group and every PMax asset group of the account (2 queries, for the nightly snapshot). */
+export async function readAllChildren(clientId: string): Promise<{ ad_groups: TreeRow[]; asset_groups: TreeRow[]; error: string | null }> {
+  const customerId = customerIdFor(clientId);
+  const w = window();
+  const range = `segments.date BETWEEN '${w.start}' AND '${w.today}' AND metrics.cost_micros > 0`;
+  const errs: string[] = [];
+  const run = async (lvl: "ad_group" | "asset_group") => {
+    try {
+      const { v } = await cached(clientId, `trend3m_all_${lvl}`, w.start, w.today, () => query(customerId,
+        `SELECT campaign.id, campaign.advertising_channel_type, ${lvl}.id, ${lvl}.name, ${lvl}.status, segments.month, metrics.clicks, metrics.conversions, metrics.cost_micros FROM ${lvl} WHERE ${range}`,
+        lvl === "ad_group" ? "adGroup" : "assetGroup"));
+      return buildRows(v, w).map(strip);
+    } catch (e) { errs.push(`${lvl === "ad_group" ? "Nhóm quảng cáo" : "Nhóm tài sản"}: ${e instanceof Error ? e.message : String(e)}`); return []; }
+  };
+  const [ad_groups, asset_groups] = await Promise.all([run("ad_group"), run("asset_group")]);
+  return { ad_groups, asset_groups, error: errs.length ? errs.join(" · ") : null };
 }

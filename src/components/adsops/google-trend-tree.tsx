@@ -2,6 +2,7 @@ import { createContext, Fragment, useContext, useEffect, useMemo, useState } fro
 import { readConvGroupsFn, readGoogleTrendChildrenFn, readGoogleTrendTreeFn } from "@/lib/adsops/connect.functions";
 import { CONV_GROUPS, CONV_GROUP_LABEL, type ConvActionRow, type ConvActionsRead, type ConvByMonth, type ConvGroup } from "@/lib/adsops/google-conv-groups";
 import { GoogleConvMap } from "@/components/adsops/google-conv-map";
+import { scrollWhenReady, takeTrendFocus } from "@/components/adsops/google-trend-snapshot-ui";
 import { CHANNEL_LABEL, LOW_CLICKS, LOW_CONV, type ChannelGroup, type ChannelKey, type TreeRow, type TrendChildrenRead, type TrendMonth, type TrendTreeRead } from "@/lib/adsops/google-trend.types";
 import { cn } from "@/lib/cn";
 
@@ -121,7 +122,7 @@ function Ctx({ ms }: { ms: TrendMonth[] }) {
   );
 }
 
-function Row({ name, sub, ms: raw, depth, excluded, lowAll, toggle, open, tone, conv, vtc }: { name: string; sub?: string; ms: TrendMonth[]; depth: number; excluded: string | null; lowAll?: boolean; toggle?: () => void; open?: boolean; tone?: boolean; conv?: ConvByMonth | null; vtc?: Record<string, number> | null }) {
+function Row({ rowId, name, sub, ms: raw, depth, excluded, lowAll, toggle, open, tone, conv, vtc }: { rowId?: string; name: string; sub?: string; ms: TrendMonth[]; depth: number; excluded: string | null; lowAll?: boolean; toggle?: () => void; open?: boolean; tone?: boolean; conv?: ConvByMonth | null; vtc?: Record<string, number> | null }) {
   const cx = useContext(ConvCx);
   const [cOpen, setCOpen] = useState(false);
   const ms = viewMs(cx, raw, conv);
@@ -129,7 +130,7 @@ function Row({ name, sub, ms: raw, depth, excluded, lowAll, toggle, open, tone, 
   const span = 2 + MET.length * ms.length;
   return (
     <>
-    <tr className={cn("border-t border-line", tone && "bg-accent-soft/40 font-medium", excluded && "opacity-60")}>
+    <tr id={rowId} className={cn("border-t border-line", tone && "bg-accent-soft/40 font-medium", excluded && "opacity-60")}>
       <td className="sticky left-0 z-10 bg-surface px-2 py-1" style={{ paddingLeft: 8 + depth * 18 }}>
         <div className="flex items-start gap-1">
           {toggle ? <button type="button" onClick={toggle} className="w-4 shrink-0 text-muted" aria-label={open ? "Thu gọn" : "Mở rộng"}>{open ? "▾" : "▸"}</button> : <span className="w-4 shrink-0" />}
@@ -211,7 +212,13 @@ export function GoogleTrendTree({ clientId, partial }: { clientId: string; parti
   useEffect(() => {
     let live = true;
     setD(null); setErr("");
-    readGoogleTrendTreeFn({ data: { clientId } }).then((r) => { if (live) { setD(r); setOpenT(new Set(r.groups.slice(0, 1).map((g) => g.channel))); } }).catch((e: unknown) => live && setErr(e instanceof Error ? e.message : String(e)));
+    readGoogleTrendTreeFn({ data: { clientId } }).then((r) => {
+      if (!live) return;
+      setD(r);
+      const f = takeTrendFocus(clientId);
+      setOpenT(new Set([...r.groups.slice(0, 1).map((g) => g.channel), ...(f ? [f.channel as ChannelKey] : [])]));
+      if (f?.campaignId) { setOpenC(new Set([f.campaignId])); scrollWhenReady(`trend-row-${f.campaignId}`); }
+    }).catch((e: unknown) => live && setErr(e instanceof Error ? e.message : String(e)));
     return () => { live = false; };
   }, [clientId]);
   const groups = useMemo(() => {
@@ -299,7 +306,7 @@ export function GoogleTrendTree({ clientId, partial }: { clientId: string; parti
                     const co = openC.has(c.id);
                     return (
                       <Fragment key={c.id}>
-                        <Row conv={d.conv_error ? undefined : c.conv ?? null} vtc={c.vtc} name={c.name} sub={c.status === "PAUSED" ? "Tạm dừng" : c.status === "REMOVED" ? "Đã xoá" : undefined} ms={partial ? [...c.months, c.current] : c.months} depth={1} excluded={c.excluded_label} lowAll={c.months.every((m) => m.low_data)} open={co} toggle={() => setOpenC(flip(openC, c.id))} />
+                        <Row rowId={`trend-row-${c.id}`} conv={d.conv_error ? undefined : c.conv ?? null} vtc={c.vtc} name={c.name} sub={c.status === "PAUSED" ? "Tạm dừng" : c.status === "REMOVED" ? "Đã xoá" : undefined} ms={partial ? [...c.months, c.current] : c.months} depth={1} excluded={c.excluded_label} lowAll={c.months.every((m) => m.low_data)} open={co} toggle={() => setOpenC(flip(openC, c.id))} />
                         {co ? <Children clientId={clientId} camp={c} partial={partial} sort={sort} cx={cx} /> : null}
                       </Fragment>
                     );

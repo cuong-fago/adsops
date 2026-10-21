@@ -24,6 +24,7 @@ export type ChannelKey = "search" | "pmax" | "shopping" | "video" | "display" | 
 export const CHANNEL_LABEL: Record<ChannelKey, string> = { search: "Search", pmax: "PMax", shopping: "Shopping", video: "YouTube/Video", display: "Display", demand_gen: "Demand Gen", other: "Khác" };
 import type { ConvByMonth } from "./google-conv-groups.ts";
 export type TreeRow = {
+  parent_id?: string | null;
   conv?: ConvByMonth | null;
   vtc?: Record<string, number> | null;
   id: string;
