@@ -531,7 +531,9 @@ export const readNeedsActionFn = createServerFn({ method: "POST" })
     const accounts = dir.clients.filter((c) => canSeeAccount(ctx, c.client_id)).map((c) => ({ client_id: c.client_id, label: (c.alias && c.alias.trim()) || c.display_name }));
     const lead = ctx.principal.role === "admin" || ctx.principal.role === "head_ads";
     const canEdit = ctx.real.isSuperAdmin && ctx.real.role === "admin" && !ctx.viewAs && !ctx.readOnly;
-    return (await import("./needs-action.server.ts")).readNeeds(accounts, { canFilterOwner: lead, canEdit });
+    const { actorLabel } = await import("./permissions.server");
+    const canUpdate = !ctx.viewAs || (ctx.real.isSuperAdmin && ctx.real.role === "admin");
+    return (await import("./needs-action.server.ts")).readNeeds(accounts, { canFilterOwner: lead, canEdit, canUpdate, me: actorLabel(ctx.real) });
   });
 
 /** Admin: thresholds for "Cần xử lý" (stored in DB). Not in Xem như. */
@@ -548,4 +550,26 @@ export const saveNeedThresholdsFn = createServerFn({ method: "POST" })
     const { assertEffectiveAdmin, actorLabel } = await import("./permissions.server");
     assertEffectiveAdmin(context.access);
     return (await import("./needs-action.server.ts")).saveThresholds(data, actorLabel(context.access.real));
+  });
+
+/** Status of one "Cần xử lý" row. Staff with the account; in Xem như only when the real user is Admin. DB only. */
+export const setNeedStatusFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const s = (k: string) => (typeof d[k] === "string" ? (d[k] as string).trim() : "");
+    const clientId = s("clientId"), level = s("level"), entityId = s("entityId"), channel = s("channel"), metric = s("metric"), month = s("month"), status = s("status");
+    const note = s("note").slice(0, 500) || null;
+    if (!trendIdOk(clientId)) throw new Error("Tài khoản Google không hợp lệ");
+    if (!["account", "campaign", "ad_group", "asset_group"].includes(level) || !/^[a-z0-9_]{1,40}$/.test(entityId)) throw new Error("Đối tượng không hợp lệ");
+    if (!/^[a-z_]{1,20}$/.test(channel) || !["cpc", "cpa", "cvr"].includes(metric) || !/^\d{4}-\d{2}$/.test(month)) throw new Error("Dòng không hợp lệ");
+    if (!["new", "doing", "done"].includes(status)) throw new Error("Trạng thái không hợp lệ");
+    return { clientId, level, entityId, channel, metric: metric as "cpc" | "cpa" | "cvr", month, status: status as "new" | "doing" | "done", note };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { ForbiddenError, actorLabel } = await import("./permissions.server");
+    const ctx = context.access;
+    await assertTrendStaff(ctx, data.clientId);
+    if (ctx.viewAs && !(ctx.real.isSuperAdmin && ctx.real.role === "admin")) throw new ForbiddenError("Đang Xem như người dùng — thoát chế độ xem để cập nhật.");
+    return (await import("./needs-action.server.ts")).setNeedStatus(data, actorLabel(ctx.real));
   });
