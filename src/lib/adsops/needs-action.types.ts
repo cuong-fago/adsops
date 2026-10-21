@@ -19,5 +19,11 @@ export const needKey = (clientId: string, level: string, entityId: string, chann
 export type NeedAccount = { client_id: string; label: string; owners: string[]; computed_at: string | null; error: string | null; entity_error: string | null; rows: NeedRow[] };
 export type NeedsRead = {
   months: string[]; accounts: NeedAccount[]; owners: Array<{ id: string; name: string }>;
-  can_filter_owner: boolean; can_edit_settings: boolean; can_update_status: boolean; thresholds: NeedThresholds; not_computed: number; last_run: string | null;
+  can_filter_owner: boolean; can_edit_settings: boolean; can_update_status: boolean;
+  /** Real user is Admin (Xem như allowed): may run "Tính ngay". */
+  can_compute: boolean;
+  /** Google accounts in scope with no snapshot or one older than 20 h. */
+  stale_ids: string[];
+  /** Accounts computed but with nothing flagged (so an empty list is explained). */
+  computed_ok: number; thresholds: NeedThresholds; not_computed: number; last_run: string | null;
 };

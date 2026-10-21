@@ -35,7 +35,7 @@ function toTM(m: SnapMonth, th: NeedThresholds): TrendMonth {
   };
 }
 
-export async function readNeeds(accounts: Array<{ client_id: string; label: string }>, opts: { canFilterOwner: boolean; canEdit: boolean; canUpdate: boolean; me: string }): Promise<NeedsRead> {
+export async function readNeeds(accounts: Array<{ client_id: string; label: string }>, opts: { canFilterOwner: boolean; canEdit: boolean; canUpdate: boolean; canCompute: boolean; me: string }): Promise<NeedsRead> {
   const th = await readThresholds();
   const ids = accounts.map((a) => a.client_id).filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_"));
   const sql = await getSql();
@@ -101,7 +101,9 @@ export async function readNeeds(accounts: Array<{ client_id: string; label: stri
   const ownerIds = new Set(grants.map((g) => g.principal_id));
   const last = snaps.map((s) => iso(s.computed_at)).filter((x): x is string => !!x).sort().pop() ?? null;
   return {
-    months, accounts: out, thresholds: th, can_filter_owner: opts.canFilterOwner, can_edit_settings: opts.canEdit, can_update_status: opts.canUpdate,
+    months, accounts: out, thresholds: th, can_filter_owner: opts.canFilterOwner, can_edit_settings: opts.canEdit, can_update_status: opts.canUpdate, can_compute: opts.canCompute,
+    stale_ids: out.filter((a) => !a.computed_at || Date.now() - Date.parse(a.computed_at) > 20 * 3600_000).map((a) => a.client_id),
+    computed_ok: out.filter((a) => a.computed_at && !a.error && !a.rows.length).length,
     owners: staff.filter((s) => ownerIds.has(s.id)).map((s) => ({ id: s.id, name: s.display_name || s.email })).sort((x, y) => x.name.localeCompare(y.name, "vi")),
     not_computed: out.filter((a) => !a.computed_at).length, last_run: last,
   };

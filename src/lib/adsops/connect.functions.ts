@@ -533,7 +533,7 @@ export const readNeedsActionFn = createServerFn({ method: "POST" })
     const canEdit = ctx.real.isSuperAdmin && ctx.real.role === "admin" && !ctx.viewAs && !ctx.readOnly;
     const { actorLabel } = await import("./permissions.server");
     const canUpdate = !ctx.viewAs || (ctx.real.isSuperAdmin && ctx.real.role === "admin");
-    return (await import("./needs-action.server.ts")).readNeeds(accounts, { canFilterOwner: lead, canEdit, canUpdate, me: actorLabel(ctx.real) });
+    return (await import("./needs-action.server.ts")).readNeeds(accounts, { canFilterOwner: lead, canEdit, canUpdate, canCompute: ctx.real.isSuperAdmin && ctx.real.role === "admin", me: actorLabel(ctx.real) });
   });
 
 /** Admin: thresholds for "Cần xử lý" (stored in DB). Not in Xem như. */
@@ -572,4 +572,30 @@ export const setNeedStatusFn = createServerFn({ method: "POST" })
     await assertTrendStaff(ctx, data.clientId);
     if (ctx.viewAs && !(ctx.real.isSuperAdmin && ctx.real.role === "admin")) throw new ForbiddenError("Đang Xem như người dùng — thoát chế độ xem để cập nhật.");
     return (await import("./needs-action.server.ts")).setNeedStatus(data, actorLabel(ctx.real));
+  });
+
+/**
+ * "Tính ngay" on Cần xử lý: compute snapshots (same path as the nightly cron, incl. group levels) for a SMALL batch.
+ * Real user must be Admin (allowed in Xem như); each account must be in the current (effective) scope. Read-only GAQL.
+ */
+export const computeNeedsBatchFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const ids = Array.isArray(d.clientIds) ? d.clientIds.filter((x): x is string => typeof x === "string").map((x) => x.trim()) : [];
+    if (!ids.length || ids.length > 3 || !ids.every(trendIdOk)) throw new Error("Danh sách tài khoản không hợp lệ (tối đa 3)");
+    return { clientIds: ids };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { ForbiddenError, canSeeAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    if (!(ctx.real.isSuperAdmin && ctx.real.role === "admin")) throw new ForbiddenError("Chỉ Admin được tính ngay.");
+    const m = await import("./google-trend-snapshot.server.ts");
+    return Promise.all(data.clientIds.map(async (id) => {
+      if (!canSeeAccount(ctx, id)) return { client_id: id, ok: false, error: "Ngoài phạm vi đang xem" };
+      try {
+        const s = await m.computeSnapshot(id);
+        return { client_id: id, ok: s.verdict !== "error", error: s.error };
+      } catch (e) { return { client_id: id, ok: false, error: e instanceof Error ? e.message : String(e) }; }
+    }));
   });

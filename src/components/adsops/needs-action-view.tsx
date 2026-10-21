@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { readNeedsActionFn, saveNeedThresholdsFn, setNeedStatusFn } from "@/lib/adsops/connect.functions";
+import { computeNeedsBatchFn, readNeedsActionFn, saveNeedThresholdsFn, setNeedStatusFn } from "@/lib/adsops/connect.functions";
 import { CHANNEL_LABEL, type ChannelKey } from "@/lib/adsops/google-trend.types";
 import { STATUS_LABEL, type NeedAccount, type NeedLevel, type NeedMetric, type NeedRow, type NeedsRead, type NeedStatus, type NeedThresholds } from "@/lib/adsops/needs-action.types";
 import { Card } from "@/components/adsops/ui";
@@ -26,6 +26,27 @@ export function NeedsActionView({ onOpen }: { onOpen?: (clientId: string, channe
   const [f, setF] = useState<Filters>({ status: "all", showDone: false, metric: "all", level: "all", channel: "all", owner: "", better: false, q: "" });
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [nonce, setNonce] = useState(0);
+  const [run, setRun] = useState<{ done: number; total: number; errors: Array<{ id: string; msg: string }>; busy: boolean } | null>(null);
+  async function computeNow(ids: string[]) {
+    const st = { done: 0, total: ids.length, errors: [] as Array<{ id: string; msg: string }>, busy: true };
+    setRun({ ...st });
+    let next = 0;
+    // One account per call, 3 calls in flight: each call stays far inside the function time limit.
+    const worker = async () => {
+      while (next < ids.length) {
+        const id = ids[next++];
+        try {
+          const [r] = await computeNeedsBatchFn({ data: { clientIds: [id] } });
+          if (!r.ok) st.errors.push({ id, msg: r.error || "lỗi không rõ" });
+        } catch (e) { st.errors.push({ id, msg: e instanceof Error ? e.message : String(e) }); }
+        st.done += 1;
+        setRun({ ...st, errors: [...st.errors] });
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    setRun({ ...st, errors: [...st.errors], busy: false });
+    setNonce((n) => n + 1);
+  }
   // Local status edits (key -> row fields) so the list updates without a reload.
   const [edits, setEdits] = useState<Record<string, Pick<NeedRow, "status" | "note" | "status_by" | "status_at" | "reopened">>>({});
   const withEdit = (r: NeedRow): NeedRow => (edits[r.key] ? { ...r, ...edits[r.key] } : r);
@@ -110,9 +131,31 @@ export function NeedsActionView({ onOpen }: { onOpen?: (clientId: string, channe
         <span className="ml-auto text-xs text-muted">{list.length} tài khoản</span>
       </div>
 
+      {d.can_compute ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <button type="button" disabled={run?.busy || !d.stale_ids.length} onClick={() => void computeNow(d.stale_ids)}
+            title="Chỉ Admin. Tính ngay (chỉ đọc Google Ads) các tài khoản trong phạm vi đang xem chưa được tính hoặc đã cũ hơn 20 giờ, gồm cả cấp nhóm."
+            className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-50">
+            Tính ngay{d.stale_ids.length ? ` (${d.stale_ids.length} tài khoản)` : ""}
+          </button>
+          {run ? <span className="text-muted">{run.busy ? "Đang tính" : "Xong"} {run.done}/{run.total}{run.errors.length ? ` · ${run.errors.length} lỗi` : ""}</span> : null}
+          {!d.stale_ids.length && !run ? <span className="text-muted">Mọi tài khoản trong phạm vi đã được tính trong 20 giờ qua.</span> : null}
+        </div>
+      ) : null}
+      {run?.errors.length ? (
+        <ul className="rounded-lg border border-danger/30 bg-danger-bg/40 px-3 py-2 text-xs text-danger">
+          {run.errors.map((e) => <li key={e.id}><b>{d.accounts.find((a) => a.client_id === e.id)?.label || e.id}:</b> {e.msg}</li>)}
+        </ul>
+      ) : null}
       {d.can_edit_settings ? <Settings th={th} onSaved={() => setNonce((n) => n + 1)} /> : null}
 
-      {!list.length ? <Card className="p-6 text-center text-sm text-muted">Không có gì cần xử lý theo bộ lọc hiện tại.</Card> : null}
+      {!list.length ? (
+        <Card className="p-6 text-center text-sm text-muted">
+          Không có gì cần xử lý theo bộ lọc hiện tại.
+          {d.computed_ok ? <span className="block text-xs">{d.computed_ok} tài khoản đã tính, không có chỉ số nào vượt ngưỡng (hoặc ít dữ liệu / không có chiến dịch chạy đủ 3 tháng).</span> : null}
+          {d.not_computed ? <span className="block text-xs">{d.not_computed} tài khoản chưa được tính{d.can_compute ? ": bấm Tính ngay." : " (chạy hằng đêm 03:00)."}</span> : null}
+        </Card>
+      ) : null}
       {list.map(({ a, rows }) => <AccountBlock key={a.client_id} a={a} all={a.rows.map(withEdit)} canUpdate={d.can_update_status} onStatus={(r, s, n) => void save(a.client_id, r, s, n)} rows={rows} months={d.months} th={th.step} open={open.has(a.client_id)} toggle={() => flip(a.client_id)} onOpen={onOpen} />)}
     </section>
   );
