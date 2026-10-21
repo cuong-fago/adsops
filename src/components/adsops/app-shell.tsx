@@ -3,7 +3,8 @@ import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
 import { OpenAIAnalyticsView } from "@/components/adsops/openai-analytics-view";
 import { MetaAlertsCard, type MetaFocus } from "@/components/adsops/meta-alerts-card";
-import { GoogleTrendAlertsCard, TREND_CARD_ID } from "@/components/adsops/google-trend-snapshot-ui";
+import { GoogleTrendAlertsCard, TREND_CARD_ID, setTrendFocus, scrollWhenReady } from "@/components/adsops/google-trend-snapshot-ui";
+import { NeedsActionView } from "@/components/adsops/needs-action-view";
 import { PacingAlertsCard } from "@/components/adsops/budget-pacing";
 import { ClassifyView } from "@/components/adsops/classify-view";
 import { ClientPortal } from "@/components/adsops/client-portal";
@@ -98,7 +99,8 @@ type TabId =
   | "overview"
   | "members"
   | "creports"
-  | "manager";
+  | "manager"
+  | "needs";
 
 const OPS_TABS: { id: TabId; label: string }[] = [
   { id: "final", label: "FINAL" },
@@ -162,6 +164,7 @@ const TAB_MODULES: Record<TabId, string[]> = {
   members: [],
   creports: [],
   manager: [],
+  needs: [],
 };
 
 const PACK_SLICE_KEYS = [
@@ -188,6 +191,8 @@ function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
   if (id === "changelog") return Boolean(caps.changeLog);
   // Every staff role (view-as included); the server checks again. Never customer roles.
   if (id === "overview") return access.kind === "staff";
+  // Cần xử lý (3 tháng): every staff role (Sale: assigned accounts only); server checks again.
+  if (id === "needs") return access.kind === "staff";
   // Báo cáo khách hàng: Admin, Trưởng phòng Ads, người tối ưu (server checks again).
   // Bảng điều hành: Admin and Trưởng phòng Ads only (server checks again).
   if (id === "manager") return access.kind === "staff" && (access.role === "admin" || access.role === "head_ads");
@@ -774,6 +779,18 @@ export function AdsOpsApp() {
     if (shownTab === "manager") {
       return <ManagerView onOpenAccount={tabAllowed(access, "analytics") ? (id) => { setClientId(id); goTab("analytics"); } : undefined} />;
     }
+    if (shownTab === "needs") {
+      return (
+        <NeedsActionView
+          onOpen={tabAllowed(access, "analytics") ? (id, channel, campaignId) => {
+            setTrendFocus({ clientId: id, channel, campaignId });
+            setClientId(id);
+            goTab("analytics");
+            scrollWhenReady(campaignId ? `trend-row-${campaignId}` : TREND_CARD_ID);
+          } : undefined}
+        />
+      );
+    }
     if (shownTab === "creports") {
       return <ClientReportsView />;
     }
@@ -1096,6 +1113,11 @@ export function AdsOpsApp() {
                 <NavTab icon={TAB_ICON.overview} active={shownTab === "overview"} onClick={() => goTab("overview")}>
                   Tổng quan tài khoản
                 </NavTab>
+                {tabAllowed(access, "needs") ? (
+                  <NavTab icon={Bell} active={shownTab === "needs"} onClick={() => goTab("needs")}>
+                    Cần xử lý (3 tháng)
+                  </NavTab>
+                ) : null}
                 {tabAllowed(access, "manager") ? (
                   <NavTab icon={Gauge} active={shownTab === "manager"} onClick={() => goTab("manager")}>
                     Bảng điều hành

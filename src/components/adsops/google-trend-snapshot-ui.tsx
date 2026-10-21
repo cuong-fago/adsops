@@ -77,3 +77,18 @@ export function GoogleTrendAlertsCard({ labels, onOpen }: { labels: Record<strin
     </Card>
   );
 }
+
+/** One-shot request to open the trend table at a campaign (set before navigating to the account). */
+export type TrendFocus = { clientId: string; channel: string; campaignId: string | null };
+let FOCUS: TrendFocus | null = null;
+export function setTrendFocus(f: TrendFocus | null) { FOCUS = f; }
+export function takeTrendFocus(clientId: string): TrendFocus | null {
+  if (!FOCUS || FOCUS.clientId !== clientId) return null;
+  const f = FOCUS; FOCUS = null; return f;
+}
+/** Scroll to an element that mounts later (retries for ~8 s). */
+export function scrollWhenReady(id: string) {
+  let n = 0;
+  const tick = () => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); else if (n++ < 40) setTimeout(tick, 200); };
+  setTimeout(tick, 200);
+}

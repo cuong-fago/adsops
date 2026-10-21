@@ -517,3 +517,35 @@ export const recomputeTrendFn = createServerFn({ method: "POST" })
     if (ctx.principal.role !== "admin" || ctx.readOnly) throw new ForbiddenError("Chỉ Admin được tính lại.");
     return (await import("./google-trend-snapshot.server.ts")).computeSnapshot(data.clientId);
   });
+
+/** "Cần xử lý (3 tháng)": staff only, accounts the (effective) viewer can see; DB only. Owner filter for Admin / Trưởng phòng Ads. */
+export const readNeedsActionFn = createServerFn({ method: "POST" })
+  .middleware([principalMiddleware])
+  .handler(async ({ context }) => {
+    const { ForbiddenError, canSeeAccount } = await import("./permissions.server");
+    const ctx = context.access;
+    if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");
+    const { loadWorkspaceDirectory } = await import("./access.server");
+    const { withPulledMccClients } = await import("./mcc-import.server");
+    const dir = await withPulledMccClients(await loadWorkspaceDirectory(ctx), ctx.allowed);
+    const accounts = dir.clients.filter((c) => canSeeAccount(ctx, c.client_id)).map((c) => ({ client_id: c.client_id, label: (c.alias && c.alias.trim()) || c.display_name }));
+    const lead = ctx.principal.role === "admin" || ctx.principal.role === "head_ads";
+    const canEdit = ctx.real.isSuperAdmin && ctx.real.role === "admin" && !ctx.viewAs && !ctx.readOnly;
+    return (await import("./needs-action.server.ts")).readNeeds(accounts, { canFilterOwner: lead, canEdit });
+  });
+
+/** Admin: thresholds for "Cần xử lý" (stored in DB). Not in Xem như. */
+export const saveNeedThresholdsFn = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+    const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : NaN);
+    const step = n(d.step), conv = n(d.conv), clicks = n(d.clicks);
+    if (!(step >= 0.01 && step <= 1) || !(conv >= 0 && conv <= 1000) || !(clicks >= 0 && clicks <= 100000)) throw new Error("Ngưỡng không hợp lệ (mức thay đổi 1–100%, chuyển đổi 0–1000, click 0–100000).");
+    return { step, conv: Math.round(conv), clicks: Math.round(clicks) };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    const { assertEffectiveAdmin, actorLabel } = await import("./permissions.server");
+    assertEffectiveAdmin(context.access);
+    return (await import("./needs-action.server.ts")).saveThresholds(data, actorLabel(context.access.real));
+  });
