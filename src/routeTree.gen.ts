@@ -18,6 +18,7 @@ import { Route as ApiOpenaiAdImageRouteImport } from './routes/api/openai-ad-ima
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronBudgetRunwayRouteImport } from './routes/api/cron/budget-runway'
 import { Route as ApiCronChangeLogRouteImport } from './routes/api/cron/change-log'
+import { Route as ApiCronGoogleTrendRouteImport } from './routes/api/cron/google-trend'
 import { Route as ApiGoogleAdsOauthCallbackRouteImport } from './routes/api/google-ads/oauth/callback'
 import { Route as ApiGoogleAdsOauthStartRouteImport } from './routes/api/google-ads/oauth/start'
 
@@ -66,6 +67,11 @@ const ApiCronChangeLogRoute = ApiCronChangeLogRouteImport.update({
   path: '/api/cron/change-log',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronGoogleTrendRoute = ApiCronGoogleTrendRouteImport.update({
+  id: '/api/cron/google-trend',
+  path: '/api/cron/google-trend',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGoogleAdsOauthCallbackRoute =
   ApiGoogleAdsOauthCallbackRouteImport.update({
     id: '/api/google-ads/oauth/callback',
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
+  '/api/cron/google-trend': typeof ApiCronGoogleTrendRoute
   '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
   '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
 }
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
+  '/api/cron/google-trend': typeof ApiCronGoogleTrendRoute
   '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
   '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
 }
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
+  '/api/cron/google-trend': typeof ApiCronGoogleTrendRoute
   '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
   '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
 }
@@ -130,6 +139,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
+    | '/api/cron/google-trend'
     | '/api/google-ads/oauth/callback'
     | '/api/google-ads/oauth/start'
   fileRoutesByTo: FileRoutesByTo
@@ -143,6 +153,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
+    | '/api/cron/google-trend'
     | '/api/google-ads/oauth/callback'
     | '/api/google-ads/oauth/start'
   id:
@@ -156,6 +167,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
+    | '/api/cron/google-trend'
     | '/api/google-ads/oauth/callback'
     | '/api/google-ads/oauth/start'
   fileRoutesById: FileRoutesById
@@ -170,6 +182,7 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronBudgetRunwayRoute: typeof ApiCronBudgetRunwayRoute
   ApiCronChangeLogRoute: typeof ApiCronChangeLogRoute
+  ApiCronGoogleTrendRoute: typeof ApiCronGoogleTrendRoute
   ApiGoogleAdsOauthCallbackRoute: typeof ApiGoogleAdsOauthCallbackRoute
   ApiGoogleAdsOauthStartRoute: typeof ApiGoogleAdsOauthStartRoute
 }
@@ -239,6 +252,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronChangeLogRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/google-trend': {
+      id: '/api/cron/google-trend'
+      path: '/api/cron/google-trend'
+      fullPath: '/api/cron/google-trend'
+      preLoaderRoute: typeof ApiCronGoogleTrendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/google-ads/oauth/callback': {
       id: '/api/google-ads/oauth/callback'
       path: '/api/google-ads/oauth/callback'
@@ -266,6 +286,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronBudgetRunwayRoute: ApiCronBudgetRunwayRoute,
   ApiCronChangeLogRoute: ApiCronChangeLogRoute,
+  ApiCronGoogleTrendRoute: ApiCronGoogleTrendRoute,
   ApiGoogleAdsOauthCallbackRoute: ApiGoogleAdsOauthCallbackRoute,
   ApiGoogleAdsOauthStartRoute: ApiGoogleAdsOauthStartRoute,
 }

@@ -17,7 +17,8 @@ export type AccountActivity = {
   spend10_last_date: string | null;
   spend10_checked_at: string | null;
 };
-export type ActivityRead = { accounts: Record<string, AccountActivity> };
+/** can_show_inactive: only a real Admin (also while in "Xem như") may un-hide inactive accounts in lists. */
+export type ActivityRead = { accounts: Record<string, AccountActivity>; can_show_inactive: boolean };
 
 export const INACTIVE_GOOGLE = new Set(["SUSPENDED", "CANCELED", "CANCELLED", "CLOSED", "NOT_ENABLED"]);
 
