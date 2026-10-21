@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
 import { OpenAIAnalyticsView } from "@/components/adsops/openai-analytics-view";
+import { TikTokAnalyticsView } from "@/components/adsops/tiktok-analytics-view";
 import { MetaAlertsCard, type MetaFocus } from "@/components/adsops/meta-alerts-card";
 import { GoogleTrendAlertsCard, TREND_CARD_ID, setTrendFocus, scrollWhenReady } from "@/components/adsops/google-trend-snapshot-ui";
 import { NeedsActionView } from "@/components/adsops/needs-action-view";
@@ -840,6 +841,9 @@ export function AdsOpsApp() {
           {warehouseMsg ? <span className="text-sm text-muted">{warehouseMsg}</span> : null}
         </div>
       ) : null;
+      if (clientId.startsWith("tt_")) {
+        return <TikTokAnalyticsView key={clientId} clientId={clientId} allowCompare={Boolean(access.caps.compare && access.kind === "staff")} />;
+      }
       if (clientId.startsWith("oa_")) {
         return <OpenAIAnalyticsView key={clientId} clientId={clientId} allowCompare={Boolean(access.caps.compare && access.kind === "staff")} />;
       }

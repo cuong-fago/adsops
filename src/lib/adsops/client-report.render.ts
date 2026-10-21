@@ -26,14 +26,14 @@ function kpi(label: string, value: string, d: string, st: string, hint: string):
 function campTable(rows: CampRow[], title: string): string {
   if (!rows.length) return "";
   return `<div class="col"><h4>${esc(title)}</h4><table><thead><tr><th>Chiến dịch</th><th>Kênh</th><th class="r">Chi tiêu</th><th class="r">Lead</th><th class="r">CPL</th></tr></thead><tbody>${rows
-    .map((c) => `<tr><td>${esc(c.name)}</td><td>${c.platform === "google" ? "Google" : c.platform === "chatgpt" ? "ChatGPT Ads" : "Facebook"}</td><td class="r">${dong(c.spend)}</td><td class="r">${n0(c.leads)}</td><td class="r">${c.cpl != null ? dong(c.cpl) : "Chưa có lead"}</td></tr>`)
+    .map((c) => `<tr><td>${esc(c.name)}</td><td>${c.platform === "google" ? "Google" : c.platform === "chatgpt" ? "ChatGPT Ads" : c.platform === "tiktok" ? "TikTok Ads" : "Facebook"}</td><td class="r">${dong(c.spend)}</td><td class="r">${n0(c.leads)}</td><td class="r">${c.cpl != null ? dong(c.cpl) : "Chưa có lead"}</td></tr>`)
     .join("")}</tbody></table></div>`;
 }
 const para = (s: string | undefined) => (s && s.trim() ? esc(s.trim()).replace(/\n/g, "<br>") : `<span class="muted">—</span>`);
 
 export function renderReportHtml(d: ReportData, notes: ReportNotes, opt: ReportOptions, meta: { status: "draft" | "sent"; printable?: boolean }): string {
   const c = d.cur, p = d.prev_totals, t = d.targets;
-  const ch = [d.channels.facebook ? ["Facebook", d.channels.facebook] : null, d.channels.google ? ["Google", d.channels.google] : null, d.channels.chatgpt ? ["ChatGPT Ads", d.channels.chatgpt] : null].filter(Boolean) as [string, NonNullable<ReportData["channels"]["google"]>][];
+  const ch = [d.channels.facebook ? ["Facebook", d.channels.facebook] : null, d.channels.google ? ["Google", d.channels.google] : null, d.channels.chatgpt ? ["ChatGPT Ads", d.channels.chatgpt] : null, d.channels.tiktok ? ["TikTok Ads", d.channels.tiktok] : null].filter(Boolean) as [string, NonNullable<ReportData["channels"]["google"]>][];
   const totalSpend = ch.reduce((a, [, x]) => a + (x.spend || 0), 0);
   const kpis = [
     kpi("Chi tiêu", dong(c.spend), deltaHtml(c.spend, p.spend), t.budget != null && c.spend != null ? statusHtml(Math.abs(c.spend / t.budget - 1) <= 0.1, `kế hoạch ${dong(t.budget)}`) : "", "Tổng chi phí quảng cáo Facebook + Google + ChatGPT Ads trong kỳ."),

@@ -50,7 +50,7 @@ export const listClientReportsFn = createServerFn({ method: "POST" })
       );
       for (const x of rows) facts.set(x.id, { name: x.display_name, ext: x.customer_id || x.external_id });
     } catch { /* picker still works on labels */ }
-    const plat = (i: string) => (i.startsWith("fb_") ? "facebook" as const : i.startsWith("oa_") ? "chatgpt" as const : "google" as const);
+    const plat = (i: string) => (i.startsWith("fb_") ? "facebook" as const : i.startsWith("oa_") ? "chatgpt" as const : i.startsWith("tt_") ? "tiktok" as const : "google" as const);
     const member = (i: string) => ({ id: i, label: labels.get(i) || i, name: facts.get(i)?.name ?? null, ext: facts.get(i)?.ext ?? null, platform: plat(i) });
     const scopes: ScopeOption[] = [
       ...groups.sort((a, b) => a.name.localeCompare(b.name, "vi")).map((g) => ({ kind: "group" as const, id: g.id, label: g.name, accounts: g.members, schedule: sched.get(`group:${g.id}`) ?? null, members: g.members.map(member) })),

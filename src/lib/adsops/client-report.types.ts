@@ -14,20 +14,20 @@ export type Totals = {
 };
 
 export type Channel = { spend: number | null; leads: number | null; cpl: number | null };
-export type CampRow = { platform: "google" | "facebook" | "chatgpt"; name: string; spend: number; leads: number | null; cpl: number | null };
+export type CampRow = { platform: "google" | "facebook" | "chatgpt" | "tiktok"; name: string; spend: number; leads: number | null; cpl: number | null };
 
 export type ReportData = {
   version: 1;
   client_name: string;
   period: { kind: "week" | "month" | "custom"; start: string; end: string; label: string };
   prev: { start: string; end: string; label: string };
-  accounts: { client_id: string; label: string; platform: "google" | "facebook" | "chatgpt" }[];
+  accounts: { client_id: string; label: string; platform: "google" | "facebook" | "chatgpt" | "tiktok" }[];
   data_through: string | null;
   cur: Totals;
   prev_totals: Totals;
   targets: { cpl: number | null; cac: number | null; roas: number | null; leads: number | null; budget: number | null };
   /** chatgpt is absent on snapshots made before ChatGPT Ads existed. */
-  channels: { google: Channel | null; facebook: Channel | null; chatgpt?: Channel | null };
+  channels: { google: Channel | null; facebook: Channel | null; chatgpt?: Channel | null; tiktok?: Channel | null };
   campaigns: { top: CampRow[]; bottom: CampRow[]; no_lead: CampRow[] };
   /** Google "Nhật ký tối ưu"; null = no Google account. */
   work: { keywords_added: number; negatives_added: number; est_savings: number | null; est_terms: number; est_basis: string } | null;
@@ -57,7 +57,7 @@ export type ReportListRow = {
   links: { id: number; expires_at: string; revoked: boolean; views: number }[];
 };
 
-export type ScopeMember = { id: string; label: string; name: string | null; ext: string | null; platform: "google" | "facebook" | "chatgpt" };
+export type ScopeMember = { id: string; label: string; name: string | null; ext: string | null; platform: "google" | "facebook" | "chatgpt" | "tiktok" };
 export type ScopeOption = { kind: "group" | "account"; id: string; label: string; accounts: string[]; schedule: "weekly" | "monthly" | null; members: ScopeMember[] };
 
 export const STATUS_VI: Record<"draft" | "sent", string> = { draft: "Nháp", sent: "Đã gửi" };
@@ -81,6 +81,7 @@ export function summarize(d: ReportData): string[] {
   if (d.channels.facebook?.spend != null) parts.push(`Facebook ${dong(d.channels.facebook.spend)}`);
   if (d.channels.google?.spend != null) parts.push(`Google ${dong(d.channels.google.spend)}`);
   if (d.channels.chatgpt?.spend != null) parts.push(`ChatGPT Ads ${dong(d.channels.chatgpt.spend)}`);
+  if (d.channels.tiktok?.spend != null) parts.push(`TikTok Ads ${dong(d.channels.tiktok.spend)}`);
   const ds = delta(c.spend, p.spend);
   out.push(`Trong ${d.period.label}, tổng chi tiêu quảng cáo là ${dong(c.spend)}${parts.length > 1 ? ` (${parts.join(", ")})` : ""}${ds != null && Math.abs(ds) >= 0.005 ? `, ${ds > 0 ? "tăng" : "giảm"} ${pctAbs(ds)} so với kỳ trước` : ""}.`);
   if (c.leads != null) {

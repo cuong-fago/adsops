@@ -401,7 +401,7 @@ export const readGoogleTrendFn = createServerFn({ method: "POST" })
   .validator((data: unknown) => {
     const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
     const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
-    if (!/^[a-z0-9_]+$/.test(clientId) || clientId.startsWith("fb_") || clientId.startsWith("oa_")) throw new Error("Tài khoản Google không hợp lệ");
+    if (!/^[a-z0-9_]+$/.test(clientId) || clientId.startsWith("fb_") || clientId.startsWith("oa_") || clientId.startsWith("tt_")) throw new Error("Tài khoản Google không hợp lệ");
     return { clientId };
   })
   .middleware([principalMiddleware])
@@ -413,7 +413,7 @@ export const readGoogleTrendFn = createServerFn({ method: "POST" })
     return (await import("./google-trend.server.ts")).readTrend(data.clientId);
   });
 
-const trendIdOk = (s: string) => /^[a-z0-9_]+$/.test(s) && !s.startsWith("fb_") && !s.startsWith("oa_");
+const trendIdOk = (s: string) => /^[a-z0-9_]+$/.test(s) && !s.startsWith("fb_") && !s.startsWith("oa_") && !s.startsWith("tt_");
 async function assertTrendStaff(ctx: Parameters<typeof import("./permissions.server").assertAccount>[0], clientId: string) {
   const { assertAccount, ForbiddenError } = await import("./permissions.server");
   if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");

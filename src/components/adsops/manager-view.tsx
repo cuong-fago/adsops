@@ -27,6 +27,7 @@ function KpiTiles({ c, p, d }: { c: Kpis; p: Kpis; d: ManagerRead }) {
       <Tile label="Google" value={tr(c.spend.google)} sub={<Delta c={c.spend.google} p={p.spend.google} />} />
       <Tile label="Facebook" value={tr(c.spend.facebook)} sub={<Delta c={c.spend.facebook} p={p.spend.facebook} />} />
       {c.spend.chatgpt != null || p.spend.chatgpt != null ? <Tile label="ChatGPT Ads" value={tr(c.spend.chatgpt)} sub={<Delta c={c.spend.chatgpt} p={p.spend.chatgpt} />} /> : null}
+      {c.spend.tiktok != null || p.spend.tiktok != null ? <Tile label="TikTok Ads" value={tr(c.spend.tiktok ?? null)} sub={<Delta c={c.spend.tiktok ?? null} p={p.spend.tiktok ?? null} />} /> : null}
       <Tile label="Khách / TK đang chạy" value={`${c.active_clients} / ${c.active_accounts}`} sub={<span className="text-xs text-muted">kỳ trước {p.active_clients} / {p.active_accounts}</span>} hint="Có chi tiêu trong kỳ. Khách = nhóm trong Quản trị → Khách hàng (TK chưa gán nhóm tính riêng)." />
       <Tile label="Lead" value={n0(c.leads)} sub={<Delta c={c.leads} p={p.leads} />} hint="Google: chuyển đổi; Facebook: lead (không có thì tin nhắn); ChatGPT Ads: chuyển đổi mục tiêu (click + view)." />
       <Tile label="CPL blended" value={dong(c.cpl)} sub={<Delta c={c.cpl} p={p.cpl} lowerBetter />} hint="Tổng chi tiêu ÷ tổng lead (FB + Google)." />
@@ -82,7 +83,7 @@ export function ManagerView({ onOpenAccount }: { onOpenAccount?: (id: string) =>
   if (error) return <EmptyState title={error} />;
   if (!data) return <p className="px-1 py-16 text-center text-sm text-muted">Đang tính…</p>;
   const d = data;
-  const trend = d.trend.map((t) => ({ m: `${t.month.slice(5)}/${t.month.slice(2, 4)}`, Google: t.google, Facebook: t.facebook, "ChatGPT Ads": t.chatgpt }));
+  const trend = d.trend.map((t) => ({ m: `${t.month.slice(5)}/${t.month.slice(2, 4)}`, Google: t.google, Facebook: t.facebook, "ChatGPT Ads": t.chatgpt, "TikTok Ads": t.tiktok ?? null }));
   return (
     <div className="space-y-4">
       <Card className="p-4">
@@ -118,7 +119,7 @@ export function ManagerView({ onOpenAccount }: { onOpenAccount?: (id: string) =>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={trend}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="m" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${Math.round(v / 1e6)}tr`} width={44} />
                 <Tooltip formatter={(v: unknown) => (v == null ? "—" : dong(Number(v)))} /><Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Google" stackId="s" fill="#0891b2" /><Bar dataKey="Facebook" stackId="s" fill="#6366f1" /><Bar dataKey="ChatGPT Ads" stackId="s" fill="#10a37f" />
+                <Bar dataKey="Google" stackId="s" fill="#0891b2" /><Bar dataKey="Facebook" stackId="s" fill="#6366f1" /><Bar dataKey="ChatGPT Ads" stackId="s" fill="#10a37f" /><Bar dataKey="TikTok Ads" stackId="s" fill="#e11d48" />
               </BarChart>
             </ResponsiveContainer>
           </div>

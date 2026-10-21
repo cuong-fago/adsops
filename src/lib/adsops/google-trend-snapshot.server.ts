@@ -78,7 +78,7 @@ export async function readSnapshots(ids: string[]): Promise<Record<string, Trend
 
 /** Cron: Google accounts whose snapshot is missing or older than 20 h, oldest first, within a deadline. */
 export async function refreshSnapshots(ids: string[], deadline: number, n = 4) {
-  const google = ids.filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_"));
+  const google = ids.filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_") && !id.startsWith("tt_"));
   const sql = await getSql();
   const have = await sql.query<{ client_id: string; computed_at: unknown }>(`select client_id, computed_at from google_trend_snapshot where client_id = any($1::text[])`, [google]).catch(() => []);
   const at = new Map(have.map((h) => [h.client_id, Date.parse(h.computed_at instanceof Date ? h.computed_at.toISOString() : String(h.computed_at))]));

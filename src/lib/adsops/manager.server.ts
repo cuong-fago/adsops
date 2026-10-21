@@ -16,8 +16,9 @@ const TZ = "Asia/Ho_Chi_Minh";
 type Acc = { client_id: string; label: string; customer_id_dashed: string };
 const isFb = (id: string) => id.startsWith("fb_");
 const isOa = (id: string) => id.startsWith("oa_");
+const isTt = (id: string) => id.startsWith("tt_");
 /** Google = neither Facebook nor ChatGPT Ads. */
-const isG = (id: string) => !isFb(id) && !isOa(id);
+const isG = (id: string) => !isFb(id) && !isOa(id) && !isTt(id);
 const dmy = (s: string) => s.split("-").reverse().join("/");
 const daysIn = (m: string) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).getUTCDate(); };
 const mEnd = (m: string) => `${m}-${String(daysIn(m)).padStart(2, "0")}`;
@@ -101,15 +102,15 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
   const periodMonths = (() => { const out: string[] = []; let m = period.start.slice(0, 7); while (m <= period.end.slice(0, 7) && out.length < 24) { if (`${m}-01` >= period.start && mEnd(m) <= period.end) out.push(m); m = mAdd(m, 1); } return out; })();
   const entriesAll = await readEntries(ids, [...new Set([...periodMonths, ...lastFull, ...(() => { const o: string[] = []; let m = prev.start.slice(0, 7); while (m <= prev.end.slice(0, 7) && o.length < 24) { if (`${m}-01` >= prev.start && mEnd(m) <= prev.end) o.push(m); m = mAdd(m, 1); } return o; })()])]);
   const kpis = (s: string, e: string): Kpis => {
-    let g: Sum = { spend: null, leads: null }, f: Sum = { spend: null, leads: null }, o: Sum = { spend: null, leads: null };
+    let g: Sum = { spend: null, leads: null }, f: Sum = { spend: null, leads: null }, o: Sum = { spend: null, leads: null }, tk: Sum = { spend: null, leads: null };
     let act = 0;
     const activeGroups = new Set<string>();
     for (const id of ids) {
       const v = sumDays(days.get(id), s, e);
-      if (isFb(id)) f = addSum(f, v); else if (isOa(id)) o = addSum(o, v); else g = addSum(g, v);
+      if (isFb(id)) f = addSum(f, v); else if (isOa(id)) o = addSum(o, v); else if (isTt(id)) tk = addSum(tk, v); else g = addSum(g, v);
       if (v.spend && v.spend > 0) { act++; activeGroups.add(groupOf.get(id)?.key || id); }
     }
-    const t = addSum(addSum(g, f), o);
+    const t = addSum(addSum(addSum(g, f), o), tk);
     // Revenue: whole months inside [s, e] with an outcome entered.
     let rev: number | null = null, revSpend = 0, n = 0;
     let m = s.slice(0, 7);
@@ -122,7 +123,7 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
       revSpend += sumDays(days.get(id), `${mm}-01`, mEnd(mm)).spend || 0;
     }
     return {
-      spend: { total: t.spend, google: g.spend, facebook: f.spend, chatgpt: o.spend }, leads: t.leads, cpl: cplOf(t),
+      spend: { total: t.spend, google: g.spend, facebook: f.spend, chatgpt: o.spend, tiktok: tk.spend }, leads: t.leads, cpl: cplOf(t),
       active_accounts: act, active_clients: activeGroups.size,
       revenue: rev, roas: rev != null && revSpend > 0 ? rev / revSpend : null,
       revenue_basis: rev != null ? `${n} tài khoản-tháng đã nhập doanh thu` : months.length ? null : "Doanh thu nhập theo tháng: chỉ tính khi kỳ chứa trọn tháng.",
@@ -144,9 +145,9 @@ export async function readManager(accounts: Acc[], startIn: string | null, endIn
   }
 
   const trend = trendMonths.map((m) => {
-    let g: number | null = null, f: number | null = null, o: number | null = null;
-    for (const id of ids) { const v = sumDays(days.get(id), `${m}-01`, mEnd(m)).spend; if (v == null) continue; if (isFb(id)) f = (f || 0) + v; else if (isOa(id)) o = (o || 0) + v; else g = (g || 0) + v; }
-    return { month: m, google: g, facebook: f, chatgpt: o };
+    let g: number | null = null, f: number | null = null, o: number | null = null, tk: number | null = null;
+    for (const id of ids) { const v = sumDays(days.get(id), `${m}-01`, mEnd(m)).spend; if (v == null) continue; if (isFb(id)) f = (f || 0) + v; else if (isOa(id)) o = (o || 0) + v; else if (isTt(id)) tk = (tk || 0) + v; else g = (g || 0) + v; }
+    return { month: m, google: g, facebook: f, chatgpt: o, tiktok: tk };
   });
 
   const clientSpend: ClientSpend[] = [...groups.values()].map((gr) => {

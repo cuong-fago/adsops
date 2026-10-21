@@ -30,7 +30,8 @@ export type Day = { client_id: string; date: string; cost: number; conv: number 
 
 export async function dailySpend(ids: string[], from: string, to: string): Promise<Map<string, Day[]>> {
   const sql = await getSql();
-  const g = ids.filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_"));
+  const g = ids.filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_") && !id.startsWith("tt_"));
+  const t = ids.filter((id) => id.startsWith("tt_"));
   const f = ids.filter((id) => id.startsWith("fb_"));
   const o = ids.filter((id) => id.startsWith("oa_"));
   const out = new Map<string, Day[]>();
@@ -58,6 +59,15 @@ export async function dailySpend(ids: string[], from: string, to: string): Promi
       `select client_id, date, spend as cost, conversions as conv from openai_insights_daily
         where client_id = any($1::text[]) and level = 'account' and date between $2 and $3`,
       [o, from, to],
+    ).catch(() => []);
+    for (const r of rows) push({ client_id: r.client_id, date: iso(r.date)!, cost: Number(r.cost || 0), conv: r.conv == null ? null : Number(r.conv) });
+  }
+  if (t.length) {
+    // TikTok Ads: account-level daily rows; conversions = optimization-goal conversions, else instant-form leads.
+    const rows = await sql.query<{ client_id: string; date: unknown; cost: unknown; conv: unknown }>(
+      `select client_id, date, spend as cost, coalesce(conversions, leads) as conv from tiktok_insights_daily
+        where client_id = any($1::text[]) and level = 'account' and date between $2 and $3`,
+      [t, from, to],
     ).catch(() => []);
     for (const r of rows) push({ client_id: r.client_id, date: iso(r.date)!, cost: Number(r.cost || 0), conv: r.conv == null ? null : Number(r.conv) });
   }

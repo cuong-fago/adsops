@@ -30,6 +30,10 @@ export const recheckAccountFn = createServerFn({ method: "POST" })
     if (!(await acquireLock(`${data.clientId}:recheck`, 120))) {
       return { state: "cooldown", runway_ok: null, score_ok: null, error_vi: null };
     }
+    if (data.clientId.startsWith("tt_")) {
+      const m = await (await import("./tiktok-ads.server")).refreshTikTokAccount(data.clientId);
+      return { state: "done", runway_ok: m.ok, score_ok: null, error_vi: m.error_vi };
+    }
     if (data.clientId.startsWith("oa_")) {
       const m = await (await import("./openai-ads.server")).refreshOpenAIAccount(data.clientId);
       return { state: "done", runway_ok: m.ok, score_ok: null, error_vi: m.error_vi };
@@ -78,7 +82,8 @@ export const recheckSpend10Fn = createServerFn({ method: "POST" })
     const visible = data.clientIds.filter((id) => canSeeAccount(ctx, id));
     const fbIds = visible.filter((id) => id.startsWith("fb_"));
     const oaIds = visible.filter((id) => id.startsWith("oa_"));
-    const ids = visible.filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_"));
+    const ttIds = visible.filter((id) => id.startsWith("tt_"));
+    const ids = visible.filter((id) => !id.startsWith("fb_") && !id.startsWith("oa_") && !id.startsWith("tt_"));
     const { acquireLock } = await import("./warehouse.server");
     const fbOut = { checked: 0, failed: 0, skipped: 0 };
     const fbRun = (async () => {
@@ -94,6 +99,15 @@ export const recheckSpend10Fn = createServerFn({ method: "POST" })
         for (const id of oaIds) {
           if (!(await acquireLock(`${id}:recheck`, 120))) { fbOut.skipped += 1; continue; }
           const r = await refreshOpenAIAccount(id).catch(() => null);
+          if (r?.ok) fbOut.checked += 1; else fbOut.failed += 1;
+        }
+      }
+      // TikTok Ads accounts too (read-only GET pull).
+      if (ttIds.length) {
+        const { refreshTikTokAccount } = await import("./tiktok-ads.server");
+        for (const id of ttIds) {
+          if (!(await acquireLock(`${id}:recheck`, 120))) { fbOut.skipped += 1; continue; }
+          const r = await refreshTikTokAccount(id).catch(() => null);
           if (r?.ok) fbOut.checked += 1; else fbOut.failed += 1;
         }
       }

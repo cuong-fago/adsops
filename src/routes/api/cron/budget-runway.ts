@@ -47,12 +47,16 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const openaiRun = (await import("@/lib/adsops/openai-ads.server"))
     .refreshAllOpenAI(started + SPEND_MS)
     .catch((e: unknown) => ({ accounts: 0, done: 0, errors: [e instanceof Error ? e.message : String(e)] }));
+  // TikTok Ads: structure + 35-day insights per connected advertiser (read-only GET).
+  const tiktokRun = (await import("@/lib/adsops/tiktok-ads.server"))
+    .refreshAllTikTok(started + SPEND_MS)
+    .catch((e: unknown) => ({ accounts: 0, done: 0, errors: [e instanceof Error ? e.message : String(e)], configured: false }));
   // Scheduled client reports: insert DRAFT placeholders only (a few SQL statements); data is built
   // lazily when staff open the draft. Never sends anything to clients.
   const reportDrafts = await (await import("@/lib/adsops/client-report.server")).ensureScheduledDrafts().catch((e: unknown) => ({ created: 0, error: e instanceof Error ? e.message : String(e) }));
   const { resolveAdsConfig } = await import("@/lib/adsops/google-ads.server");
   const cfg = await resolveAdsConfig();
-  if (!cfg.ready) return Response.json({ ok: false, error: "google ads not configured", meta: await metaRun, openai: await openaiRun }, { status: 503, headers });
+  if (!cfg.ready) return Response.json({ ok: false, error: "google ads not configured", meta: await metaRun, openai: await openaiRun, tiktok: await tiktokRun }, { status: 503, headers });
 
   // Once a day: customer_client.status for every MCC (read-only, one query per MCC).
   const { refreshMccStatusIfStale } = await import("@/lib/adsops/account-activity.server");
@@ -98,11 +102,13 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   await Promise.all([runwayLoop, scoreWorker(), scoreWorker(), scoreWorker(), scoreWorker()]);
   const meta = await metaRun;
   const openai = await openaiRun;
+  const tiktok = await tiktokRun;
   return Response.json(
     {
       ok: true,
       meta,
       openai,
+      tiktok,
       report_drafts: reportDrafts,
       total: queue.length,
       active: runwayQueue.length,

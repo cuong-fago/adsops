@@ -34,6 +34,7 @@ import { cn } from "@/lib/cn";
 import { GoogleAdsAdminCard } from "./google-ads-admin-card";
 import { MetaAdminCard } from "./meta-admin-card";
 import { OpenAIAdminCard } from "./openai-admin-card";
+import { TikTokAdminCard } from "./tiktok-admin-card";
 
 type Caps = { grant?: boolean; requestGrant?: boolean };
 
@@ -59,6 +60,7 @@ export function PermissionsPanel({ caps, readOnly }: { caps: Caps; readOnly?: bo
         <GoogleAdsAdminCard readOnly={false} />
         <MetaAdminCard />
         <OpenAIAdminCard />
+        <TikTokAdminCard />
         <AdminPermissions />
       </div>
     );
