@@ -24,7 +24,7 @@ export function window() {
   return { today, cur, months, start: `${months[0]}-01`, elapsed: Number(today.slice(8, 10)) };
 }
 
-export async function cached<T>(clientId: string, level: string, start: string, end: string, load: () => Promise<T>): Promise<{ v: T; at: string }> {
+export async function cached<T>(clientId: string, level: string, start: string, end: string, load: () => Promise<T>, ttlMs = 6 * 3600_000): Promise<{ v: T; at: string }> {
   const sql = await getSql();
   const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
   const parse = (p: unknown) => (typeof p === "string" ? JSON.parse(p) : p) as T;
@@ -32,7 +32,7 @@ export async function cached<T>(clientId: string, level: string, start: string, 
     `select payload, fetched_at from google_share_cache where client_id = $1 and level = $2 and start_date = $3 and end_date = $4`,
     [clientId, level, start, end],
   ).catch(() => []);
-  if (hit.length && Date.now() - Date.parse(iso(hit[0].fetched_at)) < 6 * 3600_000) return { v: parse(hit[0].payload), at: iso(hit[0].fetched_at) };
+  if (hit.length && Date.now() - Date.parse(iso(hit[0].fetched_at)) < ttlMs) return { v: parse(hit[0].payload), at: iso(hit[0].fetched_at) };
   try {
     const v = await load();
     await sql.query(

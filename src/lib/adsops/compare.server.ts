@@ -8,7 +8,7 @@ import { mAdd } from "./google-trend.server.ts";
 import { window } from "./google-trend-tree.server.ts";
 import { readThresholds } from "./needs-action.server.ts";
 import { CONV_GROUPS, type ConvGroup } from "./google-conv-groups.ts";
-import { derive, groupLevel, type CompareGroup, type ComparePeriod, type ComparePlatform, type CompareRead, type CompareRow, type Raw } from "./compare.types.ts";
+import { derive, groupLevel, monthList, type CompareGroup, type ComparePeriod, type ComparePlatform, type CompareRange, type CompareRead, type CompareRow, type Raw } from "./compare.types.ts";
 
 const iso = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString() : String(v));
 export const platformOf = (id: string): ComparePlatform | null => (id.startsWith("fb_") ? "facebook" : id.startsWith("tt_") ? "tiktok" : id.startsWith("oa_") ? null : "google");
@@ -83,9 +83,67 @@ export async function computeGoogleCompare(clientId: string): Promise<{ ok: bool
   }
 }
 
-export function periodMonths(p: ComparePeriod): string[] {
+export function periodMonths(p: ComparePeriod, range?: CompareRange | null): string[] {
   const w = window();
+  if (p === "months" && range) return monthList(range.from, range.to);
   return p === "this_month" ? [w.cur] : p === "last_month" ? [mAdd(w.cur, -1)] : [...w.months];
+}
+
+type MRow = { client_id: string; month: string; channel: string; conv_group: string; clicks: number | null; cost: number | null; conversions: number | null };
+const DAY = "_d"; // pseudo month for a live day range
+
+/**
+ * Live day range for one Google account (read-only GAQL SELECT, segments.date BETWEEN): campaign type totals +
+ * primary conversions per conversion action mapped to groups (#87). Cached 1 h per account × range.
+ */
+async function liveDayRows(clientId: string, start: string, end: string): Promise<MRow[]> {
+  const { cached } = await import("./google-trend-tree.server.ts");
+  const { resolveAdsConfig } = await import("./google-ads.server.ts");
+  const { asRec, customerIdFor, searchLeaf } = await import("./warehouse.server.ts");
+  const { num } = await import("./google-trend.server.ts");
+  const customerId = customerIdFor(clientId);
+  if (customerId.length !== 10) throw new Error("Không phải tài khoản Google.");
+  const CH: Record<string, string> = { SEARCH: "search", PERFORMANCE_MAX: "pmax", SHOPPING: "shopping", VIDEO: "video", DISPLAY: "display", DEMAND_GEN: "demand_gen", DISCOVERY: "demand_gen" };
+  type V = { all: Array<[string, number, number, number]>; conv: Array<[string, string, number]> | null };
+  const { v } = await cached<V>(clientId, "compare_days", start, end, async () => {
+    const cfg = await resolveAdsConfig();
+    if (!cfg.ready) throw new Error("Chưa cấu hình Google Ads API.");
+    const range = `segments.date BETWEEN '${start}' AND '${end}'`;
+    const rows = await searchLeaf(cfg, customerId, `SELECT campaign.id, campaign.advertising_channel_type, metrics.clicks, metrics.conversions, metrics.cost_micros FROM campaign WHERE ${range}`);
+    const camp = new Map<string, string>();
+    const by = new Map<string, [number, number, number]>();
+    for (const r of rows) {
+      const c = asRec(r.campaign), x = asRec(r.metrics);
+      const ch = CH[String(c.advertisingChannelType ?? "")] || "other";
+      camp.set(String(c.id ?? ""), ch);
+      const p = by.get(ch) || [0, 0, 0];
+      by.set(ch, [p[0] + (num(x.clicks) || 0), p[1] + (num(x.costMicros) || 0) / 1_000_000, p[2] + (num(x.conversions) || 0)]);
+    }
+    let conv: V["conv"] = null;
+    try {
+      const cr = await searchLeaf(cfg, customerId, `SELECT campaign.id, segments.conversion_action, metrics.conversions FROM campaign WHERE ${range} AND metrics.conversions > 0`);
+      conv = [];
+      for (const r of cr) {
+        const id = String(asRec(r.campaign).id ?? "");
+        const a = /conversionActions\/(\d+)/.exec(String(asRec(r.segments).conversionAction || ""))?.[1];
+        const n = num(asRec(r.metrics).conversions) || 0;
+        if (a && n) conv.push([camp.get(id) || "other", a, n]);
+      }
+    } catch { /* groups optional */ }
+    return { all: [...by.entries()].map(([ch, [c, s, v2]]) => [ch, c, s, v2] as [string, number, number, number]), conv };
+  }, 3600_000);
+  const out: MRow[] = v.all.map(([channel, clicks, cost, conversions]) => ({ client_id: clientId, month: DAY, channel, conv_group: "_all", clicks, cost, conversions }));
+  if (v.conv) {
+    const { readConvActions } = await import("./google-conv-groups.server.ts");
+    const acts = await readConvActions(clientId, false);
+    if (!acts.error) {
+      const gOf = new Map(acts.actions.map((a) => [a.id, a.group as string]));
+      const sum = new Map<string, number>();
+      for (const [ch, a, n] of v.conv) { const k = `${ch}|${gOf.get(a) || "other"}`; sum.set(k, (sum.get(k) || 0) + n); }
+      for (const [channel] of v.all) for (const g of CONV_GROUPS) out.push({ client_id: clientId, month: DAY, channel, conv_group: g, clicks: null, cost: null, conversions: sum.get(`${channel}|${g}`) || 0 });
+    }
+  }
+  return out;
 }
 
 // ── groups ────────────────────────────────────────────────────────────────────
@@ -140,20 +198,40 @@ export async function removeMember(id: number, clientId: string) {
 // ── comparison ────────────────────────────────────────────────────────────────
 export async function readCompare(opts: {
   group: { id: number; name: string; personal?: boolean } | null; custom?: boolean; accounts: Array<{ client_id: string; label: string; customer_id_dashed: string | null }>;
-  period: ComparePeriod; channels: string[]; convGroups: string[]; canManage: boolean; canCompute: boolean;
+  period: ComparePeriod; range?: CompareRange | null; channels: string[]; convGroups: string[]; canManage: boolean; canCompute: boolean;
 }): Promise<CompareRead> {
   const th = await readThresholds();
   const w = window();
-  const months = periodMonths(opts.period);
+  const days = opts.period === "days" && opts.range ? opts.range : null;
+  const months = days ? [DAY] : periodMonths(opts.period, opts.range);
   const trendMonths = [...w.months];
   const ids = opts.accounts.map((a) => a.client_id);
   const sql = await getSql();
-  const want = [...new Set([...months, ...trendMonths])];
-  const rows = ids.length ? await sql.query<{ client_id: string; month: string; channel: string; conv_group: string; clicks: number | null; cost: number | null; conversions: number | null }>(
+  const want = [...new Set([...months.filter((m) => m !== DAY), ...trendMonths])];
+  const rows: MRow[] = ids.length ? await sql.query<MRow>(
     `select client_id, month, channel, conv_group, clicks, cost, conversions from compare_monthly where client_id = any($1::text[]) and month = any($2::text[])`, [ids, want]).catch(() => []) : [];
   const st = ids.length ? await sql.query<{ client_id: string; conv_ok: boolean; error: string | null; computed_at: unknown }>(
     `select client_id, conv_ok, error, computed_at from compare_state where client_id = any($1::text[])`, [ids]).catch(() => []) : [];
-  const stBy = new Map(st.map((s) => [s.client_id, s]));
+  const stBy = new Map<string, { client_id: string; conv_ok: boolean; error: string | null; computed_at: unknown }>(st.map((s) => [s.client_id, s]));
+  // Day range: live per account (only accounts already scope-filtered by the caller), 4 at a time, ~50 s budget.
+  const liveErr = new Map<string, string>();
+  if (days) {
+    const deadline = Date.now() + 50_000;
+    let next = 0;
+    const worker = async () => {
+      while (next < ids.length) {
+        const id = ids[next++];
+        if (Date.now() > deadline) { liveErr.set(id, "Hết thời gian tải, thử lại."); continue; }
+        try {
+          const rs = await liveDayRows(id, days.from, days.to);
+          rows.push(...rs);
+          const prev = stBy.get(id);
+          stBy.set(id, { client_id: id, conv_ok: rs.some((r) => r.conv_group !== "_all"), error: null, computed_at: prev?.computed_at ?? null });
+        } catch (e) { liveErr.set(id, e instanceof Error ? e.message : String(e)); }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, ids.length) }, worker));
+  }
   const chans = new Set<string>();
   for (const r of rows) chans.add(r.channel);
   const chOk = (c: string) => !opts.channels.length || opts.channels.includes(c);
@@ -173,20 +251,29 @@ export async function readCompare(opts: {
     if (!any) return { clicks: null, cost: null, conversions: null, any: false };
     return { clicks, cost, conversions: convAny || !useGroups ? conv : null, any: true };
   };
+  const present = new Map<string, Set<string>>();
+  for (const r of rows) if (r.conv_group === "_all") (present.get(r.client_id) || present.set(r.client_id, new Set()).get(r.client_id)!).add(r.month);
+  const mL = (m: string) => `T${Number(m.slice(5))}/${m.slice(2, 4)}`;
   const out: CompareRow[] = opts.accounts.map((a) => {
+    // Sums of spend / clicks / conversions over the range; ratios are derived from the sums (never averaged).
     const r = agg(a.client_id, months);
     const m = derive(r);
     const s = stBy.get(a.client_id);
+    const have = present.get(a.client_id) || new Set<string>();
+    const lack = days ? [] : months.filter((mo) => !have.has(mo));
+    const note = days ? liveErr.get(a.client_id) || null : lack.length && lack.length < months.length ? `Thiếu số ${lack.map(mL).join(", ")}` : null;
     return {
       client_id: a.client_id, platform: platformOf(a.client_id) || "google", label: a.label, customer_id_dashed: a.customer_id_dashed,
       m, has_data: r.any, low_data: r.any && ((r.conversions ?? 0) < th.conv || (r.clicks ?? 0) < th.clicks),
-      computed_at: iso(s?.computed_at), error: s?.error || null,
+      computed_at: iso(s?.computed_at), error: days ? liveErr.get(a.client_id) || null : s?.error || null, note,
       trend: trendMonths.map((mo) => ({ month: mo, m: derive(agg(a.client_id, [mo])) })),
     };
   });
   const gl = groupLevel(out);
   return {
-    group: opts.group, custom: opts.custom || false, period: opts.period, months, trend_months: trendMonths, rows: out, median: gl.median, weighted: gl.weighted,
+    group: opts.group, custom: opts.custom || false, period: opts.period, months: days ? [] : months, trend_months: trendMonths,
+    range: opts.range || null, fetched_at: days ? new Date().toISOString() : null,
+    period_note: days ? `Số liệu trực tiếp từ Google Ads (chỉ đọc), lưu đệm 1 giờ.` : opts.period === "months" ? `Chỉ có số liệu tháng đã tính sẵn (${[...w.months, w.cur].map(mL).join(", ")}); tháng khác hiện “-”.` : null, rows: out, median: gl.median, weighted: gl.weighted,
     thresholds: { conv: th.conv, clicks: th.clicks }, channels: [...chans].sort(), can_manage: opts.canManage, can_compute: opts.canCompute, conv_note: convNote,
   };
 }

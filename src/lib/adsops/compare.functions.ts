@@ -6,7 +6,7 @@ export type { CompareGroup, ComparePeriod, CompareRead, CompareRow, GroupSuggest
 
 type Ctx = import("./permissions.server").AccessContext;
 const rec = (d: unknown) => (d && typeof d === "object" ? d : {}) as Record<string, unknown>;
-const PERIODS: ComparePeriod[] = ["this_month", "last_month", "last3"];
+const PERIODS: ComparePeriod[] = ["this_month", "last_month", "last3", "months", "days"];
 
 async function staffOnly(ctx: Ctx) {
   const { ForbiddenError } = await import("./permissions.server");
@@ -55,7 +55,22 @@ export const readCompareFn = createServerFn({ method: "POST" })
     const period = PERIODS.includes(d.period as ComparePeriod) ? (d.period as ComparePeriod) : "last_month";
     const arr = (x: unknown) => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string" && /^[a-z_]{1,20}$/.test(s)).slice(0, 20) : []);
     const clientIds = Array.isArray(d.clientIds) ? d.clientIds.filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(s)).slice(0, 60) : null;
-    return { groupId: Number.isInteger(groupId) && groupId > 0 ? groupId : 0, period, channels: arr(d.channels), convGroups: arr(d.convGroups), clientIds };
+    let range: { from: string; to: string } | null = null;
+    const from = typeof d.from === "string" ? d.from : "", to = typeof d.to === "string" ? d.to : "";
+    if (period === "months") {
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(from) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(to) || from > to) throw new Error("Khoảng tháng không hợp lệ.");
+      const n = (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5)) - Number(from.slice(5)) + 1;
+      if (n > 12) throw new Error("Tối đa 12 tháng.");
+      range = { from, to };
+    } else if (period === "days") {
+      const ok = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+      if (!ok(from) || !ok(to) || from > to) throw new Error("Khoảng ngày không hợp lệ.");
+      const n = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+      if (n > 366) throw new Error("Tối đa khoảng 1 năm (366 ngày).");
+      range = { from, to };
+    }
+    if (period === "days" && clientIds && clientIds.length > 60) throw new Error("Tối đa 60 tài khoản.");
+    return { groupId: Number.isInteger(groupId) && groupId > 0 ? groupId : 0, period, range, channels: arr(d.channels), convGroups: arr(d.convGroups), clientIds };
   })
   .middleware([principalMiddleware])
   .handler(async ({ context, data }): Promise<CompareRead> => {
@@ -73,7 +88,7 @@ export const readCompareFn = createServerFn({ method: "POST" })
     return srv.readCompare({
       group: g ? { id: g.id, name: g.name, personal: g.personal } : null, custom,
       accounts: members.map((c) => ({ client_id: c.client_id, label: label(c), customer_id_dashed: c.customer_id_dashed || null })),
-      period: data.period, channels: data.channels, convGroups: data.convGroups, canManage: canManage(ctx), canCompute: canCompute(ctx),
+      period: data.period, range: data.range, channels: data.channels, convGroups: data.convGroups, canManage: canManage(ctx), canCompute: canCompute(ctx),
     });
   });
 

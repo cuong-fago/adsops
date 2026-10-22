@@ -1,8 +1,20 @@
 /** "So sánh tài khoản" types + pure helpers (shared by server and UI; JSON-safe). Missing = null, never 0. */
 export type ComparePlatform = "google" | "facebook" | "tiktok";
 export type CompareGroup = { id: number; name: string; members: string[]; hidden_count: number; personal: boolean };
-export type ComparePeriod = "this_month" | "last_month" | "last3";
-export const PERIOD_LABEL: Record<ComparePeriod, string> = { this_month: "Tháng này", last_month: "Tháng trước", last3: "3 tháng đủ gần nhất" };
+export type ComparePeriod = "this_month" | "last_month" | "last3" | "months" | "days";
+export const PERIOD_LABEL: Record<ComparePeriod, string> = { this_month: "Tháng này", last_month: "Tháng trước", last3: "3 tháng đủ gần nhất", months: "Tuỳ chọn tháng", days: "Tuỳ chọn ngày" };
+/** Custom range: months "YYYY-MM" (precomputed) or days "YYYY-MM-DD" (live, read-only). */
+export type CompareRange = { from: string; to: string };
+export const MAX_MONTHS = 12;
+export const MAX_DAYS = 366;
+export function monthList(from: string, to: string): string[] {
+  const out: string[] = [];
+  let [y, m] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  while ((y < ty || (y === ty && m <= tm)) && out.length <= MAX_MONTHS) { out.push(`${y}-${String(m).padStart(2, "0")}`); m += 1; if (m > 12) { m = 1; y += 1; } }
+  return out;
+}
+export const dayCount = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
 export type MetricKey = "spend" | "clicks" | "cpc" | "conversions" | "cpa" | "cr";
 export const METRICS: MetricKey[] = ["spend", "clicks", "cpc", "conversions", "cpa", "cr"];
 export const METRIC_LABEL: Record<MetricKey, string> = { spend: "Chi tiêu", clicks: "Click", cpc: "CPC", conversions: "Chuyển đổi", cpa: "Chi phí / chuyển đổi", cr: "CR" };
@@ -15,11 +27,14 @@ export type Raw = { clicks: number | null; cost: number | null; conversions: num
 export type CompareRow = {
   client_id: string; platform: ComparePlatform; label: string; customer_id_dashed: string | null;
   m: Metrics; low_data: boolean; has_data: boolean; computed_at: string | null; error: string | null;
+  /** e.g. "Thiếu số T7/26" (month range) or a live-fetch error (day range). */
+  note?: string | null;
   /** 3 full months, oldest first: per-month metrics for the trend chart. */
   trend: Array<{ month: string; m: Metrics }>;
 };
 export type CompareRead = {
   group: { id: number; name: string; personal?: boolean } | null; custom?: boolean; period: ComparePeriod; months: string[]; trend_months: string[];
+  range?: CompareRange | null; period_note?: string | null; fetched_at?: string | null;
   rows: CompareRow[]; median: Metrics; weighted: Metrics; thresholds: { conv: number; clicks: number };
   channels: string[]; can_manage: boolean; can_compute: boolean; conv_note: string | null;
 };
