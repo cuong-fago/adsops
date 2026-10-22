@@ -35,6 +35,7 @@ import { AccountPicker } from "@/components/adsops/account-picker";
 import { BrandMark } from "@/components/adsops/brand";
 import { NavBar, type NavEntry, type NavItem } from "@/components/adsops/nav-bar";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
+import { GoogleAdsLink } from "@/components/adsops/google-ads-link-ui";
 import { AccountsOverview } from "@/components/adsops/accounts-overview";
 import { BUDGET_CARD_ID, BudgetRunwayCard, BudgetStrip } from "@/components/adsops/budget-runway-card";
 import { RecheckButton } from "@/components/adsops/recheck-button";
@@ -1194,6 +1195,9 @@ export function AdsOpsApp() {
                 {mcc.mcc_display_name} · {adsCount}/{accessible} tài khoản
                 {mcc.roster_complete ? " đã kéo từ MCC" : " — chưa kéo đủ danh sách MCC"}
               </p>
+            ) : null}
+            {client && access?.kind === "staff" ? (
+              <GoogleAdsLink clientId={client.client_id} cid={client.customer_id_dashed} isAdmin={Boolean(access.real_is_admin && !access.read_only && access.role === "admin")} className="mt-1 block" />
             ) : null}
             <p className="mt-1 text-xs text-subtle">
               {viewer
