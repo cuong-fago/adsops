@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpRight, RefreshCw } from "lucide-react";
 import { TrendBadge } from "@/components/adsops/google-trend-snapshot-ui";
 import { readTrendSnapshotsFn, recomputeTrendFn } from "@/lib/adsops/connect.functions";
 import type { TrendSnapshot } from "@/lib/adsops/google-trend-snapshot.types";
@@ -131,13 +131,37 @@ const TILE_LABEL: Record<TileId, string> = {
   trend: "Xu hướng 3T xấu đi",
 };
 
-export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin }: { onOpenAccount: (clientId: string) => void; selectedClientId?: string; isAdmin?: boolean }) {
+/** Where a click in the overview should land. */
+export type OverviewTarget = "detail" | "trend" | "changelog";
+/** Overview filters + scroll, kept for "← Quay lại tổng quan" (per browser tab). */
+export const OVERVIEW_STATE_KEY = "adsops.overview.state";
+type SavedState = { tile: TileId; sort: { key: SortKey; dir: 1 | -1 }; scopeAll: boolean; tableTop: number; tableLeft: number; winY: number };
+function readSaved(): SavedState | null {
+  try { const s = sessionStorage.getItem(OVERVIEW_STATE_KEY); return s ? (JSON.parse(s) as SavedState) : null; } catch { return null; }
+}
+/** Native ads UI link (opens in a new tab; read-only navigation). TikTok: no reliable per-account deep link, so none. */
+function nativeUrl(r: { client_id: string; customer_id_dashed?: string | null }): { url: string; label: string } | null {
+  const id = r.client_id;
+  if (id.startsWith("fb_")) {
+    const n = id.slice(3).replace(/^act_/, "");
+    return /^\d+$/.test(n) ? { url: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${n}`, label: "Mở trong Meta Ads Manager" } : null;
+  }
+  if (id.startsWith("oa_") || id.startsWith("tt_")) return null;
+  const cid = (r.customer_id_dashed || id).replace(/\D/g, "");
+  if (!/^\d{10}$/.test(cid)) return null;
+  // Same form Google uses in its own account dashboard links: picks the right login, then the account overview.
+  return { url: `https://ads.google.com/um/identity?dst=${encodeURIComponent(`/aw/overview?__e=${cid}`)}`, label: "Mở trong Google Ads" };
+}
+
+export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, canChangeLog }: { onOpenAccount: (clientId: string, target?: OverviewTarget) => void; selectedClientId?: string; isAdmin?: boolean; canChangeLog?: boolean }) {
+  const saved = useRef<SavedState | null>(typeof window === "undefined" ? null : readSaved());
+  const tableRef = useRef<HTMLDivElement | null>(null);
   const [rows, setRows] = useState<OverviewRow[] | null>(null);
   const [error, setError] = useState("");
   // Summary tile filter; "Cần xử lý" checkbox is the "action" tile.
-  const [tile, setTile] = useState<TileId>("all");
+  const [tile, setTile] = useState<TileId>(saved.current?.tile || "all");
   const onlyRed = tile === "action";
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "urgency", dir: -1 });
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>(saved.current?.sort || { key: "urgency", dir: -1 });
   const [epoch, setEpoch] = useState(0);
   const [pace, setPace] = useState<Record<string, PacingRow>>({});
   PACE = pace;
@@ -176,7 +200,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin }: {
   const act = useActiveFilter(rows, (r) => r.client_id);
   // Scope: all accounts, or the picker's account after the user changes it here.
   // All accounts by default (each time the tab opens); only an actual picker change while here scopes to one account.
-  const [scopeAll, setScopeAll] = useState(true);
+  const [scopeAll, setScopeAll] = useState(saved.current ? saved.current.scopeAll : true);
   const prevSel = useRef(selectedClientId);
   useEffect(() => {
     if (prevSel.current !== selectedClientId) {
@@ -338,6 +362,31 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin }: {
       trend: list.filter(TILE_PRED.trend).length,
     };
   }, [base, pace, trend]);
+
+  // Restore scroll once rows are on screen (after "← Quay lại tổng quan"), then forget it.
+  const restored = useRef(false);
+  useEffect(() => {
+    const s = saved.current;
+    if (!rows || restored.current || !s) return;
+    restored.current = true;
+    requestAnimationFrame(() => {
+      if (tableRef.current) { tableRef.current.scrollTop = s.tableTop; tableRef.current.scrollLeft = s.tableLeft; }
+      window.scrollTo({ top: s.winY });
+    });
+    try { sessionStorage.removeItem(OVERVIEW_STATE_KEY); } catch { /* ignore */ }
+  }, [rows]);
+  function open(id: string, target: OverviewTarget = "detail") {
+    try {
+      const st: SavedState = { tile, sort, scopeAll, tableTop: tableRef.current?.scrollTop || 0, tableLeft: tableRef.current?.scrollLeft || 0, winY: window.scrollY };
+      sessionStorage.setItem(OVERVIEW_STATE_KEY, JSON.stringify(st));
+    } catch { /* private mode: back still works, without filters */ }
+    onOpenAccount(id, target);
+  }
+  const clickCell = (id: string, target: OverviewTarget, title: string) => ({
+    onClick: (e: React.MouseEvent) => { if ((e.target as HTMLElement).closest("button,a,input")) return; open(id, target); },
+    title,
+    className: "cursor-pointer hover:bg-row-hover",
+  });
 
   function pickTile(id: TileId) {
     const next = id === tile || id === "all" ? "all" : id;
@@ -549,7 +598,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin }: {
             </button>
           </div>
         ) : null}
-        <div className="relative max-h-[70vh] overflow-auto rounded-lg border border-line">
+        <div ref={tableRef} className="relative max-h-[70vh] overflow-auto rounded-lg border border-line">
           <table className="min-w-full border-separate border-spacing-0 text-sm">
             <thead>
               <tr>
@@ -576,23 +625,33 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin }: {
                 return (
                   <tr key={r.client_id}>
                     <td className={cn(nameTd, riskBarClass(rowRisk(r)))}>
-                      <button
-                        type="button"
-                        onClick={() => onOpenAccount(r.client_id)}
-                        className="line-clamp-3 text-left font-medium text-ink hover:text-accent hover:underline [overflow-wrap:anywhere]"
-                        title={[r.label, r.customer_id_dashed].filter(Boolean).join(" · ")}
-                      >
-                        {r.label}
-                      </button>
+                      <span className="flex items-start gap-1">
+                        <button
+                          type="button"
+                          onClick={() => open(r.client_id)}
+                          className="line-clamp-3 cursor-pointer text-left font-medium text-ink hover:text-accent hover:underline [overflow-wrap:anywhere]"
+                          title={`Mở chi tiết: ${[r.label, r.customer_id_dashed].filter(Boolean).join(" · ")}`}
+                        >
+                          {r.label}
+                        </button>
+                        {(() => {
+                          const n = nativeUrl(r);
+                          return n ? (
+                            <a href={n.url} target="_blank" rel="noopener noreferrer" title={`${n.label} (tab mới)`} aria-label={n.label} className="mt-0.5 shrink-0 text-muted hover:text-accent">
+                              <ArrowUpRight className="size-3.5" />
+                            </a>
+                          ) : null;
+                        })()}
+                      </span>
                       <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{r.customer_id_dashed}</span>
                       <InactiveBadge activity={act.map?.[r.client_id]} />
                     </td>
-                    <td className={td}>{budgetCell(r)}</td>
+                    {(() => { const c = clickCell(r.client_id, "detail", "Mở chi tiết tài khoản"); return <td {...c} className={cn(td, c.className)}>{budgetCell(r)}</td>; })()}
                     <td className={td}>{scoreCell(r)}</td>
-                    <td className={td}>{optCell(r)}</td>
+                    {(() => { const c = clickCell(r.client_id, canChangeLog ? "changelog" : "detail", canChangeLog ? "Mở Nhật ký tối ưu của tài khoản" : "Mở chi tiết tài khoản"); return <td {...c} className={cn(td, c.className)}>{optCell(r)}</td>; })()}
                     <td className={td}>{pace[r.client_id] ? <PaceBadge r={pace[r.client_id]} /> : "—"}</td>
                     {trend ? (
-                      <td className={cn(td, "text-sm")}>
+                      <td {...(r.client_id.startsWith("fb_") || r.client_id.startsWith("oa_") || r.client_id.startsWith("tt_") ? {} : clickCell(r.client_id, "trend", "Mở thẻ Xu hướng 3 tháng của tài khoản"))} className={cn(td, "text-sm", !(r.client_id.startsWith("fb_") || r.client_id.startsWith("oa_") || r.client_id.startsWith("tt_")) && "cursor-pointer hover:bg-row-hover")}>
                         {r.client_id.startsWith("fb_") || r.client_id.startsWith("oa_") || r.client_id.startsWith("tt_") ? <span className="text-subtle">-</span> : (
                           <span className="inline-flex items-center gap-1">
                             <TrendBadge s={trend[r.client_id]} />

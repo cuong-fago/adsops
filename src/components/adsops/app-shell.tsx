@@ -256,6 +256,8 @@ export function AdsOpsApp() {
   const clientIdRef = useRef("");
   clientIdRef.current = clientId;
   const [tab, setTab] = useState<TabId>("final");
+  // Tab opened from "Tổng quan tài khoản": shows "← Quay lại tổng quan" while the user stays on it.
+  const [backTab, setBackTab] = useState<TabId | null>(null);
   /** Cảnh báo Facebook → "Xem dòng": account + row to open in the FB tab. */
   const [metaFocus, setMetaFocus] = useState<MetaFocus | null>(null);
   /** Bumped by "Kiểm tra lại" so the budget / score pills re-read the stored result. */
@@ -282,6 +284,7 @@ export function AdsOpsApp() {
   const canPull = Boolean(caps?.pull && !access?.read_only);
   const canInstall = Boolean(access?.real_is_admin && !access?.read_only);
   const shownTab: TabId = access && !tabAllowed(access, tab) ? "report" : tab;
+  useEffect(() => { if (backTab && shownTab !== backTab) setBackTab(null); }, [shownTab, backTab]);
   // "Có báo cáo nháp cần duyệt": draft count badge (report staff only; 0 for everyone else).
   const [reportDrafts, setReportDrafts] = useState(0);
   const reportStaff = Boolean(access && tabAllowed(access, "creports"));
@@ -769,11 +772,18 @@ export function AdsOpsApp() {
         <AccountsOverview
           selectedClientId={clientId}
           isAdmin={access.kind === "staff" && access.role === "admin" && !access.read_only}
-          onOpenAccount={(id) => {
+          canChangeLog={tabAllowed(access, "changelog")}
+          onOpenAccount={(id, target) => {
+            // Only accounts in this user's (server-filtered) list can be opened.
+            if (!clients.some((c) => c.client_id === id)) return;
             setClientId(id);
             setAliasDraft(null);
             setAliasMsg("");
-            goTab(tabAllowed(access, "analytics") ? "analytics" : "alerts");
+            const next: TabId = target === "changelog" && tabAllowed(access, "changelog") ? "changelog" : tabAllowed(access, "analytics") ? "analytics" : "alerts";
+            setBackTab(next);
+            goTab(next);
+            if (target === "trend" && next === "analytics") scrollWhenReady(TREND_CARD_ID);
+            else window.scrollTo({ top: 0 });
           }}
         />
       );
@@ -1248,6 +1258,13 @@ export function AdsOpsApp() {
             ))}
           </div>
         )}
+        {backTab && shownTab === backTab && tabAllowed(access, "overview") ? (
+          <div className="mb-3">
+            <button type="button" onClick={() => { setBackTab(null); goTab("overview"); }} className="inline-flex h-8 items-center gap-1 rounded-md border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset">
+              ← Quay lại tổng quan
+            </button>
+          </div>
+        ) : null}
         {body}
       </main>
     </div>
