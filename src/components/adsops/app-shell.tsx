@@ -775,7 +775,7 @@ export function AdsOpsApp() {
     if (shownTab === "members")
       return <PermissionsPanel caps={access.caps} readOnly={access.read_only} />;
     if (shownTab === "invoices") {
-      return <GoogleInvoicesView />;
+      return <GoogleInvoicesView selectedClientId={clientId} />;
     }
     if (!clients.length) {
       return (

@@ -27,7 +27,7 @@ const card = "rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5";
 const th = "px-2 py-1.5 text-left font-medium text-muted whitespace-nowrap";
 const td = "px-2 py-1.5 whitespace-nowrap";
 
-export function GoogleInvoicesView() {
+export function GoogleInvoicesView({ selectedClientId = "" }: { selectedClientId?: string }) {
   const [month, setMonth] = useState(thisMonth());
   const [data, setData] = useState<Read | null>(null);
   const [err, setErr] = useState("");
@@ -65,8 +65,8 @@ export function GoogleInvoicesView() {
         </div>
       </section>
 
-      {data?.can_probe ? <ProbeCard accounts={data.account_list} month={month} onSaved={() => setEpoch((n) => n + 1)} /> : null}
-      {data?.can_upload ? <UploadCard accounts={data.account_list} onSaved={() => setEpoch((n) => n + 1)} /> : null}
+      {data?.can_probe ? <ProbeCard accounts={data.account_list} selected={selectedClientId} month={month} onSaved={() => setEpoch((n) => n + 1)} /> : null}
+      {data?.can_upload ? <UploadCard accounts={data.account_list} selected={selectedClientId} onSaved={() => setEpoch((n) => n + 1)} /> : null}
 
       {err ? <section className={`${card} text-sm text-danger`}>{err}</section> : null}
       {loading && !data ? <section className={`${card} text-sm text-muted`}>Đang tải…</section> : null}
@@ -181,8 +181,11 @@ function Kpi({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function ProbeCard({ accounts, month, onSaved }: { accounts: InvoiceAccount[]; month: string; onSaved: () => void }) {
-  const [cid, setCid] = useState("153-987-9678");
+function ProbeCard({ accounts, selected, month, onSaved }: { accounts: InvoiceAccount[]; selected: string; month: string; onSaved: () => void }) {
+  const selCid = accounts.find((a) => a.client_id === selected)?.cid || "";
+  const [cid, setCid] = useState(selCid ? dashCid(selCid) : "");
+  // Follow the top account picker; the field stays editable.
+  useEffect(() => { if (selCid) setCid(dashCid(selCid)); }, [selCid]);
   const [m, setM] = useState(month);
   const [save, setSave] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -259,10 +262,12 @@ async function readFiles(files: File[]): Promise<{ docs: ParsedDoc[]; errors: st
   return { docs, errors };
 }
 
-function UploadCard({ accounts, onSaved }: { accounts: InvoiceAccount[]; onSaved: () => void }) {
+function UploadCard({ accounts, selected, onSaved }: { accounts: InvoiceAccount[]; selected: string; onSaved: () => void }) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
-  const [pick, setPick] = useState("");
+  const selKnown = accounts.some((a) => a.client_id === selected) ? selected : "";
+  const [pick, setPick] = useState(selKnown);
+  useEffect(() => { if (selKnown) setPick(selKnown); }, [selKnown]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const byCid = useMemo(() => new Map(accounts.map((a) => [a.cid, a.client_id])), [accounts]);
