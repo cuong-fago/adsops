@@ -274,6 +274,7 @@ export async function resolveAdsConfig(): Promise<AdsConfig> {
 // ── errors ───────────────────────────────────────────────────────────────────
 
 export type AdsErrorKind =
+  | "INVOICE"
   | "NOT_CONFIGURED"
   | "TOKEN_REVOKED"
   | "OAUTH_CLIENT"
@@ -295,6 +296,8 @@ export class AdsApiError extends Error {
   readonly requestId: string | null;
   /** Readable Vietnamese message for admins / staff. Never shown to clients. */
   readonly adminMessage: string;
+  /** Google error enum names, when the API returned any. */
+  googleCodes: string[] = [];
   constructor(kind: AdsErrorKind, adminMessage: string, httpStatus = 0, requestId: string | null = null) {
     super(adminMessage);
     this.name = "AdsApiError";
@@ -327,6 +330,15 @@ type GoogleErrorBody = {
     }>;
   };
 };
+
+/** Error codes inside a Google error body (no secrets: enum names only). */
+function googleCodes(body: GoogleErrorBody): string[] {
+  const out: string[] = [];
+  for (const d of Array.isArray(body.error?.details) ? body.error!.details! : []) {
+    for (const er of d.errors || []) for (const v of Object.values(er.errorCode || {})) out.push(String(v));
+  }
+  return [...new Set(out)].slice(0, 10);
+}
 
 function classifyGoogleError(httpStatus: number, body: GoogleErrorBody, customerId?: string, loginCustomerId?: string): AdsApiError {
   const e = body.error || {};
@@ -394,6 +406,16 @@ function classifyGoogleError(httpStatus: number, body: GoogleErrorBody, customer
       requestId,
     );
   }
+  const INVOICE_VI: Record<string, string> = {
+    NOT_INVOICED_CUSTOMER: "Tài khoản này không dùng hình thức thanh toán theo hoá đơn hàng tháng (ví dụ trả trước / thanh toán tự động), nên Google Ads API không trả chứng từ. Dùng cách tải file chứng từ lên.",
+    BILLING_SETUP_NOT_ON_MONTHLY_INVOICING: "Hồ sơ thanh toán của tài khoản này không dùng hoá đơn hàng tháng, nên Google Ads API không trả chứng từ. Dùng cách tải file chứng từ lên.",
+    BILLING_SETUP_NOT_APPROVED: "Thiết lập thanh toán (billing setup) của tài khoản chưa được duyệt nên không đọc được chứng từ.",
+    YEAR_MONTH_TOO_OLD: "Tháng này quá cũ, Google Ads API không còn trả chứng từ.",
+    NON_SERVING_CUSTOMER: "Tài khoản không chạy quảng cáo trong tháng này nên không có chứng từ.",
+    INVALID_BILLING_SETUP: "Billing setup không hợp lệ cho tài khoản này.",
+  };
+  const invCode = codes.find((c) => INVOICE_VI[c]);
+  if (invCode) return new AdsApiError("INVOICE", `${INVOICE_VI[invCode]}${acct} (mã Google: ${invCode})`, httpStatus, requestId);
   if (has("USER_PERMISSION_DENIED", "CUSTOMER_NOT_FOUND", "INVALID_LOGIN_CUSTOMER_ID")) {
     return new AdsApiError(
       "PERMISSION_DENIED",
@@ -572,6 +594,7 @@ async function adsCall(
             ? digits(init.loginCustomerId || "")
             : cfg.loginCustomerId;
       const err = classifyGoogleError(res.status, errBody || {}, customerId, sentLogin);
+      err.googleCodes = googleCodes(errBody || {});
       logAdsError(where, err, text);
       throw err;
     }
@@ -581,6 +604,26 @@ async function adsCall(
   const err = last || new AdsApiError("UNKNOWN", "Không tìm được phiên bản Google Ads API còn hoạt động.");
   logAdsError(where, err);
   throw err;
+}
+
+/**
+ * InvoiceService.ListInvoices: a read (GET). Returns the raw JSON body.
+ * billingSetup is "customers/{cid}/billingSetups/{id}"; issueMonth is the enum name (JANUARY…).
+ */
+export async function listInvoicesRaw(
+  cfg: AdsConfig,
+  customerId: string,
+  billingSetup: string,
+  issueYear: number,
+  issueMonth: string,
+  loginCustomerId?: string,
+): Promise<unknown> {
+  const cid = digits(customerId);
+  if (cid.length !== 10) throw new AdsApiError("BAD_QUERY", "Customer ID không hợp lệ.");
+  if (!/^customers\/\d{10}\/billingSetups\/\d+$/.test(billingSetup)) throw new AdsApiError("BAD_QUERY", "Billing setup không hợp lệ.");
+  const q = new URLSearchParams({ billingSetup, issueYear: String(issueYear), issueMonth });
+  const login = digits(loginCustomerId || "");
+  return adsCall(cfg, `/customers/${cid}/invoices?${q}`, { method: "GET", loginCustomerId: login.length === 10 ? login : undefined }, "listInvoices", cid);
 }
 
 export function currentApiVersion(): string | null {

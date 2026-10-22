@@ -36,6 +36,7 @@ import { BrandMark } from "@/components/adsops/brand";
 import { NavBar, type NavEntry, type NavItem } from "@/components/adsops/nav-bar";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
 import { GoogleAdsLink } from "@/components/adsops/google-ads-link-ui";
+import { GoogleInvoicesView } from "./google-invoices-view";
 import { CompareView } from "@/components/adsops/compare-view";
 import { AccountsOverview } from "@/components/adsops/accounts-overview";
 import { BUDGET_CARD_ID, BudgetRunwayCard, BudgetStrip } from "@/components/adsops/budget-runway-card";
@@ -49,7 +50,7 @@ import { MODULE_CAPABILITY, ROLE_LABEL_VI, formatSaigon } from "@/lib/adsops/per
 import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/cn";
 import {
-  BarChart3, Bell, Gauge, Scale, BookOpen, CheckCircle2, Database, FileText, History, LayoutGrid, Lightbulb, ShieldCheck, Tags, Users,
+  BarChart3, Bell, Gauge, Scale, Receipt, BookOpen, CheckCircle2, Database, FileText, History, LayoutGrid, Lightbulb, ShieldCheck, Tags, Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -105,7 +106,8 @@ type TabId =
   | "creports"
   | "manager"
   | "needs"
-  | "compare";
+  | "compare"
+  | "invoices";
 
 const OPS_TABS: { id: TabId; label: string }[] = [
   { id: "final", label: "FINAL" },
@@ -171,6 +173,7 @@ const TAB_MODULES: Record<TabId, string[]> = {
   manager: [],
   needs: [],
   compare: [],
+  invoices: [],
 };
 
 const PACK_SLICE_KEYS = [
@@ -189,6 +192,9 @@ const PACK_SLICE_KEYS = [
 function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
   if (!access || access.role === "pending") return false;
   const caps = access.caps;
+  // Hóa đơn Google: Admin + Kế toán only. Kế toán sees nothing else.
+  if (id === "invoices") return Boolean(caps.invoices && access.kind === "staff");
+  if (access.role === "accountant") return false;
   // Phân quyền: effective admin (never while viewing-as), or Trưởng phòng Ads for its grant
   // request form. Sale / người tối ưu / customers: hidden.
   if (id === "members") return Boolean((caps.grant && !access.read_only) || (access.role === "head_ads" && caps.requestGrant));
@@ -290,7 +296,7 @@ export function AdsOpsApp() {
   const viewer = Boolean(access && access.role !== "pending" && !access.caps.opsTabs);
   const canPull = Boolean(caps?.pull && !access?.read_only);
   const canInstall = Boolean(access?.real_is_admin && !access?.read_only);
-  const shownTab: TabId = access && !tabAllowed(access, tab) ? "report" : tab;
+  const shownTab: TabId = access && !tabAllowed(access, tab) ? (access.role === "accountant" ? "invoices" : "report") : tab;
   useEffect(() => { if (backTab && shownTab !== backTab) setBackTab(null); }, [shownTab, backTab]);
   // "Có báo cáo nháp cần duyệt": draft count badge (report staff only; 0 for everyone else).
   const [reportDrafts, setReportDrafts] = useState(0);
@@ -327,7 +333,8 @@ export function AdsOpsApp() {
         }));
         setClients(rows);
         if (dir.mcc) setMcc(dir.mcc);
-        if (!dir.access.caps.opsTabs) setTab("report");
+        if (dir.access.role === "accountant") setTab("invoices");
+        else if (!dir.access.caps.opsTabs) setTab("report");
         else if (dir.access.caps.grant && !dir.access.read_only && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("gads")) {
           setTab("members");
         }
@@ -767,6 +774,9 @@ export function AdsOpsApp() {
     }
     if (shownTab === "members")
       return <PermissionsPanel caps={access.caps} readOnly={access.read_only} />;
+    if (shownTab === "invoices") {
+      return <GoogleInvoicesView />;
+    }
     if (!clients.length) {
       return (
         <section className="rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted shadow-sheet">
@@ -1143,12 +1153,13 @@ export function AdsOpsApp() {
               const tab = (id: TabId, label: string, icon?: NavItem["icon"], extra: Partial<NavItem> = {}): NavItem => ({ id, label, text: label, icon, active: shownTab === id, onClick: () => goTab(id), ...extra });
               const out: NavEntry[] = [];
               if (access.kind === "staff") {
-                out.push({ kind: "tab", item: tab("overview", "Tổng quan tài khoản", TAB_ICON.overview) });
+                if (tabAllowed(access, "overview")) out.push({ kind: "tab", item: tab("overview", "Tổng quan tài khoản", TAB_ICON.overview) });
                 if (tabAllowed(access, "needs")) out.push({ kind: "tab", item: tab("needs", "Cần xử lý (3 tháng)", Bell) });
                 if (tabAllowed(access, "manager")) out.push({ kind: "tab", item: tab("manager", "Bảng điều hành", Gauge) });
                 if (tabAllowed(access, "creports")) out.push({ kind: "tab", item: tab("creports", "Báo cáo khách hàng", FileText, { badge: reportDrafts || undefined }) });
               }
               const ops = opsTabs.map((it) => tab(it.id, it.label, TAB_ICON[it.id], { badge: it.id === "alerts" ? alertCount || undefined : undefined }));
+              if (tabAllowed(access, "invoices")) ops.push(tab("invoices", "Hóa đơn Google", Receipt));
               if (ops.length === 1) out.push({ kind: "tab", item: ops[0] });
               else if (ops.length) out.push({ kind: "group", id: "ops", label: viewer ? "Báo cáo" : "Vận hành", items: ops });
               const ana: NavItem[] = [];
