@@ -1,6 +1,6 @@
 /** "So sánh tài khoản" types + pure helpers (shared by server and UI; JSON-safe). Missing = null, never 0. */
 export type ComparePlatform = "google" | "facebook" | "tiktok";
-export type CompareGroup = { id: number; name: string; members: string[]; hidden_count: number };
+export type CompareGroup = { id: number; name: string; members: string[]; hidden_count: number; personal: boolean };
 export type ComparePeriod = "this_month" | "last_month" | "last3";
 export const PERIOD_LABEL: Record<ComparePeriod, string> = { this_month: "Tháng này", last_month: "Tháng trước", last3: "3 tháng đủ gần nhất" };
 export type MetricKey = "spend" | "clicks" | "cpc" | "conversions" | "cpa" | "cr";
@@ -19,7 +19,7 @@ export type CompareRow = {
   trend: Array<{ month: string; m: Metrics }>;
 };
 export type CompareRead = {
-  group: { id: number; name: string } | null; period: ComparePeriod; months: string[]; trend_months: string[];
+  group: { id: number; name: string; personal?: boolean } | null; custom?: boolean; period: ComparePeriod; months: string[]; trend_months: string[];
   rows: CompareRow[]; median: Metrics; weighted: Metrics; thresholds: { conv: number; clicks: number };
   channels: string[]; can_manage: boolean; can_compute: boolean; conv_note: string | null;
 };

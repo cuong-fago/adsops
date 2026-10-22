@@ -27,6 +27,10 @@ async function visibleAccounts(ctx: Ctx) {
   const dir = await withPulledMccClients(await loadWorkspaceDirectory(ctx), ctx.allowed);
   return dir.clients.filter((c) => canSeeAccount(ctx, c.client_id) && !c.client_id.startsWith("oa_"));
 }
+/** Personal-group owner: the real signed-in staff user (never the Xem như target). */
+const meOf = (ctx: Ctx) => (ctx.real.kind === "staff" ? (ctx.real.email || ctx.real.id).toLowerCase() : null);
+/** Personal groups: any staff role, but not in Xem như / read-only. */
+const canSavePersonal = (ctx: Ctx) => ctx.principal.kind === "staff" && ctx.principal.role !== "pending" && !ctx.viewAs && !ctx.readOnly;
 const label = (c: { alias?: string | null; display_name: string }) => (c.alias && c.alias.trim()) || c.display_name;
 const actor = async (ctx: Ctx) => (await import("./permissions.server")).actorLabel(ctx.real);
 
@@ -37,9 +41,9 @@ export const listCompareGroupsFn = createServerFn({ method: "POST" })
     await staffOnly(ctx);
     const acc = await visibleAccounts(ctx);
     const vis = new Set(acc.map((c) => c.client_id));
-    const groups: CompareGroup[] = await (await import("./compare.server.ts")).listGroups((id) => vis.has(id));
+    const groups: CompareGroup[] = await (await import("./compare.server.ts")).listGroups((id) => vis.has(id), meOf(ctx));
     return {
-      groups, can_manage: canManage(ctx),
+      groups, can_manage: canManage(ctx), can_save_personal: canSavePersonal(ctx), view_as: Boolean(ctx.viewAs),
       accounts: acc.map((c) => ({ client_id: c.client_id, label: label(c), customer_id_dashed: c.customer_id_dashed || null, platform: c.client_id.startsWith("fb_") ? "facebook" : c.client_id.startsWith("tt_") ? "tiktok" : "google" })),
     };
   });
@@ -50,7 +54,8 @@ export const readCompareFn = createServerFn({ method: "POST" })
     const groupId = Number(d.groupId);
     const period = PERIODS.includes(d.period as ComparePeriod) ? (d.period as ComparePeriod) : "last_month";
     const arr = (x: unknown) => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string" && /^[a-z_]{1,20}$/.test(s)).slice(0, 20) : []);
-    return { groupId: Number.isInteger(groupId) && groupId > 0 ? groupId : 0, period, channels: arr(d.channels), convGroups: arr(d.convGroups) };
+    const clientIds = Array.isArray(d.clientIds) ? d.clientIds.filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(s)).slice(0, 60) : null;
+    return { groupId: Number.isInteger(groupId) && groupId > 0 ? groupId : 0, period, channels: arr(d.channels), convGroups: arr(d.convGroups), clientIds };
   })
   .middleware([principalMiddleware])
   .handler(async ({ context, data }): Promise<CompareRead> => {
@@ -59,12 +64,14 @@ export const readCompareFn = createServerFn({ method: "POST" })
     const acc = await visibleAccounts(ctx);
     const by = new Map(acc.map((c) => [c.client_id, c]));
     const srv = await import("./compare.server.ts");
-    const groups = await srv.listGroups((id) => by.has(id));
-    const g = groups.find((x) => x.id === data.groupId) || null;
+    // "Tự chọn tài khoản": ad-hoc selection, limited to the caller's scope (server-side; Xem như = target's scope).
+    const custom = Array.isArray(data.clientIds);
+    const g = custom ? null : (await srv.listGroups((id) => by.has(id), meOf(ctx))).find((x) => x.id === data.groupId) || null;
+    const ids = custom ? [...new Set(data.clientIds!)] : g?.members || [];
     // Google first: other platforms are listed once they store compare_monthly rows.
-    const members = (g?.members || []).map((id) => by.get(id)!).filter((c) => c && srv.platformOf(c.client_id) === "google");
+    const members = ids.map((id) => by.get(id)!).filter((c) => c && srv.platformOf(c.client_id) === "google");
     return srv.readCompare({
-      group: g ? { id: g.id, name: g.name } : null,
+      group: g ? { id: g.id, name: g.name, personal: g.personal } : null, custom,
       accounts: members.map((c) => ({ client_id: c.client_id, label: label(c), customer_id_dashed: c.customer_id_dashed || null })),
       period: data.period, channels: data.channels, convGroups: data.convGroups, canManage: canManage(ctx), canCompute: canCompute(ctx),
     });
@@ -79,18 +86,28 @@ export const saveCompareGroupFn = createServerFn({ method: "POST" })
     const id = Number(d.id) || 0;
     const ids = Array.isArray(d.clientIds) ? d.clientIds.filter((s): s is string => typeof s === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(s)).slice(0, 500) : [];
     if ((op === "create" || op === "rename") && !name) throw new Error("Cần tên nhóm.");
-    return { op: op as "create" | "rename" | "delete" | "add" | "remove", name, id, ids };
+    return { op: op as "create" | "rename" | "delete" | "add" | "remove", name, id, ids, personal: d.personal === true };
   })
   .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {
     const ctx = context.access;
     await staffOnly(ctx);
-    await assertManage(ctx);
+    const { ForbiddenError } = await import("./permissions.server");
     const srv = await import("./compare.server.ts");
+    const me = meOf(ctx);
+    // Personal ("Nhóm của tôi"): only its owner, never in Xem như. Shared: Admin / Trưởng phòng.
+    const personal = data.op === "create" ? data.personal : data.id ? (await srv.groupOwner(data.id)) != null : false;
+    if (data.op !== "create" && data.id) {
+      const owner = await srv.groupOwner(data.id);
+      if (owner === undefined) throw new Error("Không tìm thấy nhóm.");
+      if (owner != null && owner !== me) throw new ForbiddenError("Không tìm thấy nhóm.");
+    }
+    if (personal) { if (!canSavePersonal(ctx) || !me) throw new ForbiddenError("Đang Xem như — không lưu / sửa nhóm."); }
+    else await assertManage(ctx);
     const vis = new Set((await visibleAccounts(ctx)).map((c) => c.client_id));
     const ids = data.ids.filter((i) => vis.has(i));
     const by = await actor(ctx);
-    if (data.op === "create") return { id: await srv.createGroup(data.name, ids, by) };
+    if (data.op === "create") return { id: await srv.createGroup(data.name, ids, by, personal ? me : null) };
     if (!data.id) throw new Error("Thiếu nhóm.");
     if (data.op === "rename") await srv.renameGroup(data.id, data.name);
     else if (data.op === "delete") await srv.deleteGroup(data.id);
@@ -108,7 +125,7 @@ export const suggestCompareGroupsFn = createServerFn({ method: "POST" })
     await assertManage(ctx);
     const acc = await visibleAccounts(ctx);
     const vis = new Set(acc.map((c) => c.client_id));
-    const groups = await (await import("./compare.server.ts")).listGroups((id) => vis.has(id));
+    const groups = (await (await import("./compare.server.ts")).listGroups((id) => vis.has(id))).filter((g) => !g.personal);
     const { suggestGroups } = await import("./compare.types.ts");
     return { suggestions: suggestGroups(acc.map((c) => ({ client_id: c.client_id, names: [c.alias || "", c.display_name] })), groups) };
   });
@@ -125,7 +142,7 @@ export const computeCompareFn = createServerFn({ method: "POST" })
     const acc = await visibleAccounts(ctx);
     const vis = new Set(acc.map((c) => c.client_id));
     const srv = await import("./compare.server.ts");
-    const g = (await srv.listGroups((id) => vis.has(id))).find((x) => x.id === data.groupId);
+    const g = (await srv.listGroups((id) => vis.has(id), meOf(ctx))).find((x) => x.id === data.groupId);
     if (!g) throw new Error("Không tìm thấy nhóm.");
     const ids = g.members.filter((id) => srv.platformOf(id) === "google");
     const deadline = Date.now() + 50_000;
