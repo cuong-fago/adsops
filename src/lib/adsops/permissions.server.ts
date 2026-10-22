@@ -18,6 +18,7 @@ import { getSql } from "@/lib/db";
 import { UnauthorizedError } from "@/lib/auth/verify.server";
 import {
   SUPER_ADMIN_EMAIL,
+  isSuperAdminEmail,
   capabilitiesFor,
   isClientRole,
   isStaffRole,
@@ -181,10 +182,10 @@ type ClientRowDb = {
 
 async function staffPrincipal(userId: string, emailRaw: string | null, name: string | null): Promise<Principal> {
   const email = (emailRaw || "").trim().toLowerCase() || null;
-  if (email === SUPER_ADMIN_EMAIL) {
+  if (email && isSuperAdminEmail(email)) {
     return {
       kind: "staff",
-      id: `admin:${SUPER_ADMIN_EMAIL}`,
+      id: `admin:${email}`,
       userId,
       email,
       username: null,

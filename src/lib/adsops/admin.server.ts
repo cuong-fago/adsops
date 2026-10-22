@@ -20,7 +20,8 @@ import {
 } from "./permissions.server.ts";
 import {
   ASSIGNABLE_STAFF_ROLES,
-  SUPER_ADMIN_EMAIL,
+  SUPER_ADMIN_EMAILS,
+  isSuperAdminEmail,
   isClientRole,
   type AdAccountRow,
   type AdminDirectory,
@@ -123,24 +124,24 @@ export async function adminDirectory(ctx: AccessContext): Promise<AdminDirectory
     sql<UnassignedLogin>`
       select u.id as user_id, lower(u.email) as email, u.name
       from "user" u
-      where lower(u.email) <> ${SUPER_ADMIN_EMAIL}
+      where not (lower(u.email) = any(${SUPER_ADMIN_EMAILS as string[]}::text[]))
         and not exists (select 1 from staff_users s where lower(s.email) = lower(u.email))
       order by u.email
       limit 200
     `,
   ]);
   const staff: StaffUserRow[] = [
-    {
-      id: `admin:${SUPER_ADMIN_EMAIL}`,
-      email: SUPER_ADMIN_EMAIL,
-      role: "admin",
+    ...SUPER_ADMIN_EMAILS.map((e) => ({
+      id: `admin:${e}`,
+      email: e,
+      role: "admin" as const,
       display_name: "Super admin",
       hard_coded: true,
       has_logged_in: true,
-      account_ids: [],
-    },
+      account_ids: [] as string[],
+    })),
     ...staffRows
-      .filter((s) => s.email.toLowerCase() !== SUPER_ADMIN_EMAIL)
+      .filter((s) => !isSuperAdminEmail(s.email))
       .map((s) => ({
         id: s.id,
         email: s.email,
@@ -176,7 +177,7 @@ export async function upsertStaff(
   assertEffectiveAdmin(ctx);
   const email = input.email.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Email không hợp lệ.");
-  if (email === SUPER_ADMIN_EMAIL) throw new Error("Admin là cố định, không đổi vai trò.");
+  if (isSuperAdminEmail(email)) throw new Error("Admin là cố định, không đổi vai trò.");
   if (!(ASSIGNABLE_STAFF_ROLES as string[]).includes(input.role)) throw new Error("Vai trò không hợp lệ.");
   const sql = await getSql();
   const prev = (await sql<{ id: string; role: string }>`select id, role from staff_users where lower(email) = ${email} limit 1`)[0];

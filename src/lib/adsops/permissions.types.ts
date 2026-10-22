@@ -4,7 +4,12 @@
  * same table only to hide tabs/buttons.
  */
 
-export const SUPER_ADMIN_EMAIL = "cuong@fagogroup.vn";
+/** Fixed (hard-coded) Admins: full rights, cannot be demoted from the UI. First one is the primary. */
+export const SUPER_ADMIN_EMAILS: readonly string[] = ["cuong@fagogroup.vn", "thefagogroup@gmail.com"];
+/** Primary fixed Admin (dev login, legacy callers). */
+export const SUPER_ADMIN_EMAIL = SUPER_ADMIN_EMAILS[0];
+export const isSuperAdminEmail = (email: string | null | undefined): boolean =>
+  Boolean(email) && SUPER_ADMIN_EMAILS.includes(String(email).trim().toLowerCase());
 
 export type StaffRole = "admin" | "head_ads" | "optimizer" | "sale";
 export type ClientRole = "client_owner" | "client_staff";
