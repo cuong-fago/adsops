@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpRight, RefreshCw } from "lucide-react";
+import { GoogleAdsLink } from "@/components/adsops/google-ads-link-ui";
 import { TrendBadge } from "@/components/adsops/google-trend-snapshot-ui";
 import { readTrendSnapshotsFn, recomputeTrendFn } from "@/lib/adsops/connect.functions";
 import type { TrendSnapshot } from "@/lib/adsops/google-trend-snapshot.types";
@@ -147,10 +148,7 @@ function nativeUrl(r: { client_id: string; customer_id_dashed?: string | null })
     return /^\d+$/.test(n) ? { url: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${n}`, label: "Mở trong Meta Ads Manager" } : null;
   }
   if (id.startsWith("oa_") || id.startsWith("tt_")) return null;
-  const cid = (r.customer_id_dashed || id).replace(/\D/g, "");
-  if (!/^\d{10}$/.test(cid)) return null;
-  // Same form Google uses in its own account dashboard links: picks the right login, then the account overview.
-  return { url: `https://ads.google.com/um/identity?dst=${encodeURIComponent(`/aw/overview?__e=${cid}`)}`, label: "Mở trong Google Ads" };
+  return null; // Google: "Mở Google Ads ↗" button (GoogleAdsLink) under the name.
 }
 
 export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, canChangeLog }: { onOpenAccount: (clientId: string, target?: OverviewTarget) => void; selectedClientId?: string; isAdmin?: boolean; canChangeLog?: boolean }) {
@@ -644,6 +642,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
                         })()}
                       </span>
                       <span className="block text-xs text-subtle tabular-nums [overflow-wrap:anywhere]">{r.customer_id_dashed}</span>
+                      <GoogleAdsLink clientId={r.client_id} cid={r.customer_id_dashed} isAdmin={isAdmin} className="mt-1 block" />
                       <InactiveBadge activity={act.map?.[r.client_id]} />
                     </td>
                     {(() => { const c = clickCell(r.client_id, "detail", "Mở chi tiết tài khoản"); return <td {...c} className={cn(td, c.className)}>{budgetCell(r)}</td>; })()}
