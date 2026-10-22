@@ -45,6 +45,8 @@ export async function computeSnapshot(clientId: string): Promise<TrendSnapshot> 
       }
       snap = { ...base, month: t.months[2] ?? null, verdict, score, primary_channel: prim?.channel ?? null, channels, alerts };
       entityError = await storeEntities(clientId, t).catch((e: unknown) => (e instanceof Error ? e.message : String(e)));
+      // "So sánh tài khoản": month × campaign type × conversion group (same cached query; conversion leaves read-only).
+      await (await import("./compare.server.ts")).computeGoogleCompare(clientId).catch(() => null);
     }
   } catch (e) {
     snap = { ...base, verdict: "error", error: e instanceof Error ? e.message : String(e) };

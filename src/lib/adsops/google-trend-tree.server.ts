@@ -110,6 +110,16 @@ function buildRows(leaves: Leaf[], w: ReturnType<typeof window>): Array<TreeRow 
 const strip = ({ _raw, ...r }: TreeRow & { _raw: unknown }): TreeRow => (void _raw, r);
 const sortRows = (rs: TreeRow[]) => rs.sort((a, b) => (a.excluded_label ? 1 : 0) - (b.excluded_label ? 1 : 0) || (b.worst ?? -Infinity) - (a.worst ?? -Infinity) || (b.months[2].spend ?? 0) - (a.months[2].spend ?? 0));
 
+/** Campaign × month leaves (same cached trend3m query: 3 full months + current month). Read-only GAQL. */
+export async function readCampaignLeaves(clientId: string): Promise<Array<{ id: string; channel: ChannelKey; month: string; clicks: number; conversions: number; cost: number }>> {
+  const w = window();
+  const customerId = customerIdFor(clientId);
+  if (customerId.length !== 10) throw new Error("Không phải tài khoản Google.");
+  const { v } = await cached(clientId, "trend3m_camp", w.start, w.today, () => query(customerId,
+    `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.month, metrics.clicks, metrics.conversions, metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${w.start}' AND '${w.today}'`, "campaign"));
+  return v.map((l) => ({ id: l.id, channel: chOf(l.channel), month: l.month, clicks: l.clicks, conversions: l.conversions, cost: l.cost }));
+}
+
 export async function readTrendTree(clientId: string, opts: { conv?: boolean } = {}): Promise<TrendTreeRead> {
   const w = window();
   const base: TrendTreeRead = { client_id: clientId, months: w.months, current_month: w.cur, groups: [], mix: [], fetched_at: null, error: null };
