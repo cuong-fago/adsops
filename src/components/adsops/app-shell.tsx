@@ -36,6 +36,7 @@ import { BrandMark } from "@/components/adsops/brand";
 import { NavBar, type NavEntry, type NavItem } from "@/components/adsops/nav-bar";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
 import { GoogleAdsLink } from "@/components/adsops/google-ads-link-ui";
+import { CompareView } from "@/components/adsops/compare-view";
 import { AccountsOverview } from "@/components/adsops/accounts-overview";
 import { BUDGET_CARD_ID, BudgetRunwayCard, BudgetStrip } from "@/components/adsops/budget-runway-card";
 import { RecheckButton } from "@/components/adsops/recheck-button";
@@ -48,7 +49,7 @@ import { MODULE_CAPABILITY, ROLE_LABEL_VI, formatSaigon } from "@/lib/adsops/per
 import { UserButton } from "@/lib/auth/gates";
 import { cn } from "@/lib/cn";
 import {
-  BarChart3, Bell, Gauge, BookOpen, CheckCircle2, Database, FileText, History, LayoutGrid, Lightbulb, ShieldCheck, Tags, Users,
+  BarChart3, Bell, Gauge, Scale, BookOpen, CheckCircle2, Database, FileText, History, LayoutGrid, Lightbulb, ShieldCheck, Tags, Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -103,7 +104,8 @@ type TabId =
   | "members"
   | "creports"
   | "manager"
-  | "needs";
+  | "needs"
+  | "compare";
 
 const OPS_TABS: { id: TabId; label: string }[] = [
   { id: "final", label: "FINAL" },
@@ -168,6 +170,7 @@ const TAB_MODULES: Record<TabId, string[]> = {
   creports: [],
   manager: [],
   needs: [],
+  compare: [],
 };
 
 const PACK_SLICE_KEYS = [
@@ -196,6 +199,8 @@ function tabAllowed(access: AccessSnap | null, id: TabId): boolean {
   if (id === "overview") return access.kind === "staff";
   // Cần xử lý (3 tháng): every staff role (Sale: assigned accounts only); server checks again.
   if (id === "needs") return access.kind === "staff";
+  // "So sánh tài khoản": staff only (never clients); the server checks again.
+  if (id === "compare") return access.kind === "staff";
   // Báo cáo khách hàng: Admin, Trưởng phòng Ads, người tối ưu (server checks again).
   // Bảng điều hành: Admin and Trưởng phòng Ads only (server checks again).
   if (id === "manager") return access.kind === "staff" && (access.role === "admin" || access.role === "head_ads");
@@ -259,6 +264,7 @@ export function AdsOpsApp() {
   const [tab, setTab] = useState<TabId>("final");
   // Tab opened from "Tổng quan tài khoản": shows "← Quay lại tổng quan" while the user stays on it.
   const [backTab, setBackTab] = useState<TabId | null>(null);
+  const [backTo, setBackTo] = useState<TabId>("overview");
   /** Cảnh báo Facebook → "Xem dòng": account + row to open in the FB tab. */
   const [metaFocus, setMetaFocus] = useState<MetaFocus | null>(null);
   /** Bumped by "Kiểm tra lại" so the budget / score pills re-read the stored result. */
@@ -781,6 +787,7 @@ export function AdsOpsApp() {
             setAliasDraft(null);
             setAliasMsg("");
             const next: TabId = target === "changelog" && tabAllowed(access, "changelog") ? "changelog" : tabAllowed(access, "analytics") ? "analytics" : "alerts";
+            setBackTo("overview");
             setBackTab(next);
             goTab(next);
             if (target === "trend" && next === "analytics") scrollWhenReady(TREND_CARD_ID);
@@ -801,6 +808,14 @@ export function AdsOpsApp() {
             goTab("analytics");
             scrollWhenReady(campaignId ? `trend-row-${campaignId}` : TREND_CARD_ID);
           } : undefined}
+        />
+      );
+    }
+    if (shownTab === "compare") {
+      return (
+        <CompareView
+          isAdmin={access.kind === "staff" && access.role === "admin" && !access.read_only}
+          onOpenAccount={tabAllowed(access, "analytics") ? (id) => { if (!clients.some((c) => c.client_id === id)) return; setClientId(id); setBackTo("compare"); setBackTab("analytics"); goTab("analytics"); window.scrollTo({ top: 0 }); } : undefined}
         />
       );
     }
@@ -1139,6 +1154,7 @@ export function AdsOpsApp() {
               const ana: NavItem[] = [];
               if (caps?.analytics) ana.push(tab("analytics", "Phân tích", TAB_ICON.analytics, { dot: Boolean(firing) }));
               if (caps?.changeLog) ana.push(tab("changelog", "Nhật ký tối ưu", TAB_ICON.changelog));
+              if (tabAllowed(access, "compare")) ana.push(tab("compare", "So sánh tài khoản", Scale));
               if (ana.length === 1) out.push({ kind: "tab", item: ana[0] });
               else if (ana.length) out.push({ kind: "group", id: "ana", label: "Phân tích", items: ana });
               return out;
@@ -1262,10 +1278,10 @@ export function AdsOpsApp() {
             ))}
           </div>
         )}
-        {backTab && shownTab === backTab && tabAllowed(access, "overview") ? (
+        {backTab && shownTab === backTab && tabAllowed(access, backTo) ? (
           <div className="mb-3">
-            <button type="button" onClick={() => { setBackTab(null); goTab("overview"); }} className="inline-flex h-8 items-center gap-1 rounded-md border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset">
-              ← Quay lại tổng quan
+            <button type="button" onClick={() => { setBackTab(null); goTab(backTo); }} className="inline-flex h-8 items-center gap-1 rounded-md border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset">
+              {backTo === "compare" ? "← Quay lại so sánh" : "← Quay lại tổng quan"}
             </button>
           </div>
         ) : null}
