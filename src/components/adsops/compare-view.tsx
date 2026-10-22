@@ -30,6 +30,13 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
   const [groups, setGroups] = useState<CompareGroup[] | null>(null);
   const [accounts, setAccounts] = useState<Acc[]>([]);
   const [canManage, setCanManage] = useState(false);
+  const [canSave, setCanSave] = useState(false);
+  const [viewAs, setViewAs] = useState(false);
+  // "Tự chọn tài khoản": ad-hoc selection (any staff role; server limits it to the user's scope).
+  const [mode, setMode] = useState<"group" | "custom">("group");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const prefsLoaded = useState(() => ({ had: false }))[0];
   const [err, setErr] = useState("");
   const [gid, setGid] = useState(0);
   const [period, setPeriod] = useState<ComparePeriod>("last_month");
@@ -44,29 +51,34 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
   const [epoch, setEpoch] = useState(0);
 
   useEffect(() => {
-    try { const p = JSON.parse(sessionStorage.getItem(KEY) || "{}"); if (p.gid) setGid(p.gid); if (p.period) setPeriod(p.period); if (Array.isArray(p.channels)) setChannels(p.channels); if (Array.isArray(p.convs)) setConvs(p.convs); } catch { /* ignore */ }
+    try { const p = JSON.parse(sessionStorage.getItem(KEY) || "{}"); if (p.mode === "group" || p.mode === "custom") { setMode(p.mode); prefsLoaded.had = true; } if (Array.isArray(p.picked)) setPicked(p.picked.filter((x: unknown) => typeof x === "string").slice(0, 60)); if (p.gid) setGid(p.gid); if (p.period) setPeriod(p.period); if (Array.isArray(p.channels)) setChannels(p.channels); if (Array.isArray(p.convs)) setConvs(p.convs); } catch { /* ignore */ }
   }, []);
-  useEffect(() => { try { sessionStorage.setItem(KEY, JSON.stringify({ gid, period, channels, convs })); } catch { /* ignore */ } }, [gid, period, channels, convs]);
+  useEffect(() => { try { sessionStorage.setItem(KEY, JSON.stringify({ gid, period, channels, convs, mode, picked })); } catch { /* ignore */ } }, [gid, period, channels, convs, mode, picked]);
 
   const loadGroups = useCallback(async () => {
     try {
       const r = await listCompareGroupsFn();
-      setGroups(r.groups); setAccounts(r.accounts); setCanManage(r.can_manage); setErr("");
-      setGid((g) => (r.groups.some((x) => x.id === g) ? g : r.groups[0]?.id || 0));
+      setGroups(r.groups); setAccounts(r.accounts); setCanManage(r.can_manage); setCanSave(r.can_save_personal); setViewAs(r.view_as); setErr("");
+      setGid((g) => (r.groups.some((x) => x.id === g) ? g : r.groups.find((x) => x.members.length)?.id || r.groups[0]?.id || 0));
+      // No group (shared or mine) with any account this user can see → start in Tự chọn instead of an empty table.
+      if (!prefsLoaded.had && !r.groups.some((x) => x.members.length)) setMode("custom");
+      const vis = new Set(r.accounts.map((a) => a.client_id));
+      setPicked((p) => p.filter((id) => vis.has(id)));
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }, []);
   useEffect(() => { void loadGroups(); }, [loadGroups, epoch]);
 
   useEffect(() => {
-    if (!gid) { setData(null); return; }
+    const custom = mode === "custom";
+    if (custom ? !picked.length : !gid) { setData(null); return; }
     let live = true;
     setLoading(true);
-    readCompareFn({ data: { groupId: gid, period, channels, convGroups: convs } })
+    readCompareFn({ data: custom ? { groupId: 0, period, channels, convGroups: convs, clientIds: picked } : { groupId: gid, period, channels, convGroups: convs } })
       .then((r) => { if (live) { setData(r); setErr(""); } })
       .catch((e: unknown) => { if (live) setErr(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [gid, period, channels, convs, epoch]);
+  }, [gid, period, channels, convs, epoch, mode, picked]);
 
   const rows = useMemo(() => {
     const rs = [...(data?.rows || [])];
@@ -110,27 +122,37 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
         {canManage ? <button type="button" onClick={() => setManage((x) => !x)} className="ml-auto inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-inset">{manage ? "Đóng quản lý nhóm" : "Quản lý nhóm"}</button> : null}
       </div>
       {err ? <ErrorState title="Không tải được" message={err} onRetry={() => setEpoch((n) => n + 1)} /> : null}
-      {manage && canManage && groups ? <GroupManager groups={groups} accounts={accounts} onChanged={(id) => { if (id) setGid(id); setEpoch((n) => n + 1); }} /> : null}
+      {manage && canManage && groups ? <GroupManager groups={groups.filter((g) => !g.personal)} accounts={accounts} onChanged={(id) => { if (id) setGid(id); setEpoch((n) => n + 1); }} /> : null}
 
-      {groups && !groups.length ? (
+      {groups && !groups.length && mode === "group" ? (
         <Card><EmptyState title="Chưa có nhóm so sánh" description={canManage ? "Bấm “Quản lý nhóm” để tạo nhóm (ví dụ Nha khoa, Du lịch) hoặc dùng “Gợi ý nhóm”." : "Nhờ Admin / Trưởng phòng tạo nhóm so sánh."} /></Card>
       ) : null}
 
-      {groups && groups.length ? (
+      {groups ? (
         <Card className="flex flex-col gap-3 p-4">
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <label className="inline-flex items-center gap-1.5">Nhóm
-              <select value={gid} onChange={(e) => setGid(Number(e.target.value))} className="h-8 rounded-md border border-line bg-paper px-2">
-                {groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.members.length})</option>)}
-              </select>
-            </label>
+            <div className="flex gap-1 rounded-md border border-line bg-paper p-1" role="group" aria-label="Chế độ so sánh">
+              {([["group", "Nhóm"], ["custom", "Tự chọn tài khoản"]] as const).map(([m, l]) => (
+                <button key={m} type="button" aria-pressed={mode === m} onClick={() => { setMode(m); if (m === "custom" && !picked.length) setPickerOpen(true); }} className={cn("h-7 rounded px-2.5 font-medium", mode === m ? "bg-accent text-white" : "text-muted hover:text-ink")}>{l}</button>
+              ))}
+            </div>
+            {mode === "group" && groups.length ? (
+              <label className="inline-flex items-center gap-1.5">Nhóm
+                <select value={gid} onChange={(e) => setGid(Number(e.target.value))} className="h-8 rounded-md border border-line bg-paper px-2">
+                  {groups.some((g) => !g.personal) ? <optgroup label="Nhóm chung">{groups.filter((g) => !g.personal).map((g) => <option key={g.id} value={g.id}>{g.name} ({g.members.length})</option>)}</optgroup> : null}
+                  {groups.some((g) => g.personal) ? <optgroup label="Nhóm của tôi">{groups.filter((g) => g.personal).map((g) => <option key={g.id} value={g.id}>{g.name} ({g.members.length})</option>)}</optgroup> : null}
+                </select>
+              </label>
+            ) : null}
+            {mode === "group" && group?.personal && canSave ? <PersonalGroupActions g={group} onChanged={(id) => { if (id !== undefined) setGid(id); setEpoch((n) => n + 1); }} /> : null}
+            {mode === "custom" ? <button type="button" onClick={() => setPickerOpen((x) => !x)} className="inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 font-medium text-ink hover:bg-inset">{picked.length ? `Đã chọn ${picked.length} tài khoản` : "Chọn tài khoản"} ▾</button> : null}
             <div className="flex gap-1 rounded-md border border-line bg-paper p-1">
               {(Object.keys(PERIOD_LABEL) as ComparePeriod[]).map((p) => (
                 <button key={p} type="button" aria-pressed={period === p} onClick={() => setPeriod(p)} className={cn("h-7 rounded px-2.5 font-medium", period === p ? "bg-accent-soft text-accent" : "text-muted hover:text-ink")}>{PERIOD_LABEL[p]}</button>
               ))}
             </div>
             {data?.months.length ? <span className="text-xs text-muted">{data.months.map(mLabel).join(", ")}{period === "this_month" ? " (đến hôm qua)" : ""}</span> : null}
-            {data?.can_compute && missing ? <button type="button" onClick={() => void compute()} className="ml-auto inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink hover:bg-inset" title="Admin: tính ngay số liệu cho tài khoản trong nhóm (chỉ đọc Google Ads)">Tính ngay ({missing} chưa có số)</button> : null}
+            {mode === "group" && data?.can_compute && missing ? <button type="button" onClick={() => void compute()} className="ml-auto inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink hover:bg-inset" title="Admin: tính ngay số liệu cho tài khoản trong nhóm (chỉ đọc Google Ads)">Tính ngay ({missing} chưa có số)</button> : null}
           </div>
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span className="text-muted">Loại chiến dịch:</span>
@@ -142,14 +164,22 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
             <Chip on={!convs.length} onClick={() => setConvs([])}>Tất cả (chính)</Chip>
             {CONV_GROUPS.map((g) => <Chip key={g} on={convs.includes(g)} onClick={() => toggle(convs, g, setConvs)}>{CONV_SHORT[g]}</Chip>)}
           </div>
+          {mode === "custom" && pickerOpen ? (
+            <AccountPicker accounts={accounts.filter((a) => a.platform === "google")} picked={picked} onChange={setPicked} canSave={canSave} viewAs={viewAs}
+              onSaved={(id) => { setMode("group"); setGid(id); setPickerOpen(false); setEpoch((n) => n + 1); }} />
+          ) : null}
           {msg ? <p className="text-xs text-muted [overflow-wrap:anywhere]">{msg}</p> : null}
           {data?.conv_note ? <p className="text-xs text-warn">{data.conv_note}</p> : null}
-          {group?.hidden_count ? <p className="text-xs text-muted">Nhóm có thêm {group.hidden_count} tài khoản bạn không được xem.</p> : null}
+          {mode === "group" && group?.hidden_count ? <p className="text-xs text-muted">Nhóm có thêm {group.hidden_count} tài khoản bạn không được xem.</p> : null}
         </Card>
       ) : null}
 
-      {gid && loading && !data ? <Card className="p-4"><TableSkeleton rows={4} cols={7} /></Card> : null}
-      {data && data.group ? (
+      {mode === "custom" && !picked.length && groups ? (
+        <Card><EmptyState title="Chưa chọn tài khoản" description="Chọn từ 2 tài khoản trở lên trong phạm vi của bạn để so sánh."
+          action={<button type="button" onClick={() => setPickerOpen(true)} className="inline-flex h-8 items-center rounded-md bg-brand px-3 text-sm font-medium text-accent-fg">Chọn tài khoản để so sánh</button>} /></Card>
+      ) : null}
+      {(mode === "custom" ? picked.length > 0 : gid) && loading && !data ? <Card className="p-4"><TableSkeleton rows={4} cols={7} /></Card> : null}
+      {data && (mode === "custom" ? data.custom : data.group) ? (
         <>
           <div className={cn("relative max-h-[70vh] overflow-auto rounded-lg border border-line bg-paper", loading && "opacity-60")}>
             <table className="min-w-full border-separate border-spacing-0 text-sm">
@@ -179,7 +209,7 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
                 ))}
                 <LevelRow label="Mặt bằng nhóm · trung vị" m={data.median} />
                 <LevelRow label="Mặt bằng nhóm · bình quân theo chi tiêu" m={data.weighted} hint="CPC, CPA, CR: bình quân có trọng số theo chi tiêu. Chi tiêu, click, chuyển đổi: trung bình mỗi tài khoản." />
-                {!rows.length ? <tr><td colSpan={METRICS.length + 1}><EmptyState title="Nhóm chưa có tài khoản Google nào bạn được xem." /></td></tr> : null}
+                {!rows.length ? <tr><td colSpan={METRICS.length + 1}><EmptyState title={mode === "custom" ? "Chưa có tài khoản Google nào được chọn." : "Nhóm chưa có tài khoản Google nào bạn được xem."} /></td></tr> : null}
               </tbody>
             </table>
           </div>
@@ -315,5 +345,70 @@ function GroupManager({ groups, accounts, onChanged }: { groups: CompareGroup[];
       ) : null}
       {msg ? <p className="text-xs text-muted [overflow-wrap:anywhere]">{msg}</p> : null}
     </Card>
+  );
+}
+
+/** Searchable multi-select of the user's own accounts + "Lưu vào Nhóm của tôi". */
+function AccountPicker({ accounts, picked, onChange, canSave, viewAs, onSaved }: { accounts: Acc[]; picked: string[]; onChange: (ids: string[]) => void; canSave: boolean; viewAs: boolean; onSaved: (id: number) => void }) {
+  const [q, setQ] = useState("");
+  const [name, setName] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = new Set(picked);
+  const f = q.trim().toLowerCase();
+  const list = accounts.filter((a) => !f || `${a.label} ${a.customer_id_dashed || ""}`.toLowerCase().includes(f));
+  const flip = (id: string) => onChange(set.has(id) ? picked.filter((x) => x !== id) : [...picked, id].slice(0, 60));
+  const byId = new Map(accounts.map((a) => [a.client_id, a]));
+  async function save() {
+    setBusy(true); setMsg("");
+    try { const r = await saveCompareGroupFn({ data: { op: "create", personal: true, name, clientIds: picked } }); setName(""); onSaved(r.id); }
+    catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+    setBusy(false);
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-line bg-inset/40 p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tài khoản (tên hoặc mã)…" className="h-8 w-72 rounded-md border border-line bg-paper px-2" />
+        <span className="text-xs text-muted">{accounts.length} tài khoản trong phạm vi của bạn</span>
+        {picked.length ? <button type="button" onClick={() => onChange([])} className="text-xs text-muted hover:text-danger">Bỏ chọn tất cả</button> : null}
+      </div>
+      {picked.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {picked.map((id) => <span key={id} className="inline-flex h-6 items-center gap-1 rounded-full border border-accent-border bg-accent-soft pl-2 pr-1 text-xs text-accent">{byId.get(id)?.label || id}<button type="button" onClick={() => flip(id)} aria-label="Bỏ chọn" className="px-1 hover:text-danger">×</button></span>)}
+        </div>
+      ) : null}
+      <div className="max-h-56 overflow-auto rounded-md border border-line bg-paper">
+        {list.slice(0, 200).map((a) => (
+          <label key={a.client_id} className="flex cursor-pointer items-center gap-2 border-b border-line/50 px-2 py-1.5 hover:bg-row-hover">
+            <input type="checkbox" checked={set.has(a.client_id)} onChange={() => flip(a.client_id)} className="accent-[var(--color-accent)]" />
+            <span className="text-ink">{a.label}</span><span className="text-xs text-subtle">{a.customer_id_dashed}</span>
+          </label>
+        ))}
+        {!list.length ? <p className="px-2 py-2 text-xs text-muted">Không tìm thấy.</p> : null}
+      </div>
+      {picked.length >= 2 ? (
+        canSave ? (
+          <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (name.trim()) void save(); }}>
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="Tên nhóm, ví dụ Khách nha khoa của tôi" className="h-8 w-64 rounded-md border border-line bg-paper px-2" />
+            <button type="submit" disabled={busy || !name.trim()} className="h-8 rounded-md border border-line bg-paper px-3 font-medium text-ink hover:bg-inset disabled:opacity-50">Lưu vào “Nhóm của tôi”</button>
+            <span className="text-xs text-muted">Chỉ bạn thấy nhóm này.</span>
+          </form>
+        ) : <p className="text-xs text-muted">{viewAs ? "Đang Xem như: được chọn để xem, không lưu nhóm." : "Không lưu được nhóm (chỉ xem)."}</p>
+      ) : null}
+      {msg ? <p className="text-xs text-danger [overflow-wrap:anywhere]">{msg}</p> : null}
+    </div>
+  );
+}
+
+/** Rename / delete a personal group ("Nhóm của tôi"); owner only, never in Xem như (server checks). */
+function PersonalGroupActions({ g, onChanged }: { g: CompareGroup; onChanged: (id?: number) => void }) {
+  const [msg, setMsg] = useState("");
+  const run = async (fn: () => Promise<unknown>, next?: number) => { try { await fn(); setMsg(""); onChanged(next); } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); } };
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs">
+      <button type="button" onClick={() => { const n = window.prompt("Tên mới của nhóm", g.name); if (n && n.trim()) void run(() => saveCompareGroupFn({ data: { op: "rename", id: g.id, name: n } })); }} className="h-7 rounded-md border border-line bg-paper px-2 hover:bg-inset">Đổi tên</button>
+      <button type="button" onClick={() => { if (window.confirm(`Xoá nhóm của tôi “${g.name}”?`)) void run(() => saveCompareGroupFn({ data: { op: "delete", id: g.id } }), 0); }} className="h-7 rounded-md border border-line bg-paper px-2 text-danger hover:bg-inset">Xoá</button>
+      {msg ? <span className="text-danger">{msg}</span> : null}
+    </span>
   );
 }

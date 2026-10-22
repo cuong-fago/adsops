@@ -89,29 +89,38 @@ export function periodMonths(p: ComparePeriod): string[] {
 }
 
 // ── groups ────────────────────────────────────────────────────────────────────
-export async function listGroups(visible: (id: string) => boolean): Promise<CompareGroup[]> {
+/** Shared groups + the caller's own personal groups (never another user's). */
+export async function listGroups(visible: (id: string) => boolean, me: string | null = null): Promise<CompareGroup[]> {
   const sql = await getSql();
-  const gs = await sql.query<{ id: string; name: string }>(`select id, name from compare_groups order by lower(name)`).catch(() => []);
+  const gs = await sql.query<{ id: string; name: string; owner: string | null }>(
+    `select id, name, owner from compare_groups where owner is null or owner = $1 order by owner nulls first, lower(name)`, [me || ""]).catch(() => []);
   const ms = await sql.query<{ group_id: string; client_id: string }>(`select group_id, client_id from compare_group_members`).catch(() => []);
   const by = new Map<string, string[]>();
   for (const m of ms) (by.get(String(m.group_id)) || by.set(String(m.group_id), []).get(String(m.group_id))!).push(m.client_id);
   return gs.map((g) => {
     const all = by.get(String(g.id)) || [];
     const mine = all.filter(visible);
-    return { id: Number(g.id), name: g.name, members: mine, hidden_count: all.length - mine.length };
+    return { id: Number(g.id), name: g.name, members: mine, hidden_count: all.length - mine.length, personal: g.owner != null };
   });
 }
-export async function createGroup(name: string, members: string[], by: string): Promise<number> {
+export async function createGroup(name: string, members: string[], by: string, owner: string | null = null): Promise<number> {
   const sql = await getSql();
-  const ex = await sql.query<{ id: string }>(`select id from compare_groups where lower(name) = lower($1)`, [name]);
+  const ex = await sql.query<{ id: string }>(`select id from compare_groups where lower(name) = lower($1) and coalesce(owner, '') = coalesce($2, '')`, [name, owner]);
   let id = ex[0]?.id;
-  if (!id) id = (await sql.query<{ id: string }>(`insert into compare_groups (name, created_by) values ($1, $2) returning id`, [name, by]))[0].id;
+  if (!id) id = (await sql.query<{ id: string }>(`insert into compare_groups (name, created_by, owner) values ($1, $2, $3) returning id`, [name, by, owner]))[0].id;
   if (members.length) await addMembers(Number(id), members, by);
   return Number(id);
 }
+/** Owner of a group (null = shared); undefined when it does not exist. */
+export async function groupOwner(id: number): Promise<string | null | undefined> {
+  const sql = await getSql();
+  const r = await sql.query<{ owner: string | null }>(`select owner from compare_groups where id = $1`, [id]);
+  return r.length ? r[0].owner : undefined;
+}
 export async function renameGroup(id: number, name: string) {
   const sql = await getSql();
-  const ex = await sql.query<{ id: string }>(`select id from compare_groups where lower(name) = lower($1) and id <> $2`, [name, id]);
+  const ex = await sql.query<{ id: string }>(`select id from compare_groups g where lower(name) = lower($1) and id <> $2
+    and coalesce(owner, '') = coalesce((select owner from compare_groups where id = $2), '')`, [name, id]);
   if (ex.length) throw new Error("Đã có nhóm trùng tên.");
   await sql.query(`update compare_groups set name = $2, updated_at = now() where id = $1`, [id, name]);
 }
@@ -130,7 +139,7 @@ export async function removeMember(id: number, clientId: string) {
 
 // ── comparison ────────────────────────────────────────────────────────────────
 export async function readCompare(opts: {
-  group: { id: number; name: string } | null; accounts: Array<{ client_id: string; label: string; customer_id_dashed: string | null }>;
+  group: { id: number; name: string; personal?: boolean } | null; custom?: boolean; accounts: Array<{ client_id: string; label: string; customer_id_dashed: string | null }>;
   period: ComparePeriod; channels: string[]; convGroups: string[]; canManage: boolean; canCompute: boolean;
 }): Promise<CompareRead> {
   const th = await readThresholds();
@@ -177,7 +186,7 @@ export async function readCompare(opts: {
   });
   const gl = groupLevel(out);
   return {
-    group: opts.group, period: opts.period, months, trend_months: trendMonths, rows: out, median: gl.median, weighted: gl.weighted,
+    group: opts.group, custom: opts.custom || false, period: opts.period, months, trend_months: trendMonths, rows: out, median: gl.median, weighted: gl.weighted,
     thresholds: { conv: th.conv, clicks: th.clicks }, channels: [...chans].sort(), can_manage: opts.canManage, can_compute: opts.canCompute, conv_note: convNote,
   };
 }
