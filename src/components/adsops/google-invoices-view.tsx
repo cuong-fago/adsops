@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AccountCombobox } from "./account-combobox";
 import {
   checkInvoiceDocsFn,
   deleteInvoiceDocFn,
@@ -201,8 +202,7 @@ function ProbeCard({ accounts, month, onSaved }: { accounts: InvoiceAccount[]; m
       <p className="text-xs text-muted">Gọi Google Ads API InvoiceService.ListInvoices (chỉ đọc) cho một tài khoản và tháng lập. Hiện nguyên kết quả Google trả về.</p>
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label className="text-xs text-muted">CID
-          <input list="inv-cids" value={cid} onChange={(e) => setCid(e.target.value)} className="mt-1 block h-8 w-44 rounded-md border border-line bg-paper px-2 text-sm text-ink" />
-          <datalist id="inv-cids">{accounts.map((a) => <option key={a.client_id} value={dashCid(a.cid)}>{a.name}</option>)}</datalist>
+          <AccountCombobox accounts={accounts} value={cid} onChange={setCid} mode="free" placeholder="CID hoặc tên" className="mt-1 w-64" />
         </label>
         <label className="text-xs text-muted">Tháng
           <input type="month" value={m} onChange={(e) => e.target.value && setM(e.target.value)} className="mt-1 block h-8 rounded-md border border-line bg-paper px-2 text-sm text-ink" />
@@ -311,10 +311,7 @@ function UploadCard({ accounts, onSaved }: { accounts: InvoiceAccount[]; onSaved
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label className="text-xs text-muted">Tài khoản (khi file không có CID)
-          <select value={pick} onChange={(e) => { setPick(e.target.value); setDrafts((l) => l.map((d) => (d.client_id ? d : { ...d, client_id: e.target.value }))); }} className="mt-1 block h-8 max-w-xs rounded-md border border-line bg-paper px-2 text-sm text-ink">
-            <option value="">— Chọn —</option>
-            {accounts.map((a) => <option key={a.client_id} value={a.client_id}>{a.name} · {dashCid(a.cid)}</option>)}
-          </select>
+          <AccountCombobox accounts={accounts} value={pick} onChange={(v) => { setPick(v); if (v) setDrafts((l) => l.map((d) => (d.client_id ? d : { ...d, client_id: v }))); }} className="mt-1 w-80" />
         </label>
         <label className={`${btn2} inline-flex cursor-pointer items-center`}>
           {busy ? "Đang đọc…" : "Chọn file"}
@@ -341,10 +338,7 @@ function UploadCard({ accounts, onSaved }: { accounts: InvoiceAccount[]; onSaved
                     <td className={td}><input type="date" value={d.issue_date || ""} onChange={(e) => upd(d.key, { issue_date: e.target.value || null })} className="h-7 rounded border border-line bg-paper px-1" /></td>
                     <td className={td}><input inputMode="decimal" value={d.amount == null ? "" : String(d.amount)} placeholder="-" onChange={(e) => { const v = e.target.value.trim(); upd(d.key, { amount: v === "" || !Number.isFinite(Number(v)) ? null : Number(v) }); }} className="h-7 w-32 rounded border border-line bg-paper px-1" /></td>
                     <td className={td}>
-                      <select value={d.client_id} onChange={(e) => upd(d.key, { client_id: e.target.value })} className="h-7 max-w-[14rem] rounded border border-line bg-paper px-1">
-                        <option value="">— Chọn —</option>
-                        {accounts.map((a) => <option key={a.client_id} value={a.client_id}>{a.name} · {dashCid(a.cid)}</option>)}
-                      </select>
+                      <AccountCombobox accounts={accounts} value={d.client_id} onChange={(v) => upd(d.key, { client_id: v })} size="sm" className="w-56" />
                     </td>
                     <td className={`${td} text-xs`}>{d.dup === "file" ? "Trùng số trong file — bỏ qua" : d.dup === "db" ? "Đã có — bỏ qua" : d.note || (d.cid && !byCid.has(d.cid) ? `CID ${dashCid(d.cid)} chưa có trong hệ thống` : "")}</td>
                   </tr>
