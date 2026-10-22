@@ -34,3 +34,13 @@ test("suggestGroups by client / company name", () => {
   assert.ok(sets.includes("1,2")); assert.ok(sets.includes("3,4")); assert.ok(sets.includes("5,6"));
   assert.ok(!sets.some((x) => x.includes("7")));
 });
+
+test("custom ranges", async () => {
+  const { monthList, dayCount } = await import("./compare.types.ts");
+  assert.deepEqual(monthList("2026-07", "2026-09"), ["2026-07", "2026-08", "2026-09"]);
+  assert.deepEqual(monthList("2025-11", "2026-02"), ["2025-11", "2025-12", "2026-01", "2026-02"]);
+  assert.equal(dayCount("2026-10-15", "2026-10-21"), 7);
+  // ratios from sums, not averaged
+  const m = derive({ clicks: 100 + 300, cost: 1000 + 9000, conversions: 10 + 10 });
+  assert.equal(m.cpc, 25); assert.equal(m.cpa, 500);
+});

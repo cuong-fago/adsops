@@ -24,6 +24,32 @@ function fmt(k: MetricKey, v: number | null | undefined): string {
   return v.toLocaleString("vi-VN", { maximumFractionDigits: k === "conversions" ? 1 : 0 });
 }
 const mLabel = (m: string) => `T${Number(m.slice(5))}/${m.slice(2, 4)}`;
+const pad = (n: number) => String(n).padStart(2, "0");
+const ymdLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const daysBack = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return ymdLocal(d); };
+const yesterday = () => daysBack(1);
+const thisMonth = () => ymdLocal(new Date()).slice(0, 7);
+const addMonths = (m: string, k: number) => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 1 + k, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+const dmy = (s: string) => s.split("-").reverse().join("/");
+const MAIN_PERIODS: ComparePeriod[] = ["this_month", "last_month", "last3"];
+/** Period state lives in the URL: ?cmp_p=months&cmp_from=2026-07&cmp_to=2026-09 (or days with YYYY-MM-DD). */
+function readUrlPeriod(): { p: ComparePeriod; from: string; to: string } | null {
+  try {
+    const u = new URL(window.location.href);
+    const p = u.searchParams.get("cmp_p") as ComparePeriod | null;
+    if (!p || !(p in PERIOD_LABEL)) return null;
+    return { p, from: u.searchParams.get("cmp_from") || "", to: u.searchParams.get("cmp_to") || "" };
+  } catch { return null; }
+}
+function writeUrlPeriod(p: ComparePeriod, from: string, to: string) {
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set("cmp_p", p);
+    if (p === "months" || p === "days") { u.searchParams.set("cmp_from", from); u.searchParams.set("cmp_to", to); }
+    else { u.searchParams.delete("cmp_from"); u.searchParams.delete("cmp_to"); }
+    window.history.replaceState(window.history.state, "", u.toString());
+  } catch { /* ignore */ }
+}
 
 /** Staff-only "So sánh tài khoản": accounts in a group side by side against the group median. Never shown to clients. */
 export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clientId: string) => void; isAdmin?: boolean }) {
@@ -40,6 +66,10 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
   const [err, setErr] = useState("");
   const [gid, setGid] = useState(0);
   const [period, setPeriod] = useState<ComparePeriod>("last_month");
+  const [mFrom, setMFrom] = useState(() => addMonths(thisMonth(), -3));
+  const [mTo, setMTo] = useState(() => addMonths(thisMonth(), -1));
+  const [dFrom, setDFrom] = useState(() => daysBack(30));
+  const [dTo, setDTo] = useState(() => yesterday());
   const [channels, setChannels] = useState<string[]>([]);
   const [convs, setConvs] = useState<ConvGroup[]>([]);
   const [data, setData] = useState<CompareRead | null>(null);
@@ -52,7 +82,21 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
 
   useEffect(() => {
     try { const p = JSON.parse(sessionStorage.getItem(KEY) || "{}"); if (p.mode === "group" || p.mode === "custom") { setMode(p.mode); prefsLoaded.had = true; } if (Array.isArray(p.picked)) setPicked(p.picked.filter((x: unknown) => typeof x === "string").slice(0, 60)); if (p.gid) setGid(p.gid); if (p.period) setPeriod(p.period); if (Array.isArray(p.channels)) setChannels(p.channels); if (Array.isArray(p.convs)) setConvs(p.convs); } catch { /* ignore */ }
+    const u = readUrlPeriod();
+    if (u) {
+      setPeriod(u.p);
+      if (u.p === "months" && /^\d{4}-\d{2}$/.test(u.from) && /^\d{4}-\d{2}$/.test(u.to)) { setMFrom(u.from); setMTo(u.to); }
+      if (u.p === "days" && /^\d{4}-\d{2}-\d{2}$/.test(u.from) && /^\d{4}-\d{2}-\d{2}$/.test(u.to)) { setDFrom(u.from); setDTo(u.to); }
+    }
   }, []);
+  const rangeFrom = period === "months" ? mFrom : period === "days" ? dFrom : "";
+  const rangeTo = period === "months" ? mTo : period === "days" ? dTo : "";
+  useEffect(() => { writeUrlPeriod(period, rangeFrom, rangeTo); }, [period, rangeFrom, rangeTo]);
+  const rangeErr = period === "months"
+    ? (mFrom > mTo ? "Tháng bắt đầu phải trước tháng kết thúc." : (Number(mTo.slice(0, 4)) - Number(mFrom.slice(0, 4))) * 12 + Number(mTo.slice(5)) - Number(mFrom.slice(5)) + 1 > 12 ? "Tối đa 12 tháng." : "")
+    : period === "days"
+      ? (dFrom > dTo ? "Ngày bắt đầu phải trước ngày kết thúc." : (Date.parse(dTo) - Date.parse(dFrom)) / 86_400_000 + 1 > 366 ? "Tối đa khoảng 1 năm (366 ngày)." : dTo > yesterday() ? "Ngày kết thúc tối đa là hôm qua." : "")
+      : "";
   useEffect(() => { try { sessionStorage.setItem(KEY, JSON.stringify({ gid, period, channels, convs, mode, picked })); } catch { /* ignore */ } }, [gid, period, channels, convs, mode, picked]);
 
   const loadGroups = useCallback(async () => {
@@ -71,14 +115,16 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
   useEffect(() => {
     const custom = mode === "custom";
     if (custom ? !picked.length : !gid) { setData(null); return; }
+    if (rangeErr) return;
     let live = true;
     setLoading(true);
-    readCompareFn({ data: custom ? { groupId: 0, period, channels, convGroups: convs, clientIds: picked } : { groupId: gid, period, channels, convGroups: convs } })
+    const pr = { period, from: rangeFrom, to: rangeTo, channels, convGroups: convs };
+    readCompareFn({ data: custom ? { groupId: 0, ...pr, clientIds: picked } : { groupId: gid, ...pr } })
       .then((r) => { if (live) { setData(r); setErr(""); } })
       .catch((e: unknown) => { if (live) setErr(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [gid, period, channels, convs, epoch, mode, picked]);
+  }, [gid, period, rangeFrom, rangeTo, rangeErr, channels, convs, epoch, mode, picked]);
 
   const rows = useMemo(() => {
     const rs = [...(data?.rows || [])];
@@ -147,13 +193,42 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
             {mode === "group" && group?.personal && canSave ? <PersonalGroupActions g={group} onChanged={(id) => { if (id !== undefined) setGid(id); setEpoch((n) => n + 1); }} /> : null}
             {mode === "custom" ? <button type="button" onClick={() => setPickerOpen((x) => !x)} className="inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 font-medium text-ink hover:bg-inset">{picked.length ? `Đã chọn ${picked.length} tài khoản` : "Chọn tài khoản"} ▾</button> : null}
             <div className="flex gap-1 rounded-md border border-line bg-paper p-1">
-              {(Object.keys(PERIOD_LABEL) as ComparePeriod[]).map((p) => (
+              {MAIN_PERIODS.map((p) => (
                 <button key={p} type="button" aria-pressed={period === p} onClick={() => setPeriod(p)} className={cn("h-7 rounded px-2.5 font-medium", period === p ? "bg-accent-soft text-accent" : "text-muted hover:text-ink")}>{PERIOD_LABEL[p]}</button>
               ))}
+              <button type="button" aria-pressed={period === "months" || period === "days"} onClick={() => { if (period !== "months" && period !== "days") setPeriod("months"); }} className={cn("h-7 rounded px-2.5 font-medium", period === "months" || period === "days" ? "bg-accent-soft text-accent" : "text-muted hover:text-ink")}>Tuỳ chọn</button>
             </div>
-            {data?.months.length ? <span className="text-xs text-muted">{data.months.map(mLabel).join(", ")}{period === "this_month" ? " (đến hôm qua)" : ""}</span> : null}
+            {data?.months.length && period !== "days" ? <span className="text-xs text-muted">{data.months.map(mLabel).join(", ")}{period === "this_month" ? " (đến hôm qua)" : ""}</span> : null}
             {mode === "group" && data?.can_compute && missing ? <button type="button" onClick={() => void compute()} className="ml-auto inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-xs font-medium text-ink hover:bg-inset" title="Admin: tính ngay số liệu cho tài khoản trong nhóm (chỉ đọc Google Ads)">Tính ngay ({missing} chưa có số)</button> : null}
           </div>
+          {period === "months" || period === "days" ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <div className="flex gap-1 rounded-md border border-line bg-paper p-1 text-xs" role="group" aria-label="Kiểu khoảng thời gian">
+                <button type="button" aria-pressed={period === "months"} onClick={() => setPeriod("months")} className={cn("h-6 rounded px-2 font-medium", period === "months" ? "bg-accent text-white" : "text-muted hover:text-ink")}>Theo tháng</button>
+                <button type="button" aria-pressed={period === "days"} onClick={() => setPeriod("days")} className={cn("h-6 rounded px-2 font-medium", period === "days" ? "bg-accent text-white" : "text-muted hover:text-ink")}>Theo ngày</button>
+              </div>
+              {period === "months" ? (
+                <>
+                  <label className="inline-flex items-center gap-1">Từ <input type="month" value={mFrom} max={thisMonth()} onChange={(e) => e.target.value && setMFrom(e.target.value)} className="h-8 rounded-md border border-line bg-paper px-2" /></label>
+                  <label className="inline-flex items-center gap-1">đến <input type="month" value={mTo} max={thisMonth()} onChange={(e) => e.target.value && setMTo(e.target.value)} className="h-8 rounded-md border border-line bg-paper px-2" /></label>
+                  <span className="text-xs text-muted">{mLabel(mFrom)}–{mLabel(mTo)} · cộng số đã tính sẵn theo tháng</span>
+                </>
+              ) : (
+                <>
+                  {[7, 14, 30].map((n) => (
+                    <button key={n} type="button" onClick={() => { setDFrom(daysBack(n)); setDTo(yesterday()); }} aria-pressed={dFrom === daysBack(n) && dTo === yesterday()}
+                      className={cn("h-7 rounded-md border px-2 text-xs font-medium", dFrom === daysBack(n) && dTo === yesterday() ? "border-accent-border bg-accent-soft text-accent" : "border-line bg-paper text-muted hover:text-ink")}>{n} ngày</button>
+                  ))}
+                  <label className="inline-flex items-center gap-1">Từ <input type="date" value={dFrom} max={yesterday()} onChange={(e) => e.target.value && setDFrom(e.target.value)} className="h-8 rounded-md border border-line bg-paper px-2" /></label>
+                  <label className="inline-flex items-center gap-1">đến <input type="date" value={dTo} max={yesterday()} onChange={(e) => e.target.value && setDTo(e.target.value)} className="h-8 rounded-md border border-line bg-paper px-2" /></label>
+                  <span className="text-xs text-muted">{dmy(dFrom)}–{dmy(dTo)} · tải trực tiếp (chỉ đọc), tối đa ~1 năm</span>
+                </>
+              )}
+              {rangeErr ? <span className="text-xs text-danger">{rangeErr}</span> : null}
+            </div>
+          ) : null}
+          {data?.period_note && data.period === period ? <p className="text-xs text-muted">{data.period_note}</p> : null}
+          {loading && period === "days" ? <p className="text-xs text-accent">Đang tải số liệu trực tiếp từ Google Ads…</p> : null}
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span className="text-muted">Loại chiến dịch:</span>
             <Chip on={!channels.length} onClick={() => setChannels([])}>Tất cả</Chip>
@@ -198,7 +273,8 @@ export function CompareView({ onOpenAccount, isAdmin }: { onOpenAccount?: (clien
                       ) : <span className="font-medium text-ink">{r.label}</span>}
                       <span className="block text-xs text-subtle">{r.customer_id_dashed}</span>
                       {r.low_data ? <span className="mt-0.5 inline-flex h-5 items-center rounded-sm bg-warn-bg px-1.5 text-[11px] text-warn" title={`< ${data.thresholds.conv} chuyển đổi hoặc < ${data.thresholds.clicks} click trong kỳ`}>ít dữ liệu</span> : null}
-                      {!r.has_data ? <span className="mt-0.5 block text-[11px] text-muted" title={r.error || ""}>{r.error ? "Lỗi tính số liệu" : r.computed_at ? "Không có số trong kỳ" : "Chưa có số (tính đêm nay)"}</span> : null}
+                      {!r.has_data ? <span className="mt-0.5 block text-[11px] text-muted" title={r.error || ""}>{r.error ? (data.period === "days" ? "Không tải được số liệu" : "Lỗi tính số liệu") : data.period === "days" || r.computed_at ? "Không có số trong kỳ" : "Chưa có số (tính đêm nay)"}</span> : null}
+                      {r.has_data && r.note ? <span className="mt-0.5 block text-[11px] text-warn" title="Các tháng này chưa có số đã tính: tổng chỉ gồm các tháng có số.">{r.note}</span> : null}
                       <GoogleAdsLink clientId={r.client_id} cid={r.customer_id_dashed} isAdmin={isAdmin} className="mt-1 block" />
                     </td>
                     {METRICS.map((k) => {
