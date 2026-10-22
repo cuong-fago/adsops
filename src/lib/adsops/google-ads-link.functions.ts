@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { principalMiddleware } from "./principal-middleware";
-import { isGoogleId, parseOcid } from "./google-ads-link.ts";
+import { cidOf, isGoogleId, parseOcid } from "./google-ads-link.ts";
 
 async function visibleGoogle(ctx: import("./permissions.server").AccessContext) {
   const { canSeeAccount } = await import("./permissions.server");
@@ -10,8 +10,8 @@ async function visibleGoogle(ctx: import("./permissions.server").AccessContext) 
   const out = new Map<string, string>();
   for (const c of dir.clients) {
     if (!isGoogleId(c.client_id) || !canSeeAccount(ctx, c.client_id)) continue;
-    const cid = String(c.customer_id_dashed || c.client_id).replace(/\D/g, "");
-    if (/^\d{10}$/.test(cid)) out.set(c.client_id, cid);
+    const cid = cidOf(c.customer_id_dashed, c.client_id);
+    if (cid) out.set(c.client_id, cid);
   }
   return out;
 }
