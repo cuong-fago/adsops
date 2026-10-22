@@ -11,14 +11,14 @@ export const SUPER_ADMIN_EMAIL = SUPER_ADMIN_EMAILS[0];
 export const isSuperAdminEmail = (email: string | null | undefined): boolean =>
   Boolean(email) && SUPER_ADMIN_EMAILS.includes(String(email).trim().toLowerCase());
 
-export type StaffRole = "admin" | "head_ads" | "optimizer" | "sale";
+export type StaffRole = "admin" | "head_ads" | "optimizer" | "sale" | "accountant";
 export type ClientRole = "client_owner" | "client_staff";
 export type Role = StaffRole | ClientRole;
 export type PrincipalKind = "staff" | "client";
 
-export const STAFF_ROLES: StaffRole[] = ["admin", "head_ads", "optimizer", "sale"];
+export const STAFF_ROLES: StaffRole[] = ["admin", "head_ads", "optimizer", "sale", "accountant"];
 /** Roles admin may assign to internal staff (admin itself is hard-coded). */
-export const ASSIGNABLE_STAFF_ROLES: StaffRole[] = ["head_ads", "optimizer", "sale"];
+export const ASSIGNABLE_STAFF_ROLES: StaffRole[] = ["head_ads", "optimizer", "sale", "accountant"];
 export const CLIENT_ROLES: ClientRole[] = ["client_owner", "client_staff"];
 
 export const ROLE_LABEL_VI: Record<string, string> = {
@@ -26,6 +26,7 @@ export const ROLE_LABEL_VI: Record<string, string> = {
   head_ads: "Trưởng phòng Ads",
   optimizer: "Người tối ưu",
   sale: "Sale",
+  accountant: "Kế toán",
   client_owner: "Khách hàng (chủ)",
   client_staff: "Khách hàng (nhân viên)",
   pending: "Chưa được cấp quyền",
@@ -54,6 +55,8 @@ export type Capabilities = {
   requestGrant: boolean;
   /** "Nhật ký tối ưu": keyword change log (read + read-only Google pull). Admin and head_ads only. */
   changeLog: boolean;
+  /** "Hóa đơn Google": invoices of every Google account (Admin + Kế toán only). */
+  invoices: boolean;
 };
 
 const NONE: Capabilities = {
@@ -68,6 +71,7 @@ const NONE: Capabilities = {
   viewAs: false,
   requestGrant: false,
   changeLog: false,
+  invoices: false,
 };
 
 /** The approved permission matrix. */
@@ -86,6 +90,7 @@ export function capabilitiesFor(role: Role | "pending"): Capabilities {
         viewAs: true,
         requestGrant: false,
         changeLog: true,
+        invoices: true,
       };
     case "head_ads":
       return { ...NONE, overview: true, analytics: true, compare: true, optimize: true, opsTabs: true, pull: true, download: true, requestGrant: true, changeLog: true };
@@ -93,6 +98,9 @@ export function capabilitiesFor(role: Role | "pending"): Capabilities {
       return { ...NONE, overview: true, analytics: true, compare: true, optimize: true, opsTabs: true, pull: true, download: true };
     case "sale":
       return { ...NONE, overview: true, analytics: true, compare: true, optimize: true, opsTabs: true, download: true, requestGrant: true };
+    case "accountant":
+      // Only the Hóa đơn Google tab; no ad-account grants needed (server scopes invoices itself).
+      return { ...NONE, invoices: true };
     case "client_owner":
     case "client_staff":
       return { ...NONE, overview: true, analytics: true };
