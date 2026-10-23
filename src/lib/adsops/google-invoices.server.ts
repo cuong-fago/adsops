@@ -639,3 +639,55 @@ export async function companiesFor(items: Array<{ cid: string | null; date: stri
     return { id: per.profile_id, name: c?.display_name || c?.profile_name || per.profile_name || per.profile_id, mst: c?.mst || null };
   });
 }
+
+export type DownloadGuideRow = { cid: string; name: string; customer: string | null; spend: number; spend_days: number; manager_chain: string | null; docs: number; vn_tax_docs: number; doc_nos: string[] };
+
+/**
+ * Download guide for the box automation: Google accounts with spend > 0 in the month, their
+ * manager (MCC) chain as recorded in ad_accounts, and which billing documents are already stored.
+ */
+export async function downloadGuide(month: string): Promise<DownloadGuideRow[]> {
+  const [y, m] = month.split("-").map(Number);
+  const from = `${month}-01`;
+  const to = `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+  const accs = await invoiceAccounts();
+  const { dailySpend } = await import("./budget-plan.server.ts");
+  const sp = await dailySpend(accs.map((a) => a.client_id), from, to);
+  const sql = await getSql();
+  const aa = await sql
+    .query<{ id: string; external_id: string | null; manager_customer_id: string | null; display_name: string | null }>(`select id, external_id, manager_customer_id, display_name from ad_accounts`)
+    .catch(() => []);
+  const d10 = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+  const mgr = new Map<string, string>();
+  const nm = new Map<string, string>();
+  for (const r of aa) {
+    const k = d10(r.external_id).length === 10 ? d10(r.external_id) : d10(r.id).length === 10 ? d10(r.id) : "";
+    const p = d10(r.manager_customer_id);
+    if (p.length === 10) { mgr.set(r.id, p); if (k) mgr.set(k, p); }
+    if (k && r.display_name) nm.set(k, r.display_name);
+  }
+  const chain = (cid: string, id: string) => {
+    const out: string[] = [];
+    const seen = new Set<string>([cid]);
+    let cur = mgr.get(id) || mgr.get(cid);
+    while (cur && !seen.has(cur) && out.length < 6) {
+      seen.add(cur);
+      out.push(nm.get(cur) ? `${dashCid(cur)} (${nm.get(cur)})` : dashCid(cur));
+      cur = mgr.get(cur);
+    }
+    return out.length ? out.join(" > ") : null;
+  };
+  const docs = await sql.query<{ cid: string; doc_no: string; doc_type: string }>(
+    `select cid, doc_no, doc_type from google_invoices where issue_date between $1 and $2`, [from, to],
+  );
+  const out: DownloadGuideRow[] = [];
+  for (const a of accs) {
+    const byDay = new Map<string, number>();
+    for (const d of sp.get(a.client_id) || []) byDay.set(d.date, Math.max(byDay.get(d.date) || 0, d.cost));
+    const spend = [...byDay.values()].reduce((s, v) => s + v, 0);
+    if (!(spend > 0)) continue;
+    const mine = docs.filter((d) => d.cid === a.cid);
+    out.push({ cid: dashCid(a.cid), name: a.name, customer: a.customer, spend: Math.round(spend), spend_days: [...byDay.values()].filter((v) => v > 0).length, manager_chain: chain(a.cid, a.client_id), docs: mine.length, vn_tax_docs: mine.filter((d) => d.doc_type === "vn_tax").length, doc_nos: mine.map((d) => d.doc_no) });
+  }
+  return out.sort((p, q) => q.spend - p.spend);
+}
