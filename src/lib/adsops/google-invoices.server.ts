@@ -628,3 +628,14 @@ export async function existingDocNos(nos: string[]): Promise<string[]> {
   const r = await sql.query<{ doc_no: string }>(`select doc_no from google_invoices where doc_no = any($1::text[])`, [nos.map(normDocNo)]);
   return r.map((x) => x.doc_no);
 }
+
+/** Company (payments profile) valid for an account on a date, for the ingest summary. */
+export async function companiesFor(items: Array<{ cid: string | null; date: string | null }>): Promise<Array<{ id: string; name: string; mst: string | null } | null>> {
+  const [periods, companies] = await Promise.all([loadPeriods(), loadCompanies()]);
+  return items.map(({ cid, date }) => {
+    const per = cid ? companyAt(periods.get(cid) || [], date) : null;
+    if (!per?.profile_id) return null;
+    const c = companies.get(per.profile_id);
+    return { id: per.profile_id, name: c?.display_name || c?.profile_name || per.profile_name || per.profile_id, mst: c?.mst || null };
+  });
+}
