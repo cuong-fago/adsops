@@ -93,3 +93,16 @@ test("companyAt picks the setup valid on the date", () => {
   assert.equal(setupDate("2037-12-30 23:59:59", true), null);
   assert.equal(setupDate("2026-06-01 00:00:00"), "2026-06-01");
 });
+
+test("parseInvoiceXml: VN e-invoice XML (TgTTTBSo incl. VAT)", async () => {
+  const { parseInvoiceXml } = await import("./google-invoice-files.ts");
+  const xml = `<HDon><DLHDon Id="DuLieuKy"><TTChung><KHMSHDon>1</KHMSHDon><KHHDon>C26TGG</KHHDon><SHDon>2889754</SHDon><NLap>2026-09-08</NLap><DVTTe>VND</DVTTe></TTChung><NDHDon><NBan><Ten>CÔNG TY TNHH GOOGLE VIỆT NAM</Ten><MST>0317860332</MST></NBan><NMua><Ten>Công ty A &amp; B</Ten><MST>0108755817</MST></NMua><TToan><TgTCThue>5092593.00</TgTCThue><TgTThue>407407.00</TgTThue><TgTTTBSo>5500000.00</TgTTTBSo></TToan></NDHDon></DLHDon></HDon>`;
+  const d = parseInvoiceXml(xml, "1C26TGG-2889754.xml")!;
+  assert.equal(d.doc_no, "1C26TGG-2889754");
+  assert.equal(d.issue_date, "2026-09-08");
+  assert.equal(d.amount, 5500000);
+  assert.equal(d.buyer_name, "Công ty A & B");
+  assert.equal(d.buyer_mst, "0108755817");
+  assert.equal(d.doc_type, "vn_tax");
+  assert.equal(parseInvoiceXml("<x/>", "a.xml"), null);
+});

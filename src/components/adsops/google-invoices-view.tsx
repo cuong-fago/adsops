@@ -426,30 +426,8 @@ function ProbeCard({ accounts, selected, month, onSaved }: { accounts: InvoiceAc
 type Draft = ParsedDoc & { key: string; client_id: string; dup: "file" | "db" | null };
 
 async function readFiles(files: File[]): Promise<{ docs: ParsedDoc[]; errors: string[] }> {
-  const docs: ParsedDoc[] = [];
-  const errors: string[] = [];
-  const pdfText = async (name: string, bytes: Uint8Array) => {
-    const { extractText, getDocumentProxy } = await import("unpdf");
-    const pdf = await getDocumentProxy(bytes);
-    const { text } = await extractText(pdf, { mergePages: true });
-    return parseInvoiceText(Array.isArray(text) ? text.join("\n") : String(text), name);
-  };
-  const one = async (name: string, bytes: Uint8Array) => {
-    const lower = name.toLowerCase();
-    try {
-      if (lower.endsWith(".pdf")) docs.push(await pdfText(name, bytes));
-      else if (lower.endsWith(".csv") || lower.endsWith(".txt")) docs.push(...parseInvoiceCsv(new TextDecoder("utf-8").decode(bytes), name));
-      else if (lower.endsWith(".zip")) {
-        const { unzipSync } = await import("fflate");
-        const inner = unzipSync(bytes);
-        for (const [n, b] of Object.entries(inner)) if (!n.endsWith("/") && !n.startsWith("__MACOSX")) await one(n, b);
-      } else errors.push(`${name}: định dạng chưa hỗ trợ (cần .zip, .pdf hoặc .csv)`);
-    } catch (e) {
-      errors.push(`${name}: không đọc được (${errMsg(e)})`);
-    }
-  };
-  for (const f of files) await one(f.name, new Uint8Array(await f.arrayBuffer()));
-  return { docs, errors };
+  const { readInvoiceFiles } = await import("@/lib/adsops/google-invoice-files");
+  return readInvoiceFiles(await Promise.all(files.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }))));
 }
 
 function UploadCard({ accounts, onSaved }: { accounts: InvoiceAccount[]; onSaved: () => void }) {
@@ -528,8 +506,8 @@ function UploadCard({ accounts, onSaved }: { accounts: InvoiceAccount[]; onSaved
         className={`mt-3 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-6 text-sm ${drag ? "border-brand bg-brand/5" : "border-line"} ${busy ? "opacity-60" : ""}`}
       >
         <span className="font-medium text-ink">{busy ? "Đang đọc file…" : "Kéo thả file vào đây hoặc bấm để chọn"}</span>
-        <span className="text-xs text-muted">Nhiều file .zip, .pdf, .csv một lúc</span>
-        <input type="file" multiple accept=".zip,.pdf,.csv" className="hidden" disabled={busy} onChange={(e) => { void onFiles([...(e.target.files || [])]); e.target.value = ""; }} />
+        <span className="text-xs text-muted">Nhiều file .zip, .pdf, .xml, .csv một lúc (XML hoá đơn điện tử được ưu tiên)</span>
+        <input type="file" multiple accept=".zip,.pdf,.xml,.csv" className="hidden" disabled={busy} onChange={(e) => { void onFiles([...(e.target.files || [])]); e.target.value = ""; }} />
       </label>
       {errors.length ? <ul className="mt-2 list-disc pl-5 text-xs text-danger">{errors.map((e) => <li key={e}>{e}</li>)}</ul> : null}
       {msg ? <p className="mt-2 text-sm text-ink">{msg}</p> : null}
