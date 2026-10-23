@@ -12,7 +12,7 @@ import { createFileRoute } from "@tanstack/react-router";
  */
 const MAX_BYTES = 40 * 1024 * 1024;
 
-function authorized(request: Request): boolean {
+export function ingestAuthorized(request: Request): boolean {
   const secret = process.env.INVOICE_INGEST_TOKEN?.trim();
   if (!secret || secret.length < 32) return false;
   const got = request.headers.get("authorization") || "";
@@ -26,7 +26,7 @@ async function handle({ request }: { request: Request }): Promise<Response> {
   const headers = { "cache-control": "no-store" };
   const fail = (status: number, error: string) => Response.json({ ok: false, error }, { status, headers });
   if (!process.env.INVOICE_INGEST_TOKEN?.trim()) return fail(503, "INVOICE_INGEST_TOKEN not configured");
-  if (!authorized(request)) return fail(401, "unauthorized");
+  if (!ingestAuthorized(request)) return fail(401, "unauthorized");
   if (Number(request.headers.get("content-length") || 0) > MAX_BYTES) return fail(413, "too large (max 40 MB per request)");
 
   let form: FormData;
