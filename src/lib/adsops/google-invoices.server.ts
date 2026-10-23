@@ -5,7 +5,7 @@
 import { getSql } from "@/lib/db";
 import { AdsApiError, listInvoicesRaw, resolveAdsConfig, searchStream } from "./google-ads.server.ts";
 import { loginCustomerFor } from "./mcc-list.server.ts";
-import { accountTotal, cidDigits, dashCid, issueMonthEnum, normDocNo, rowCounted, type InvoiceDocType, type InvoiceRow } from "./google-invoices.ts";
+import { accountTotal, cidDigits, companyAt, dashCid, issueMonthEnum, normDocNo, normMst, rowCounted, setupDate, type CompanyPeriod, type InvoiceDocType, type InvoiceRow } from "./google-invoices.ts";
 import { asRec } from "./warehouse.server.ts";
 
 export type InvoiceAccount = { client_id: string; name: string; cid: string; customer: string | null };
@@ -34,23 +34,40 @@ export async function invoiceAccounts(): Promise<InvoiceAccount[]> {
   return [...out.values()].sort((a, b) => a.name.localeCompare(b.name, "vi"));
 }
 
-type Setup = { resource: string; id: string; status: string; payments: string | null };
+type Setup = {
+  resource: string;
+  id: string;
+  status: string;
+  payments: string | null;
+  payments_account_id: string | null;
+  profile_id: string | null;
+  profile_name: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+};
 
 async function billingSetups(cid: string, login?: string): Promise<Setup[]> {
   const cfg = await resolveAdsConfig();
   const rows = await searchStream(
     cfg,
     cid,
-    "SELECT billing_setup.resource_name, billing_setup.id, billing_setup.status, billing_setup.payments_account_info.payments_account_name FROM billing_setup",
+    "SELECT billing_setup.resource_name, billing_setup.id, billing_setup.status, billing_setup.start_date_time, billing_setup.end_date_time, billing_setup.payments_account_info.payments_account_id, billing_setup.payments_account_info.payments_account_name, billing_setup.payments_account_info.payments_profile_id, billing_setup.payments_account_info.payments_profile_name FROM billing_setup",
     login,
   );
   return rows.map((r) => {
     const b = asRec(asRec(r).billingSetup);
+    const pi = asRec(b.paymentsAccountInfo);
+    const str = (v: unknown) => (v == null || v === "" ? null : String(v));
     return {
       resource: String(b.resourceName || ""),
       id: String(b.id || ""),
       status: String(b.status || ""),
-      payments: (asRec(b.paymentsAccountInfo).paymentsAccountName as string) || null,
+      payments: str(pi.paymentsAccountName),
+      payments_account_id: str(pi.paymentsAccountId),
+      profile_id: str(pi.paymentsProfileId),
+      profile_name: str(pi.paymentsProfileName),
+      valid_from: setupDate(b.startDateTime),
+      valid_to: setupDate(b.endDateTime, true),
     };
   });
 }
@@ -185,7 +202,10 @@ function ymOf(d: Date): string {
 /** Nightly: this and last month for active Google accounts, within the deadline. */
 export async function refreshInvoices(ids: string[], deadline: number) {
   const want = new Set(ids);
-  const accs = (await invoiceAccounts()).filter((a) => want.has(a.client_id));
+  const all = await invoiceAccounts();
+  // Account -> company mapping for every Google account first (one cheap GAQL each), then documents.
+  const companies = await syncCompanies(all, Math.min(deadline, Date.now() + 150_000)).catch((e) => ({ error: errText(e) }));
+  const accs = all.filter((a) => want.has(a.client_id));
   const sql = await getSql();
   const sync = await sql
     .query<{ cid: string; ok: boolean; code: string | null; checked_at: Date | string }>(`select cid, ok, code, checked_at from google_invoice_sync`)
@@ -215,10 +235,141 @@ export async function refreshInvoices(ids: string[], deadline: number) {
     }
   };
   await Promise.all([worker(), worker(), worker()]);
-  return { accounts: accs.length, checked: done, read_ok: okN, found, skipped_unsupported: skipped, left: queue.length };
+  return { companies, accounts: accs.length, checked: done, read_ok: okN, found, skipped_unsupported: skipped, left: queue.length };
 }
 
-export type InvoiceMonthRow = InvoiceRow & { account_name: string | null; customer: string | null; counted: boolean; id_key: string };
+// ---------- Account -> company (payments profile) mapping ----------
+
+/** Read billing_setup (GAQL SELECT) for every account and store the history. Read-only to Google. */
+export async function syncCompanies(accs: InvoiceAccount[], deadline: number) {
+  const sql = await getSql();
+  const cfg = await resolveAdsConfig();
+  const queue = [...new Map(accs.map((a) => [a.cid, a])).values()];
+  let ok = 0, failed = 0, setups = 0;
+  const worker = async () => {
+    for (;;) {
+      if (Date.now() > deadline) return;
+      const a = queue.shift();
+      if (!a) return;
+      try {
+        const login = await loginCustomerFor(cfg, a.cid).catch(() => undefined);
+        const list = await billingSetups(a.cid, login);
+        for (const b of list) {
+          if (!b.id) continue;
+          await sql.query(
+            `insert into google_account_company_history (cid, setup_id, status, payments_account_id, payments_account_name, profile_id, profile_name, valid_from, valid_to)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             on conflict (cid, setup_id) do update set status = excluded.status, payments_account_id = excluded.payments_account_id,
+               payments_account_name = excluded.payments_account_name, profile_id = excluded.profile_id, profile_name = excluded.profile_name,
+               valid_from = excluded.valid_from, valid_to = excluded.valid_to, last_seen = now()`,
+            [a.cid, b.id, b.status, b.payments_account_id, b.payments, b.profile_id, b.profile_name, b.valid_from, b.valid_to],
+          );
+          if (b.profile_id) {
+            await sql.query(
+              `insert into google_companies (profile_id, profile_name) values ($1,$2)
+               on conflict (profile_id) do update set profile_name = coalesce(excluded.profile_name, google_companies.profile_name)`,
+              [b.profile_id, b.profile_name],
+            );
+          }
+        }
+        setups += list.length;
+        ok++;
+        await sql.query(
+          `insert into google_billing_sync (cid, ok, message, setups, checked_at) values ($1, true, null, $2, now())
+           on conflict (cid) do update set ok = true, message = null, setups = excluded.setups, checked_at = now()`,
+          [a.cid, list.length],
+        );
+      } catch (e) {
+        failed++;
+        await sql
+          .query(
+            `insert into google_billing_sync (cid, ok, message, setups, checked_at) values ($1, false, $2, 0, now())
+             on conflict (cid) do update set ok = false, message = excluded.message, checked_at = now()`,
+            [a.cid, errText(e)],
+          )
+          .catch(() => {});
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  const filled = await autofillMst().catch(() => 0);
+  return { accounts: accs.length, ok, failed, setups, left: queue.length, mst_filled: filled };
+}
+
+async function loadPeriods(): Promise<Map<string, CompanyPeriod[]>> {
+  const sql = await getSql();
+  const rows = await sql
+    .query<{ cid: string; status: string; profile_id: string | null; profile_name: string | null; valid_from: unknown; valid_to: unknown }>(
+      `select cid, status, profile_id, profile_name, valid_from, valid_to from google_account_company_history`,
+    )
+    .catch(() => []);
+  const out = new Map<string, CompanyPeriod[]>();
+  for (const r of rows) {
+    const l = out.get(r.cid) || [];
+    l.push({ profile_id: r.profile_id, profile_name: r.profile_name, status: r.status, valid_from: iso(r.valid_from), valid_to: iso(r.valid_to) });
+    out.set(r.cid, l);
+  }
+  return out;
+}
+
+export type GoogleCompany = { profile_id: string; profile_name: string | null; display_name: string | null; mst: string | null; mst_source: string | null; mst_doc: string | null };
+
+async function loadCompanies(): Promise<Map<string, GoogleCompany>> {
+  const sql = await getSql();
+  const rows = await sql
+    .query<GoogleCompany>(`select profile_id, profile_name, display_name, mst, mst_source, mst_doc from google_companies`)
+    .catch(() => [] as GoogleCompany[]);
+  return new Map(rows.map((r) => [r.profile_id, r]));
+}
+
+/** Fill a company's empty MST from the newest VN tax invoice attributed to it. Never overwrites a set MST. */
+export async function autofillMst(): Promise<number> {
+  const sql = await getSql();
+  const [periods, companies] = await Promise.all([loadPeriods(), loadCompanies()]);
+  const docs = await sql.query<{ doc_no: string; cid: string | null; issue_date: unknown; buyer_mst: string }>(
+    `select doc_no, cid, issue_date, buyer_mst from google_invoices where doc_type = 'vn_tax' and buyer_mst is not null order by issue_date desc`,
+  );
+  const done = new Set<string>();
+  let n = 0;
+  for (const d of docs) {
+    const p = d.cid ? companyAt(periods.get(d.cid) || [], iso(d.issue_date)) : null;
+    if (!p?.profile_id || done.has(p.profile_id)) continue;
+    done.add(p.profile_id);
+    const c = companies.get(p.profile_id);
+    if (c?.mst) continue;
+    const r = await sql.query<{ profile_id: string }>(
+      `update google_companies set mst = $2, mst_source = 'invoice', mst_doc = $3, updated_at = now() where profile_id = $1 and mst is null returning profile_id`,
+      [p.profile_id, d.buyer_mst, d.doc_no],
+    );
+    n += r.length;
+  }
+  return n;
+}
+
+export async function saveCompany(profileId: string, displayName: string | null, mst: string | null, by: string) {
+  const sql = await getSql();
+  const r = await sql.query<{ profile_id: string }>(
+    `update google_companies set display_name = $2, mst = $3, mst_source = case when $3::text is null then null else 'manual' end,
+       mst_doc = null, updated_by = $4, updated_at = now() where profile_id = $1 returning profile_id`,
+    [profileId, displayName, mst, by],
+  );
+  if (!r.length) throw new Error("Không tìm thấy hồ sơ thanh toán này.");
+}
+
+// ---------- Month view ----------
+
+export type InvoiceMonthRow = InvoiceRow & {
+  account_name: string | null;
+  customer: string | null;
+  counted: boolean;
+  id_key: string;
+  buyer_name: string | null;
+  buyer_mst: string | null;
+  company_id: string | null;
+  company: string | null;
+  company_mst: string | null;
+  mst_mismatch: boolean;
+};
 export type InvoiceAccountSum = {
   client_id: string | null;
   cid: string | null;
@@ -229,14 +380,36 @@ export type InvoiceAccountSum = {
   spend: number | null;
   spend_days: number;
 };
+export type CompanyAccountSum = { client_id: string | null; cid: string | null; name: string; total: number | null; basis: "vn_tax" | "invoice" | null; spend: number | null; docs: number };
+export type CompanySum = {
+  profile_id: string | null;
+  name: string;
+  profile_name: string | null;
+  display_name: string | null;
+  mst: string | null;
+  mst_source: string | null;
+  total: number | null;
+  fallback: boolean;
+  spend: number | null;
+  docs: number;
+  accounts: CompanyAccountSum[];
+};
+export type InvoiceWarning =
+  | { kind: "no_docs"; client_id: string; cid: string; name: string; company: string | null; spend: number }
+  | { kind: "mst_mismatch"; doc_no: string; cid: string | null; name: string | null; buyer_mst: string; company: string | null; company_mst: string | null }
+  | { kind: "no_company"; client_id: string | null; cid: string | null; name: string; docs: number };
 export type InvoiceMonth = {
   month: string;
   rows: InvoiceMonthRow[];
   accounts: InvoiceAccountSum[];
   customers: Array<{ customer: string; total: number | null; spend: number | null }>;
+  companies: CompanySum[];
+  company_list: GoogleCompany[];
+  warnings: InvoiceWarning[];
   total: number | null;
   spend: number | null;
   sync: Array<{ cid: string; ok: boolean; code: string | null; message: string | null; checked_at: string }>;
+  mapping: { checked_at: string | null; accounts: number; failed: number; mapped: number };
 };
 
 const iso = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
@@ -248,21 +421,32 @@ export async function readInvoiceMonth(ym: string): Promise<InvoiceMonth> {
   const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
   const sql = await getSql();
   const raw = await sql.query<Record<string, unknown>>(
-    `select doc_no, doc_type, cid, client_id, issue_date, amount, currency, source, file_name from google_invoices
+    `select doc_no, doc_type, cid, client_id, issue_date, amount, currency, source, file_name, buyer_name, buyer_mst from google_invoices
       where issue_date between $1 and $2 order by issue_date, doc_no`,
     [first, last],
   );
-  const accs = await invoiceAccounts();
+  const [accs, periods, companyMap] = await Promise.all([invoiceAccounts(), loadPeriods(), loadCompanies()]);
   const byId = new Map(accs.map((a) => [a.client_id, a]));
   const byCid = new Map(accs.map((a) => [a.cid, a]));
+  const companyName = (id: string | null) => {
+    if (!id) return null;
+    const c = companyMap.get(id);
+    return c?.display_name || c?.profile_name || id;
+  };
   const rows: InvoiceMonthRow[] = raw.map((r) => {
     const acc: InvoiceAccount | null = (r.client_id ? byId.get(String(r.client_id)) : undefined) || (r.cid ? byCid.get(String(r.cid)) : undefined) || null;
+    const cid = (r.cid as string) || acc?.cid || null;
+    const date = iso(r.issue_date);
+    const per = cid ? companyAt(periods.get(cid) || [], date) : null;
+    const company_id = per?.profile_id || null;
+    const company_mst = company_id ? companyMap.get(company_id)?.mst || null : null;
+    const buyer_mst = normMst(r.buyer_mst);
     return {
       doc_no: String(r.doc_no),
       doc_type: String(r.doc_type) as InvoiceDocType,
-      cid: (r.cid as string) || acc?.cid || null,
+      cid,
       client_id: acc?.client_id || (r.client_id as string) || null,
-      issue_date: iso(r.issue_date),
+      issue_date: date,
       amount: r.amount == null ? null : Number(r.amount),
       currency: (r.currency as string) || null,
       source: r.source === "api" ? "api" : "upload",
@@ -271,6 +455,12 @@ export async function readInvoiceMonth(ym: string): Promise<InvoiceMonth> {
       customer: acc?.customer || null,
       counted: false,
       id_key: String(r.doc_no),
+      buyer_name: (r.buyer_name as string) || null,
+      buyer_mst,
+      company_id,
+      company: companyName(company_id),
+      company_mst,
+      mst_mismatch: Boolean(buyer_mst && company_mst && normMst(company_mst) !== buyer_mst),
     };
   });
   const groups = new Map<string, InvoiceMonthRow[]>();
@@ -278,9 +468,10 @@ export async function readInvoiceMonth(ym: string): Promise<InvoiceMonth> {
     const k = r.client_id || `cid:${r.cid || "?"}`;
     groups.set(k, [...(groups.get(k) || []), r]);
   }
-  const ids = [...groups.keys()].filter((k) => !k.startsWith("cid:"));
+  // Spend for every Google account (the "spend but no document" warning needs all of them).
   const { dailySpend } = await import("./budget-plan.server.ts");
-  const spendMap = ids.length ? await dailySpend(ids, first, last).catch(() => new Map()) : new Map();
+  const allIds = [...new Set([...accs.map((a) => a.client_id), ...[...groups.keys()].filter((k) => !k.startsWith("cid:"))])];
+  const spendMap: Map<string, Array<{ date: string; cost: number }>> = allIds.length ? await dailySpend(allIds, first, last).catch(() => new Map()) : new Map();
   const accounts: InvoiceAccountSum[] = [];
   for (const [k, list] of groups) {
     const t = accountTotal(list);
@@ -294,7 +485,7 @@ export async function readInvoiceMonth(ym: string): Promise<InvoiceMonth> {
       customer: acc?.customer || null,
       total: t.total,
       basis: t.basis,
-      spend: days.length ? days.reduce((s: number, d: { cost: number }) => s + d.cost, 0) : null,
+      spend: days.length ? days.reduce((s, d) => s + d.cost, 0) : null,
       spend_days: days.length,
     });
   }
@@ -305,17 +496,89 @@ export async function readInvoiceMonth(ym: string): Promise<InvoiceMonth> {
     custMap.set(c, [...(custMap.get(c) || []), a]);
   }
   const customers = [...custMap.entries()].map(([customer, l]) => ({ customer, total: sumOrNull(l.map((x) => x.total)), spend: sumOrNull(l.map((x) => x.spend)) }));
+
+  // ---- By company: documents by the company valid on their issue date; spend day by day the same way.
+  type Cell = { client_id: string | null; cid: string | null; name: string; rows: InvoiceMonthRow[]; spend: number | null };
+  const cells = new Map<string, Cell>(); // `${company}|${account}`
+  const cell = (company: string, acctKey: string, init: () => Omit<Cell, "rows" | "spend">) => {
+    const k = `${company}|${acctKey}`;
+    let c = cells.get(k);
+    if (!c) { c = { ...init(), rows: [], spend: null }; cells.set(k, c); }
+    return c;
+  };
+  for (const r of rows) {
+    const acctKey = r.client_id || `cid:${r.cid || "?"}`;
+    cell(r.company_id || "", acctKey, () => ({ client_id: r.client_id, cid: r.cid, name: r.account_name || (r.cid ? dashCid(r.cid) : "Chưa gán tài khoản") })).rows.push(r);
+  }
+  for (const a of accs) {
+    const days = spendMap.get(a.client_id) || [];
+    for (const d of days) {
+      if (!(d.cost > 0)) continue;
+      const per = companyAt(periods.get(a.cid) || [], d.date);
+      const c = cell(per?.profile_id || "", a.client_id, () => ({ client_id: a.client_id, cid: a.cid, name: a.name }));
+      c.spend = (c.spend ?? 0) + d.cost;
+    }
+  }
+  const compAgg = new Map<string, CompanyAccountSum[]>();
+  for (const [k, c] of cells) {
+    const company = k.slice(0, k.indexOf("|"));
+    const t = accountTotal(c.rows);
+    compAgg.set(company, [...(compAgg.get(company) || []), { client_id: c.client_id, cid: c.cid, name: c.name, total: t.total, basis: t.basis, spend: c.spend, docs: c.rows.length }]);
+  }
+  const companies: CompanySum[] = [...compAgg.entries()].map(([id, list]) => {
+    const c = id ? companyMap.get(id) : undefined;
+    list.sort((a, b) => a.name.localeCompare(b.name, "vi"));
+    return {
+      profile_id: id || null,
+      name: id ? companyName(id)! : "Chưa xác định công ty",
+      profile_name: c?.profile_name || null,
+      display_name: c?.display_name || null,
+      mst: c?.mst || null,
+      mst_source: c?.mst_source || null,
+      total: sumOrNull(list.map((x) => x.total)),
+      fallback: list.some((x) => x.basis === "invoice"),
+      spend: sumOrNull(list.map((x) => x.spend)),
+      docs: list.reduce((s, x) => s + x.docs, 0),
+      accounts: list,
+    };
+  });
+  companies.sort((a, b) => (a.profile_id ? 0 : 1) - (b.profile_id ? 0 : 1) || a.name.localeCompare(b.name, "vi"));
+
+  // ---- Warnings
+  const warnings: InvoiceWarning[] = [];
+  const withDocs = new Set(rows.map((r) => r.client_id).filter(Boolean));
+  for (const a of accs) {
+    const spend = (spendMap.get(a.client_id) || []).reduce((s, d) => s + (d.cost > 0 ? d.cost : 0), 0);
+    if (spend > 0 && !withDocs.has(a.client_id)) {
+      const per = companyAt(periods.get(a.cid) || [], last);
+      warnings.push({ kind: "no_docs", client_id: a.client_id, cid: a.cid, name: a.name, company: companyName(per?.profile_id || null), spend });
+    }
+  }
+  for (const r of rows) {
+    if (r.mst_mismatch && r.buyer_mst) warnings.push({ kind: "mst_mismatch", doc_no: r.doc_no, cid: r.cid, name: r.account_name, buyer_mst: r.buyer_mst, company: r.company, company_mst: r.company_mst });
+  }
+  const noCo = companies.find((c) => !c.profile_id);
+  for (const a of noCo?.accounts || []) if (a.docs) warnings.push({ kind: "no_company", client_id: a.client_id, cid: a.cid, name: a.name, docs: a.docs });
+
   const sync = await sql
     .query<{ cid: string; ok: boolean; code: string | null; message: string | null; checked_at: unknown }>(`select cid, ok, code, message, checked_at from google_invoice_sync order by checked_at desc limit 500`)
     .catch(() => []);
+  const bs = await sql
+    .query<{ n: number; failed: number; last: unknown }>(`select count(*)::int as n, count(*) filter (where not ok)::int as failed, max(checked_at) as last from google_billing_sync`)
+    .catch(() => [] as { n: number; failed: number; last: unknown }[]);
+  const tsIso = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString() : String(v));
   return {
     month: ym,
     rows,
     accounts,
     customers,
+    companies,
+    company_list: [...companyMap.values()].sort((a, b) => (a.display_name || a.profile_name || "").localeCompare(b.display_name || b.profile_name || "", "vi")),
+    warnings,
     total: sumOrNull(accounts.map((a) => a.total)),
     spend: sumOrNull(accounts.map((a) => a.spend)),
-    sync: sync.map((s) => ({ cid: s.cid, ok: s.ok, code: s.code, message: s.message, checked_at: s.checked_at instanceof Date ? s.checked_at.toISOString() : String(s.checked_at) })),
+    sync: sync.map((s) => ({ cid: s.cid, ok: s.ok, code: s.code, message: s.message, checked_at: tsIso(s.checked_at) || "" })),
+    mapping: { checked_at: tsIso(bs[0]?.last), accounts: bs[0]?.n ?? 0, failed: bs[0]?.failed ?? 0, mapped: periods.size },
   };
 }
 
@@ -327,10 +590,12 @@ export type UploadDoc = {
   amount: number;
   currency: string | null;
   file_name: string | null;
+  buyer_name: string | null;
+  buyer_mst: string | null;
 };
 
 /** Saves uploaded documents; an existing document number is skipped (dedupe), never overwritten. */
-export async function saveUploaded(docs: UploadDoc[], by: string): Promise<{ saved: number; duplicates: string[] }> {
+export async function saveUploaded(docs: UploadDoc[], by: string): Promise<{ saved: number; duplicates: string[]; mst_filled: number }> {
   const accs = new Map((await invoiceAccounts()).map((a) => [a.client_id, a]));
   const sql = await getSql();
   let saved = 0;
@@ -339,14 +604,15 @@ export async function saveUploaded(docs: UploadDoc[], by: string): Promise<{ sav
     const acc = accs.get(d.client_id);
     if (!acc) throw new Error(`Tài khoản không hợp lệ cho chứng từ ${d.doc_no}.`);
     const res = await sql.query<{ doc_no: string }>(
-      `insert into google_invoices (doc_no, doc_type, cid, client_id, issue_date, amount, currency, source, file_name, created_by)
-       values ($1,$2,$3,$4,$5,$6,$7,'upload',$8,$9) on conflict (doc_no) do nothing returning doc_no`,
-      [normDocNo(d.doc_no), d.doc_type, acc.cid, acc.client_id, d.issue_date, d.amount, d.currency, d.file_name, by],
+      `insert into google_invoices (doc_no, doc_type, cid, client_id, issue_date, amount, currency, source, file_name, created_by, buyer_name, buyer_mst)
+       values ($1,$2,$3,$4,$5,$6,$7,'upload',$8,$9,$10,$11) on conflict (doc_no) do nothing returning doc_no`,
+      [normDocNo(d.doc_no), d.doc_type, acc.cid, acc.client_id, d.issue_date, d.amount, d.currency, d.file_name, by, d.buyer_name, normMst(d.buyer_mst)],
     );
     if (res.length) saved++;
     else duplicates.push(d.doc_no);
   }
-  return { saved, duplicates };
+  const mst_filled = saved ? await autofillMst().catch(() => 0) : 0;
+  return { saved, duplicates, mst_filled };
 }
 
 export async function deleteUploaded(docNo: string): Promise<boolean> {

@@ -30,6 +30,9 @@ export type ParsedDoc = {
   amount: number | null;
   currency: string | null;
   cid: string | null;
+  /** Buyer (bên mua) name and tax code as printed on the document; null when not found. */
+  buyer_name: string | null;
+  buyer_mst: string | null;
   note: string | null;
 };
 
@@ -186,8 +189,69 @@ export function parseInvoiceText(text: string, fileName: string): ParsedDoc {
     amount,
     currency: currencyOf(t),
     cid: cidM ? cidDigits(cidM[1]) : null,
+    ...parseBuyer(t),
     note: notes.length ? notes.join("; ") : null,
   };
+}
+
+/** Vietnamese MST: 10 digits, optional -3 branch suffix. Returns the normalized form or null. */
+export function normMst(v: unknown): string | null {
+  const m = /(?:^|\D)(\d{10})(?:-(\d{3}))?(?!\d)/.exec(String(v ?? "").replace(/[\s.]/g, ""));
+  if (!m) return null;
+  return m[2] ? `${m[1]}-${m[2]}` : m[1];
+}
+
+/**
+ * Buyer block of a VN tax invoice / Google document: the first MST and company name after a buyer
+ * heading ("Người mua", "Đơn vị mua", "Bill to", "Buyer"...). Seller details printed before it are ignored.
+ */
+export function parseBuyer(text: string): { buyer_name: string | null; buyer_mst: string | null } {
+  const t = text.replace(/\u00a0/g, " ");
+  const anchor = /(ng[ưu][ờo]i mua(?: h[àa]ng)?|đ[ơo]n v[ịi] mua(?: h[àa]ng)?|b[êe]n mua|buyer|bill(?:ed)? to|th[ôo]ng tin kh[áa]ch h[àa]ng|customer information)/i.exec(t);
+  if (!anchor) return { buyer_name: null, buyer_mst: null };
+  const block = t.slice(anchor.index, anchor.index + 1200);
+  const mstM = /(?:m[ãa] s[ốo] thu[ếe]|mst|tax (?:code|id|registration(?: number)?))\s*(?:\([^)]*\))?\s*[:：]?\s*([\d][\d\s.-]{8,16}\d)/i.exec(block);
+  const nameM = /(?:t[êe]n đ[ơo]n v[ịi]|t[êe]n c[ôo]ng ty|t[êe]n ng[ưu][ờo]i mua|company(?: name)?|name)\s*(?:\([^)]*\))?\s*[:：]\s*([^\n]{3,160}?)(?=\s*(?:m[ãa] s[ốo] thu[ếe]|mst|tax|đ[ịi]a ch[ỉi]|address|\n|$))/i.exec(block);
+  const name = nameM ? nameM[1].replace(/\s+/g, " ").trim().replace(/[,;:]$/, "") : null;
+  return { buyer_name: name && /[A-Za-zÀ-ỹ]/.test(name) ? name : null, buyer_mst: mstM ? normMst(mstM[1].replace(/[\s.]/g, "")) : null };
+}
+
+/** One billing_setup snapshot: which payments profile (company) paid for an account and when. */
+export type CompanyPeriod = {
+  profile_id: string | null;
+  profile_name: string | null;
+  status: string;
+  valid_from: string | null; // yyyy-mm-dd, null = unknown/open start
+  valid_to: string | null; // yyyy-mm-dd inclusive, null = open
+};
+
+const LIVE_STATUSES = new Set(["APPROVED", "APPROVED_HELD"]);
+
+/**
+ * The company in effect for an account on a date. APPROVED setups count; a CANCELLED one counts only
+ * when Google gives it a real start and end (it ran, then ended). Several matches: latest start wins.
+ * Returns null when nothing covers the date (shown as "-").
+ */
+export function companyAt(periods: CompanyPeriod[], date: string | null): CompanyPeriod | null {
+  if (!date) return null;
+  const hits = periods.filter((p) => {
+    if (!p.profile_id) return false;
+    const usable = LIVE_STATUSES.has(p.status) || (p.status === "CANCELLED" && p.valid_from && p.valid_to && p.valid_from <= p.valid_to);
+    if (!usable) return false;
+    if (p.valid_from && date < p.valid_from) return false;
+    if (p.valid_to && date > p.valid_to) return false;
+    return true;
+  });
+  hits.sort((a, b) => (b.valid_from || "").localeCompare(a.valid_from || ""));
+  return hits[0] || null;
+}
+
+/** Google billing_setup date-time ("2024-03-01 00:00:00", far-future end = open) -> yyyy-mm-dd or null. */
+export function setupDate(v: unknown, isEnd = false): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? ""));
+  if (!m) return null;
+  if (isEnd && Number(m[1]) >= 2037) return null;
+  return `${m[1]}-${m[2]}-${m[3]}`;
 }
 
 /** Minimal CSV reader (quotes, commas or semicolons or tabs). */
@@ -233,6 +297,8 @@ export function parseInvoiceCsv(text: string, fileName: string): ParsedDoc[] {
   const iAmt = col(/tong so tien|so tien|amount|total|tong/);
   const iCid = col(/ma khach hang|customer id|id tai khoan|account id/);
   const iCur = col(/tien te|currency/);
+  const iBuyer = col(/ten (don vi|cong ty|nguoi mua|khach hang)|buyer|company name|ho so thanh toan|payments profile/);
+  const iMst = col(/ma so thue|^mst|tax (code|id)/);
   const out: ParsedDoc[] = [];
   for (const r of rows.slice(1)) {
     const cell = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
@@ -253,6 +319,8 @@ export function parseInvoiceCsv(text: string, fileName: string): ParsedDoc[] {
       amount: amt,
       currency: cell(iCur) || currencyOf(r.join(" ")),
       cid: cidDigits(cell(iCid)),
+      buyer_name: cell(iBuyer) || null,
+      buyer_mst: normMst(cell(iMst)),
       note: notes.length ? notes.join("; ") : null,
     });
   }

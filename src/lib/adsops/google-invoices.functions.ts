@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { principalMiddleware } from "./principal-middleware";
-import { cidDigits, isYm, normDocNo, type InvoiceDocType } from "./google-invoices.ts";
+import { cidDigits, isYm, normDocNo, normMst, type InvoiceDocType } from "./google-invoices.ts";
 
-export type { InvoiceMonth, InvoiceMonthRow, InvoiceAccountSum, ProbeResult, InvoiceAccount } from "./google-invoices.server.ts";
+export type { InvoiceMonth, InvoiceMonthRow, InvoiceAccountSum, ProbeResult, InvoiceAccount, CompanySum, CompanyAccountSum, InvoiceWarning, GoogleCompany } from "./google-invoices.server.ts";
 
 type Ctx = import("./permissions.server").AccessContext;
 const rec = (d: unknown) => (d && typeof d === "object" ? d : {}) as Record<string, unknown>;
@@ -94,6 +94,8 @@ export const saveInvoiceDocsFn = createServerFn({ method: "POST" })
           client_id,
           currency: typeof r.currency === "string" ? r.currency.slice(0, 8) : null,
           file_name: typeof r.file_name === "string" ? r.file_name.replace(/\u0000/g, "").slice(0, 300) : null,
+          buyer_name: typeof r.buyer_name === "string" && r.buyer_name.trim() ? r.buyer_name.replace(/\u0000/g, "").trim().slice(0, 200) : null,
+          buyer_mst: normMst(r.buyer_mst),
         };
       }),
     };
@@ -115,4 +117,35 @@ export const deleteInvoiceDocFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     await assertInvoicesWrite(context.access);
     return { deleted: await (await import("./google-invoices.server.ts")).deleteUploaded(data.docNo) };
+  });
+
+/** Admin only: "Cập nhật ngay" — re-read billing_setup (GAQL SELECT) for every Google account. */
+export const syncCompaniesFn = createServerFn({ method: "POST" })
+  .middleware([principalMiddleware])
+  .handler(async ({ context }) => {
+    const { assertEffectiveAdmin } = await import("./permissions.server");
+    assertEffectiveAdmin(context.access);
+    const s = await import("./google-invoices.server.ts");
+    // Interactive request: stop early; the nightly run (04:30) covers whatever is left.
+    return s.syncCompanies(await s.invoiceAccounts(), Date.now() + 50_000);
+  });
+
+/** Admin / Kế toán: display name + MST for a payments profile (company). */
+export const saveCompanyFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => {
+    const r = rec(d);
+    const id = typeof r.profileId === "string" ? r.profileId.trim() : "";
+    if (!id) throw new Error("Thiếu hồ sơ thanh toán");
+    const name = typeof r.displayName === "string" && r.displayName.trim() ? r.displayName.trim().slice(0, 200) : null;
+    const rawMst = typeof r.mst === "string" ? r.mst.trim() : "";
+    const mst = rawMst ? normMst(rawMst) : null;
+    if (rawMst && !mst) throw new Error("MST phải có 10 chữ số (có thể thêm -xxx).");
+    return { profileId: id, displayName: name, mst };
+  })
+  .middleware([principalMiddleware])
+  .handler(async ({ context, data }) => {
+    await assertInvoicesWrite(context.access);
+    const { actorLabel } = await import("./permissions.server");
+    await (await import("./google-invoices.server.ts")).saveCompany(data.profileId, data.displayName, data.mst, actorLabel(context.access.real));
+    return { ok: true };
   });

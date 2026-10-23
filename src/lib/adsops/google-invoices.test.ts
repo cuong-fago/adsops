@@ -62,3 +62,34 @@ test("dedupe + totals count only VN tax", () => {
   assert.deepEqual(accountTotal([]), { total: null, basis: null, counted: 0 });
   assert.deepEqual(issueMonthEnum("2026-10"), { year: 2026, month: "OCTOBER" });
 });
+
+import { companyAt, normMst, parseBuyer, setupDate } from "./google-invoices.ts";
+
+test("buyer block: skips seller MST, reads buyer name + MST", () => {
+  const t = "Đơn vị bán hàng: CÔNG TY TNHH GOOGLE VIỆT NAM\nMã số thuế: 0315060151\nNgười mua hàng:\nTên đơn vị (Company name): CÔNG TY TNHH FAGO JINGONG\nMã số thuế (Tax code): 2301255686\nĐịa chỉ: Bắc Ninh";
+  const b = parseBuyer(t);
+  assert.equal(b.buyer_mst, "2301255686");
+  assert.equal(b.buyer_name, "CÔNG TY TNHH FAGO JINGONG");
+  assert.deepEqual(parseBuyer("no buyer here"), { buyer_name: null, buyer_mst: null });
+});
+
+test("normMst", () => {
+  assert.equal(normMst("0101 234 567-001"), "0101234567-001");
+  assert.equal(normMst("2301255686"), "2301255686");
+  assert.equal(normMst("12345"), null);
+});
+
+test("companyAt picks the setup valid on the date", () => {
+  const p = [
+    { profile_id: "A", profile_name: "Fago - A", status: "CANCELLED", valid_from: "2026-01-01", valid_to: "2026-05-31" },
+    { profile_id: "B", profile_name: "Fago - JINGONG", status: "APPROVED", valid_from: "2026-06-01", valid_to: null },
+    { profile_id: "C", profile_name: "pending", status: "PENDING", valid_from: "2026-11-01", valid_to: null },
+  ];
+  assert.equal(companyAt(p, "2026-03-10")?.profile_id, "A");
+  assert.equal(companyAt(p, "2026-06-01")?.profile_id, "B");
+  assert.equal(companyAt(p, "2026-12-01")?.profile_id, "B");
+  assert.equal(companyAt(p, "2025-12-31"), null);
+  assert.equal(companyAt(p, null), null);
+  assert.equal(setupDate("2037-12-30 23:59:59", true), null);
+  assert.equal(setupDate("2026-06-01 00:00:00"), "2026-06-01");
+});
