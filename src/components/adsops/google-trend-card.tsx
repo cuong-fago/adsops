@@ -5,6 +5,7 @@ import { LOW_CLICKS, LOW_CONV } from "@/lib/adsops/google-trend.types";
 import { Card } from "@/components/adsops/ui";
 import { cn } from "@/lib/cn";
 import { GoogleTrendTree } from "@/components/adsops/google-trend-tree";
+import { MOM_MAX_DAYS, periodLabel, spanDays, type PeriodMode } from "@/lib/adsops/google-trend-periods";
 
 type K = "cpc" | "cpa" | "cvr";
 const ROWS: Array<{ k: K; label: string; hint: string; upBad: boolean }> = [
@@ -15,7 +16,7 @@ const ROWS: Array<{ k: K; label: string; hint: string; upBad: boolean }> = [
 const dong = (v: number) => `${Math.round(v).toLocaleString("vi-VN")}đ`;
 const fmt = (k: K, v: number | null) => (v == null ? "-" : k === "cvr" ? `${(v * 100).toLocaleString("vi-VN", { maximumFractionDigits: 2 })}%` : dong(v));
 const n0 = (v: number | null) => (v == null ? "-" : Math.round(v).toLocaleString("vi-VN"));
-const mLabel = (m: TrendMonth) => `T${Number(m.month.slice(5))}/${m.month.slice(2, 4)}`;
+const mLabel = (m: TrendMonth) => (m.month.includes("_") ? periodLabel(m.month) : `T${Number(m.month.slice(5))}/${m.month.slice(2, 4)}`);
 
 function Spark({ values, upBad }: { values: (number | null)[]; upBad: boolean }) {
   const pts = values.map((v, i) => ({ v, i })).filter((p): p is { v: number; i: number } => p.v != null);
@@ -39,33 +40,57 @@ function Change({ a, b, upBad, quiet }: { a: number | null; b: number | null; up
   return <span className={cn("ml-1 text-xs font-medium", quiet || Math.abs(d) < 0.005 ? "text-muted" : bad ? "text-danger" : "text-ok")}>{d >= 0 ? "+" : ""}{(d * 100).toFixed(1)}%</span>;
 }
 
-/** Staff-only "Xu hướng 3 tháng" for a Google account. */
-export function GoogleTrendCard({ clientId }: { clientId: string }) {
+/** Staff-only trend for a Google account. Month presets ("Tháng này"/"Tháng trước") or no range → 3 full months;
+ *  any other range → "Xu hướng" over 4 equal periods (Kỳ liền trước / Cùng kỳ tháng trước). */
+export function GoogleTrendCard({ clientId, start, end, monthMode = true }: { clientId: string; start?: string; end?: string; monthMode?: boolean }) {
   const [d, setD] = useState<TrendRead | null>(null);
   const [err, setErr] = useState("");
   const [partial, setPartial] = useState(false);
+  const [mode, setMode] = useState<PeriodMode>("prev");
+  const span0 = !monthMode && start && end && start <= end ? spanDays(start, end) : 0;
+  const usePeriod = span0 >= 1 && span0 <= 120; // longer ranges fall back to 3 full months
+  const span = usePeriod ? span0 : 0;
+  const momOk = span > 0 && span <= MOM_MAX_DAYS;
+  const eff: PeriodMode = mode === "mom" && !momOk ? "prev" : mode;
+  const period = usePeriod ? { start: start!, end: end!, mode: eff } : null;
+  const title = usePeriod ? "Xu hướng" : "Xu hướng 3 tháng";
   useEffect(() => {
     let live = true;
     setD(null); setErr("");
-    readGoogleTrendFn({ data: { clientId } }).then((r) => { if (live) setD(r); }).catch((e: unknown) => { if (live) setErr(e instanceof Error ? e.message : String(e)); });
+    readGoogleTrendFn({ data: { clientId, period } }).then((r) => { if (live) setD(r); }).catch((e: unknown) => { if (live) setErr(e instanceof Error ? e.message : String(e)); });
     return () => { live = false; };
-  }, [clientId]);
-  if (err) return <Card id="google-trend-card" className="scroll-mt-4 p-4"><p className="text-sm font-semibold">Xu hướng 3 tháng</p><p className="text-sm text-danger">{err}</p></Card>;
-  if (!d) return <Card id="google-trend-card" className="scroll-mt-4 p-4"><p className="text-sm font-semibold">Xu hướng 3 tháng</p><p className="text-sm text-muted">Đang tải…</p></Card>;
-  const cols: TrendMonth[] = partial && d.current ? [...d.months, d.current] : d.months;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, period?.start, period?.end, period?.mode]);
+  const toggle = usePeriod ? (
+    <div className="ml-auto inline-flex overflow-hidden rounded-md border border-line text-xs">
+      {([["prev", "Kỳ liền trước"], ["mom", "Cùng kỳ tháng trước"]] as const).map(([k, l]) => (
+        <button key={k} type="button" disabled={k === "mom" && !momOk} onClick={() => setMode(k)}
+          title={k === "mom" && !momOk ? `Chỉ dùng cho khoảng tối đa ${MOM_MAX_DAYS} ngày (tránh các kỳ chồng lên nhau).` : k === "prev" ? "Khoảng đang chọn và 3 khoảng liền trước cùng số ngày." : "Cùng ngày trong 3 tháng trước."}
+          className={cn("px-2 py-1", eff === k ? "bg-accent text-white" : "text-muted hover:bg-accent-soft", k === "mom" && !momOk && "cursor-not-allowed opacity-50")}>{l}</button>
+      ))}
+    </div>
+  ) : null;
+  if (err) return <Card id="google-trend-card" className="scroll-mt-4 p-4"><div className="flex items-center gap-2"><p className="text-sm font-semibold">{title}</p>{toggle}</div><p className="text-sm text-danger">{err}</p></Card>;
+  if (!d) return <Card id="google-trend-card" className="scroll-mt-4 p-4"><div className="flex items-center gap-2"><p className="text-sm font-semibold">{title}</p>{toggle}</div><p className="text-sm text-muted">Đang tải…</p></Card>;
+  const pm = !!d.periods;
+  const cols: TrendMonth[] = !pm && partial && d.current ? [...d.months, d.current] : d.months;
+  const clamped = (d.periods || []).filter((p) => p.clamped);
   const th = "px-3 py-1.5 text-right font-medium whitespace-nowrap";
   return (
     <Card id="google-trend-card" className="scroll-mt-4 p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-semibold text-ink" title="Toàn tài khoản (cộng mọi loại chiến dịch; xem bảng Theo loại chiến dịch để so sánh cùng loại). 3 tháng dương lịch đã trọn gần nhất. Dữ liệu Google Ads (chỉ đọc), làm mới mỗi 6 giờ. Chỉ nhân sự thấy.">Xu hướng 3 tháng</p>
+        <p className="text-sm font-semibold text-ink" title={`Toàn tài khoản (cộng mọi loại chiến dịch; xem bảng Theo loại chiến dịch để so sánh cùng loại). ${pm ? "4 kỳ cùng độ dài theo khoảng ngày đang chọn" : "3 tháng dương lịch đã trọn gần nhất"}. Dữ liệu Google Ads (chỉ đọc), làm mới mỗi 6 giờ. Chỉ nhân sự thấy.`}>{title}</p>
         <span className="rounded bg-accent-soft px-1.5 text-[11px] font-semibold text-accent">Nội bộ</span>
-        {d.current ? (
+        {toggle}
+        {!pm && d.current ? (
           <label className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted" title="Thêm tháng hiện tại (chưa trọn tháng). CPC / giá/chuyển đổi / tỷ lệ là tỷ lệ nên so được; click, chuyển đổi, chi phí hiện thêm mức trung bình/ngày.">
             <input type="checkbox" checked={partial} onChange={(e) => setPartial(e.target.checked)} /> Gồm tháng này (chưa trọn tháng)
           </label>
         ) : null}
       </div>
       {d.error ? <p className="mt-1 text-sm text-danger">{d.error}</p> : null}
+      {clamped.length ? <p className="mt-1 text-xs text-warn">Lưu ý: tháng không có đủ ngày nên kỳ đã được cắt về cuối tháng: {clamped.map((p) => `${periodLabel(p.key)} (${p.days} ngày)`).join(", ")}. Click/chuyển đổi/chi phí xem thêm mức trung bình/ngày.</p> : null}
+      {usePeriod && !momOk ? <p className="mt-1 text-xs text-muted">“Cùng kỳ tháng trước” chỉ dùng cho khoảng tối đa {MOM_MAX_DAYS} ngày.</p> : null}
       <div className="mt-2 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-xs text-muted">
@@ -97,19 +122,20 @@ export function GoogleTrendCard({ clientId }: { clientId: string }) {
             {([["clicks", "Click"], ["conversions", "Chuyển đổi"], ["spend", "Chi phí"]] as const).map(([k, label]) => (
               <tr key={k} className="border-t border-line text-xs text-muted">
                 <td className="px-3 py-1">{label}</td>
-                {cols.map((m) => (
+                {cols.map((m, i) => (
                   <td key={m.month} className="whitespace-nowrap px-3 py-1 text-right tabular-nums">
                     {k === "spend" ? (m.spend == null ? "-" : dong(m.spend)) : k === "conversions" && m.conversions != null ? m.conversions.toLocaleString("vi-VN", { maximumFractionDigits: 1 }) : n0(m[k])}
+                    {pm && i > 0 ? <Change a={cols[i - 1][k]} b={m[k]} upBad={k === "spend"} quiet={k === "spend" || m.low_data || cols[i - 1].low_data} /> : null}
                     {m[k] != null && m.days > 0 ? <span className="block text-[10px] text-subtle">{k === "spend" ? dong(m[k]! / m.days) : (m[k]! / m.days).toLocaleString("vi-VN", { maximumFractionDigits: 1 })}/ngày</span> : null}
                   </td>
                 ))}
-                <td />
+                <td className="px-3 py-1 text-right">{pm ? <Spark values={cols.map((m) => m[k])} upBad={k === "spend"} /> : null}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {d.diagnoses.length ? (
+      {pm ? null : d.diagnoses.length ? (
         <ul className="mt-3 flex flex-col gap-2">
           {d.diagnoses.map((x) => (
             <li key={x.kind} className="rounded-lg border border-warn/40 bg-warn-bg/40 px-3 py-2 text-sm">
@@ -121,7 +147,7 @@ export function GoogleTrendCard({ clientId }: { clientId: string }) {
       ) : (
         <p className="mt-2 text-xs text-muted">Không có chẩn đoán tự động{d.months.some((m) => m.low_data) ? " (có tháng ít dữ liệu nên không đánh giá)" : ""}.</p>
       )}
-      <GoogleTrendTree clientId={clientId} partial={partial && !!d.current} />
+      <GoogleTrendTree clientId={clientId} partial={!pm && partial && !!d.current} period={period} />
     </Card>
   );
 }

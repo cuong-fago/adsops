@@ -61,23 +61,26 @@ export async function setConvGroup(clientId: string, actionIdV: string, group: C
 export type ConvLeaves = { conv: Record<string, ConvByMonth>; vtc: Record<string, Record<string, number>> };
 
 /** Per entity id: month → action → [conversions, all_conversions]; plus view-through per month (campaign only). */
-export async function readConvLeaves(clientId: string, level: "campaign" | "ad_group" | "asset_group", campaignId?: string): Promise<ConvLeaves & { at: string }> {
+export async function readConvLeaves(clientId: string, level: "campaign" | "ad_group" | "asset_group", campaignId?: string, win?: import("./google-trend-tree.server.ts").TrendWindow): Promise<ConvLeaves & { at: string }> {
   const customerId = customerIdFor(clientId);
-  const w = window();
-  const range = `segments.date BETWEEN '${w.start}' AND '${w.today}'`;
+  const w = win || window();
+  const range = `segments.date BETWEEN '${w.start}' AND '${w.end}'`;
+  const seg = w.bucket ? "segments.date" : "segments.month";
+  const mk = (r: { segments?: unknown }) => { const sg = asRec(r.segments); return w.bucket ? w.bucket(String(sg.date || "")) || "" : String(sg.month || "").slice(0, 7); };
+  const okM = (m: string) => (w.bucket ? !!m : /^\d{4}-\d{2}$/.test(m));
   const ent = level === "campaign" ? "campaign" : level === "ad_group" ? "adGroup" : "assetGroup";
   const scope = campaignId ? ` AND campaign.id = ${campaignId}` : "";
-  const key = level === "campaign" ? "trend3m_conv" : `trend3m_${level === "ad_group" ? "agconv" : "asgconv"}_${campaignId}`;
-  const { v, at } = await cached<ConvLeaves>(clientId, key, w.start, w.today, async () => {
+  const key = level === "campaign" ? `${w.level}_conv` : `${w.level}_${level === "ad_group" ? "agconv" : "asgconv"}_${campaignId}`;
+  const { v, at } = await cached<ConvLeaves>(clientId, key, w.start, w.end, async () => {
     const cfg = await cfgReady();
     const rows = await searchLeaf(cfg, customerId,
-      `SELECT ${level}.id, segments.month, segments.conversion_action, metrics.conversions, metrics.all_conversions FROM ${level} WHERE ${range}${scope} AND metrics.all_conversions > 0`);
+      `SELECT ${level}.id, ${seg}, segments.conversion_action, metrics.conversions, metrics.all_conversions FROM ${level} WHERE ${range}${scope} AND metrics.all_conversions > 0`);
     const conv: Record<string, ConvByMonth> = {};
     for (const r of rows) {
       const id = String(asRec((r as Record<string, unknown>)[ent]).id ?? "");
-      const m = String(asRec(r.segments).month || "").slice(0, 7);
+      const m = mk(r);
       const a = actionId(asRec(r.segments).conversionAction);
-      if (!id || !a || !/^\d{4}-\d{2}$/.test(m)) continue;
+      if (!id || !a || !okM(m)) continue;
       const x = asRec(r.metrics);
       const cell = ((conv[id] ||= {})[m] ||= {});
       const p = cell[a] || [0, 0];
@@ -86,9 +89,9 @@ export async function readConvLeaves(clientId: string, level: "campaign" | "ad_g
     const vtc: Record<string, Record<string, number>> = {};
     if (level === "campaign") {
       try {
-        const vr = await searchLeaf(cfg, customerId, `SELECT campaign.id, segments.month, metrics.view_through_conversions FROM campaign WHERE ${range}`);
+        const vr = await searchLeaf(cfg, customerId, `SELECT campaign.id, ${seg}, metrics.view_through_conversions FROM campaign WHERE ${range}`);
         for (const r of vr) {
-          const id = String(asRec(r.campaign).id ?? ""), m = String(asRec(r.segments).month || "").slice(0, 7);
+          const id = String(asRec(r.campaign).id ?? ""), m = mk(r);
           const n = num(asRec(r.metrics).viewThroughConversions);
           if (id && m && n != null) (vtc[id] ||= {})[m] = ((vtc[id] ||= {})[m] || 0) + n;
         }

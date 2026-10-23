@@ -14,7 +14,9 @@ export type TrendMonth = {
   low_data: boolean;
 };
 export type TrendDiag = { kind: "cpc_up" | "cvr_down" | "cpa_after_click"; title: string; detail: string };
-export type TrendRead = { client_id: string; currency: string; months: TrendMonth[]; current: TrendMonth | null; diagnoses: TrendDiag[]; fetched_at: string | null; error: string | null };
+export type TrendRead = { client_id: string; currency: string; months: TrendMonth[]; current: TrendMonth | null; diagnoses: TrendDiag[]; fetched_at: string | null; error: string | null;
+  /** Set in period mode (non-month presets): months[i].month is the period key "start_end". */
+  periods?: import("./google-trend-periods.ts").TrendPeriod[]; mode?: import("./google-trend-periods.ts").PeriodMode };
 
 export const LOW_CONV = 5;
 export const LOW_CLICKS = 100;
@@ -55,6 +57,7 @@ export type TrendTreeRead = {
   client_id: string;
   months: string[];
   current_month: string;
+  periods?: import("./google-trend-periods.ts").TrendPeriod[];
   groups: ChannelGroup[];
   /** Spend share by channel per month (all campaigns), null when the month has no spend. */
   mix: Array<{ month: string; total: number | null; shares: Array<{ channel: ChannelKey; spend: number; share: number }> }>;
