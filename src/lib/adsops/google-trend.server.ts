@@ -5,6 +5,7 @@
 import { getSql } from "@/lib/db";
 import { resolveAdsConfig, type GaqlRow } from "./google-ads.server.ts";
 import { asRec, customerIdFor, searchLeaf, ymdInTz } from "./warehouse.server.ts";
+import { bucketOf, trendPeriods, type PeriodMode } from "./google-trend-periods.ts";
 import { LOW_CLICKS, LOW_CONV, type TrendDiag, type TrendMonth, type TrendRead } from "./google-trend.types.ts";
 
 const TZ = "Asia/Ho_Chi_Minh";
@@ -138,4 +139,35 @@ export async function readTrend(clientId: string): Promise<TrendRead> {
   const elapsed = Number(today.slice(8, 10));
   const current = toMonth(by.get(curM), curM, true, elapsed);
   return { client_id: clientId, currency: "VND", months: ms, current, diagnoses: diagnose(ms), fetched_at: fetchedAt, error: null };
+}
+
+/** Period mode ("Xu hướng" for 7/14/30/90 ngày, hôm qua, tuỳ chọn): 4 equal windows, one daily GAQL SELECT, bucketed. */
+export async function readTrendPeriods(clientId: string, start: string, end: string, mode: PeriodMode): Promise<TrendRead> {
+  const periods = trendPeriods(start, end, mode);
+  const empty: TrendRead = { client_id: clientId, currency: "VND", months: periods.map((p) => toMonth(undefined, p.key, false, p.days)), current: null, diagnoses: [], fetched_at: null, error: null, periods, mode };
+  const customerId = customerIdFor(clientId);
+  if (customerId.length !== 10) return { ...empty, error: "Không phải tài khoản Google." };
+  const { cached } = await import("./google-trend-tree.server.ts");
+  const bucket = bucketOf(periods);
+  try {
+    const { v, at } = await cached<Raw[]>(clientId, `trendp_${mode}`, periods[0].start, end, async () => {
+      const cfg = await resolveAdsConfig();
+      if (!cfg.ready) throw new Error("Chưa cấu hình Google Ads API.");
+      const rows = await searchLeaf(cfg, customerId, `SELECT segments.date, metrics.clicks, metrics.conversions, metrics.cost_micros FROM customer WHERE segments.date BETWEEN '${periods[0].start}' AND '${end}'`);
+      const by = new Map<string, Raw>();
+      for (const r of rows) {
+        const k = bucket(String(asRec(r.segments).date || ""));
+        if (!k) continue;
+        const x = asRec(r.metrics);
+        const cur = by.get(k) || { month: k, clicks: 0, conversions: 0, cost: 0, lost_rank: null };
+        cur.clicks += num(x.clicks) || 0; cur.conversions += num(x.conversions) || 0; cur.cost += (num(x.costMicros) || 0) / 1_000_000;
+        by.set(k, cur);
+      }
+      return [...by.values()];
+    });
+    const by = new Map(v.map((r) => [r.month, r]));
+    return { ...empty, months: periods.map((p) => toMonth(by.get(p.key), p.key, false, p.days)), fetched_at: at };
+  } catch (e) {
+    return { ...empty, error: e instanceof Error ? e.message : String(e) };
+  }
 }

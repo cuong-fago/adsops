@@ -402,7 +402,7 @@ export const readGoogleTrendFn = createServerFn({ method: "POST" })
     const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
     const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
     if (!/^[a-z0-9_]+$/.test(clientId) || clientId.startsWith("fb_") || clientId.startsWith("oa_") || clientId.startsWith("tt_")) throw new Error("Tài khoản Google không hợp lệ");
-    return { clientId };
+    return { clientId, period: trendPeriodArg(d) };
   })
   .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {
@@ -410,9 +410,23 @@ export const readGoogleTrendFn = createServerFn({ method: "POST" })
     const ctx = context.access;
     if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự.");
     assertAccount(ctx, data.clientId);
-    return (await import("./google-trend.server.ts")).readTrend(data.clientId);
+    const m = await import("./google-trend.server.ts");
+    return data.period ? m.readTrendPeriods(data.clientId, data.period.start, data.period.end, data.period.mode) : m.readTrend(data.clientId);
   });
 
+/** Optional "Xu hướng" period (non-month presets). null = classic 3 full months. */
+function trendPeriodArg(d: Record<string, unknown>): { start: string; end: string; mode: "prev" | "mom" } | null {
+  const p = d.period;
+  if (p == null) return null;
+  const o = (typeof p === "object" ? p : {}) as Record<string, unknown>;
+  const re = /^\d{4}-\d{2}-\d{2}$/;
+  const start = String(o.start || ""), end = String(o.end || ""), mode = o.mode;
+  if (!re.test(start) || !re.test(end) || start > end || (mode !== "prev" && mode !== "mom")) throw new Error("Kỳ so sánh không hợp lệ");
+  const n = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
+  if (!(n >= 1 && n <= 120)) throw new Error("Khoảng ngày cho Xu hướng tối đa 120 ngày");
+  if (mode === "mom" && n > 28) throw new Error("Cùng kỳ tháng trước chỉ dùng cho khoảng tối đa 28 ngày");
+  return { start, end, mode };
+}
 const trendIdOk = (s: string) => /^[a-z0-9_]+$/.test(s) && !s.startsWith("fb_") && !s.startsWith("oa_") && !s.startsWith("tt_");
 async function assertTrendStaff(ctx: Parameters<typeof import("./permissions.server").assertAccount>[0], clientId: string) {
   const { assertAccount, ForbiddenError } = await import("./permissions.server");
@@ -426,12 +440,12 @@ export const readGoogleTrendTreeFn = createServerFn({ method: "POST" })
     const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
     const clientId = typeof d.clientId === "string" ? d.clientId.trim() : "";
     if (!trendIdOk(clientId)) throw new Error("Tài khoản Google không hợp lệ");
-    return { clientId };
+    return { clientId, period: trendPeriodArg(d) };
   })
   .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {
     await assertTrendStaff(context.access, data.clientId);
-    return (await import("./google-trend-tree.server.ts")).readTrendTree(data.clientId);
+    return (await import("./google-trend-tree.server.ts")).readTrendTree(data.clientId, data.period ? { period: data.period } : {});
   });
 
 /** Lazy ad groups / asset groups (PMax) of one campaign for the trend table. Staff only. */
@@ -442,12 +456,12 @@ export const readGoogleTrendChildrenFn = createServerFn({ method: "POST" })
     const campaignId = typeof d.campaignId === "string" ? d.campaignId.trim() : "";
     if (!trendIdOk(clientId)) throw new Error("Tài khoản Google không hợp lệ");
     if (!/^\d{1,20}$/.test(campaignId)) throw new Error("Chiến dịch không hợp lệ");
-    return { clientId, campaignId, pmax: d.pmax === true };
+    return { clientId, campaignId, pmax: d.pmax === true, period: trendPeriodArg(d) };
   })
   .middleware([principalMiddleware])
   .handler(async ({ context, data }) => {
     await assertTrendStaff(context.access, data.clientId);
-    return (await import("./google-trend-tree.server.ts")).readTrendChildren(data.clientId, data.campaignId, data.pmax);
+    return (await import("./google-trend-tree.server.ts")).readTrendChildren(data.clientId, data.campaignId, data.pmax, data.period || undefined);
   });
 
 /** Conversion actions of a Google account with standard group (auto + manual override). Staff only; edit flag for Admin / Trưởng phòng Ads. */

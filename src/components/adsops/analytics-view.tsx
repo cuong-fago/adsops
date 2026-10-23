@@ -739,7 +739,7 @@ export function AnalyticsView({
 
       {tab === "overview" ? <PacingCard clientId={snap.client_id} /> : null}
       {tab === "overview" ? <BusinessCard clientId={snap.client_id} /> : null}
-      {tab === "overview" && allowCompare ? <GoogleTrendCard clientId={snap.client_id} /> : null}
+      {tab === "overview" && allowCompare ? <GoogleTrendCard clientId={snap.client_id} start={start} end={end} monthMode={!!monthN || activePreset === "month" || activePreset === "lastmonth" || activePreset === "all"} /> : null}
       {tab === "overview" ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <QsOverviewCard data={qsData} loading={qsSt.loading} />

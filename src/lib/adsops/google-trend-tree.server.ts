@@ -6,6 +6,7 @@ import { getSql } from "@/lib/db";
 import { resolveAdsConfig } from "./google-ads.server.ts";
 import { asRec, customerIdFor, searchLeaf, ymdInTz } from "./warehouse.server.ts";
 import { daysIn, diagnose, mAdd, num, toMonth, type Raw } from "./google-trend.server.ts";
+import { bucketOf, periodLabel, trendPeriods, type PeriodMode, type TrendPeriod } from "./google-trend-periods.ts";
 import type { ConvByMonth } from "./google-conv-groups.ts";
 import type { ChannelGroup, ChannelKey, TreeRow, TrendChildrenRead, TrendMonth, TrendTreeRead } from "./google-trend.types.ts";
 
@@ -17,11 +18,19 @@ const ORDER: ChannelKey[] = ["search", "pmax", "shopping", "video", "display", "
 const chOf = (s: string): ChannelKey => CH[s] || "other";
 const mLabel = (m: string) => `T${Number(m.slice(5))}/${m.slice(2, 4)}`;
 
-export function window() {
+export type TrendWindow = { today: string; cur: string; months: string[]; start: string; end: string; elapsed: number; level: string; periods?: TrendPeriod[]; bucket?: (date: string) => string | null; label: (k: string) => string; days: (k: string) => number };
+export function window(): TrendWindow {
   const today = ymdInTz(TZ);
   const cur = today.slice(0, 7);
   const months = [mAdd(cur, -3), mAdd(cur, -2), mAdd(cur, -1)];
-  return { today, cur, months, start: `${months[0]}-01`, elapsed: Number(today.slice(8, 10)) };
+  return { today, cur, months, start: `${months[0]}-01`, end: today, elapsed: Number(today.slice(8, 10)), level: "trend3m", label: mLabel, days: daysIn };
+}
+/** Period mode: months = 4 period keys (oldest → selected range); no separate "current". */
+export function periodWindow(start: string, end: string, mode: PeriodMode): TrendWindow {
+  const periods = trendPeriods(start, end, mode);
+  const keys = periods.map((p) => p.key);
+  const days = new Map(periods.map((p) => [p.key, p.days]));
+  return { today: ymdInTz(TZ), cur: keys[keys.length - 1], months: keys, start: periods[0].start, end, elapsed: periods[periods.length - 1].days, level: `trendp_${mode}`, periods, bucket: bucketOf(periods), label: (k) => periodLabel(k), days: (k) => days.get(k) ?? 0 };
 }
 
 export async function cached<T>(clientId: string, level: string, start: string, end: string, load: () => Promise<T>, ttlMs = 6 * 3600_000): Promise<{ v: T; at: string }> {
@@ -51,7 +60,8 @@ export async function cached<T>(clientId: string, level: string, start: string, 
   }
 }
 
-async function query(customerId: string, gaql: string, ent: "campaign" | "adGroup" | "assetGroup"): Promise<Leaf[]> {
+async function query(customerId: string, gaql: string, ent: "campaign" | "adGroup" | "assetGroup", bucket?: (d: string) => string | null): Promise<Leaf[]> {
+  if (bucket) gaql = gaql.replace("segments.month", "segments.date");
   const cfg = await resolveAdsConfig();
   if (!cfg.ready) throw new Error("Chưa cấu hình Google Ads API.");
   const rows = await searchLeaf(cfg, customerId, gaql);
@@ -59,9 +69,9 @@ async function query(customerId: string, gaql: string, ent: "campaign" | "adGrou
   for (const r of rows) {
     const e = asRec((r as Record<string, unknown>)[ent]);
     const c = asRec((r as Record<string, unknown>).campaign);
-    const m = String(asRec(r.segments).month || "").slice(0, 7);
+    const m = bucket ? bucket(String(asRec(r.segments).date || "")) || "" : String(asRec(r.segments).month || "").slice(0, 7);
     const id = String(e.id ?? "");
-    if (!id || !/^\d{4}-\d{2}$/.test(m)) continue;
+    if (!id || !(bucket ? m : /^\d{4}-\d{2}$/.test(m))) continue;
     const x = asRec(r.metrics);
     out.push({
       parent: c.id != null ? String(c.id) : undefined, id, name: String(e.name ?? id), status: e.status ? String(e.status) : null, channel: String(c.advertisingChannelType ?? ""),
@@ -78,7 +88,7 @@ const add = (a: Raw | undefined, l: { clicks: number; conversions: number; cost:
 
 /** Biggest bad-direction MoM change T vs T-1 (CPC↑, CPA↑, CVR↓). Low-data months → null. */
 function worstOf(ms: TrendMonth[]): number | null {
-  const b = ms[1], c = ms[2];
+  const b = ms[ms.length - 2], c = ms[ms.length - 1];
   if (!b || !c || b.low_data || c.low_data) return null;
   const xs: number[] = [];
   if (b.cpc && c.cpc != null) xs.push((c.cpc - b.cpc) / b.cpc);
@@ -87,7 +97,7 @@ function worstOf(ms: TrendMonth[]): number | null {
   return xs.length ? Math.max(...xs) : null;
 }
 
-function buildRows(leaves: Leaf[], w: ReturnType<typeof window>): Array<TreeRow & { _raw: Map<string, Raw> }> {
+function buildRows(leaves: Leaf[], w: TrendWindow): Array<TreeRow & { _raw: Map<string, Raw> }> {
   const by = new Map<string, { l: Leaf; m: Map<string, Raw> }>();
   for (const l of leaves) {
     const g = by.get(l.id) || { l, m: new Map<string, Raw>() };
@@ -98,17 +108,17 @@ function buildRows(leaves: Leaf[], w: ReturnType<typeof window>): Array<TreeRow 
     const present = w.months.map((mo) => hasData(m.get(mo)));
     const all = present.every(Boolean);
     const first = present.indexOf(true);
-    const label = all ? null : first > 0 ? `Mới từ ${mLabel(w.months[first])}` : first === -1 ? (hasData(m.get(w.cur)) ? `Mới từ ${mLabel(w.cur)}` : "Không có dữ liệu") : "Không đủ 3 tháng";
-    const ms = w.months.map((mo) => toMonth(m.get(mo), mo, false, daysIn(mo)));
+    const label = all ? null : first > 0 ? `Mới từ ${w.label(w.months[first])}` : first === -1 ? (!w.periods && hasData(m.get(w.cur)) ? `Mới từ ${w.label(w.cur)}` : "Không có dữ liệu") : w.periods ? "Không đủ các kỳ" : "Không đủ 3 tháng";
+    const ms = w.months.map((mo) => toMonth(m.get(mo), mo, false, w.days(mo)));
     return {
       id: l.id, parent_id: l.parent ?? null, name: l.name, status: l.status, channel: chOf(l.channel), months: ms,
-      current: toMonth(m.get(w.cur), w.cur, true, w.elapsed),
+      current: toMonth(m.get(w.cur), w.cur, !w.periods, w.elapsed),
       excluded_label: label, worst: all ? worstOf(ms) : null, _raw: m,
     };
   });
 }
 const strip = ({ _raw, ...r }: TreeRow & { _raw: unknown }): TreeRow => (void _raw, r);
-const sortRows = (rs: TreeRow[]) => rs.sort((a, b) => (a.excluded_label ? 1 : 0) - (b.excluded_label ? 1 : 0) || (b.worst ?? -Infinity) - (a.worst ?? -Infinity) || (b.months[2].spend ?? 0) - (a.months[2].spend ?? 0));
+const sortRows = (rs: TreeRow[]) => rs.sort((a, b) => (a.excluded_label ? 1 : 0) - (b.excluded_label ? 1 : 0) || (b.worst ?? -Infinity) - (a.worst ?? -Infinity) || (b.months[b.months.length - 1].spend ?? 0) - (a.months[a.months.length - 1].spend ?? 0));
 
 /** Campaign × month leaves (same cached trend3m query: 3 full months + current month). Read-only GAQL. */
 export async function readCampaignLeaves(clientId: string): Promise<Array<{ id: string; channel: ChannelKey; month: string; clicks: number; conversions: number; cost: number }>> {
@@ -120,23 +130,23 @@ export async function readCampaignLeaves(clientId: string): Promise<Array<{ id: 
   return v.map((l) => ({ id: l.id, channel: chOf(l.channel), month: l.month, clicks: l.clicks, conversions: l.conversions, cost: l.cost }));
 }
 
-export async function readTrendTree(clientId: string, opts: { conv?: boolean } = {}): Promise<TrendTreeRead> {
-  const w = window();
-  const base: TrendTreeRead = { client_id: clientId, months: w.months, current_month: w.cur, groups: [], mix: [], fetched_at: null, error: null };
+export async function readTrendTree(clientId: string, opts: { conv?: boolean; period?: { start: string; end: string; mode: PeriodMode } } = {}): Promise<TrendTreeRead> {
+  const w = opts.period ? periodWindow(opts.period.start, opts.period.end, opts.period.mode) : window();
+  const base: TrendTreeRead = { client_id: clientId, months: w.months, current_month: w.cur, ...(w.periods ? { periods: w.periods } : {}), groups: [], mix: [], fetched_at: null, error: null };
   const customerId = customerIdFor(clientId);
   if (customerId.length !== 10) return { ...base, error: "Không phải tài khoản Google." };
   let leaves: Leaf[];
   let at: string;
   try {
-    ({ v: leaves, at } = await cached(clientId, "trend3m_camp", w.start, w.today, () => query(customerId,
-      `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.month, metrics.clicks, metrics.conversions, metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${w.start}' AND '${w.today}'`, "campaign")));
+    ({ v: leaves, at } = await cached(clientId, `${w.level}_camp`, w.start, w.end, () => query(customerId,
+      `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.month, metrics.clicks, metrics.conversions, metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${w.start}' AND '${w.end}'`, "campaign", w.bucket)));
   } catch (e) {
     return { ...base, error: e instanceof Error ? e.message : String(e) };
   }
   const rows = buildRows(leaves, w);
   let convErr: string | null = null;
   if (opts.conv !== false) try {
-    const cl = await (await import("./google-conv-groups.server.ts")).readConvLeaves(clientId, "campaign");
+    const cl = await (await import("./google-conv-groups.server.ts")).readConvLeaves(clientId, "campaign", undefined, w);
     for (const r of rows) { r.conv = cl.conv[r.id] || {}; r.vtc = cl.vtc[r.id] || null; }
   } catch (e) { convErr = e instanceof Error ? e.message : String(e); }
   const groups: ChannelGroup[] = [];
@@ -153,14 +163,14 @@ export async function readTrendTree(clientId: string, opts: { conv?: boolean } =
       if (r.vtc) { gvtc ||= {}; for (const [mo, n] of Object.entries(r.vtc)) gvtc[mo] = (gvtc[mo] || 0) + n; }
     }
     if (!gconv) gvtc = null;
-    const lm = w.months.map((mo) => toMonth(agg.get(mo), mo, false, daysIn(mo)));
+    const lm = w.months.map((mo) => toMonth(agg.get(mo), mo, false, w.days(mo)));
     groups.push({
-      channel: ch, like: lm, like_current: toMonth(agg.get(w.cur), w.cur, true, w.elapsed), like_count: like.length, total_count: rs.length,
-      diagnoses: like.length ? diagnose(lm) : [], worst: like.length ? worstOf(lm) : null, campaigns: sortRows(rs.map(strip)), conv: gconv, vtc: gvtc,
+      channel: ch, like: lm, like_current: toMonth(agg.get(w.cur), w.cur, !w.periods, w.elapsed), like_count: like.length, total_count: rs.length,
+      diagnoses: like.length && !w.periods ? diagnose(lm) : [], worst: like.length ? worstOf(lm) : null, campaigns: sortRows(rs.map(strip)), conv: gconv, vtc: gvtc,
     });
   }
   groups.sort((a, b) => (b.worst ?? -Infinity) - (a.worst ?? -Infinity));
-  const mix = [...w.months, w.cur].map((mo) => {
+  const mix = (w.periods ? w.months : [...w.months, w.cur]).map((mo) => {
     const per = new Map<ChannelKey, number>();
     for (const r of rows) { const x = r._raw.get(mo); if (x && x.cost > 0) per.set(r.channel, (per.get(r.channel) || 0) + x.cost); }
     const total = [...per.values()].reduce((s, v) => s + v, 0);
@@ -170,20 +180,20 @@ export async function readTrendTree(clientId: string, opts: { conv?: boolean } =
 }
 
 /** Lazy children of one campaign: asset groups for PMax, ad groups otherwise. */
-export async function readTrendChildren(clientId: string, campaignId: string, pmax: boolean): Promise<TrendChildrenRead> {
+export async function readTrendChildren(clientId: string, campaignId: string, pmax: boolean, period?: { start: string; end: string; mode: PeriodMode }): Promise<TrendChildrenRead> {
   const kind = pmax ? "asset_group" : "ad_group";
   const customerId = customerIdFor(clientId);
   if (customerId.length !== 10) return { kind, rows: [], error: "Không phải tài khoản Google." };
-  const w = window();
+  const w = period ? periodWindow(period.start, period.end, period.mode) : window();
   const gaql = pmax
-    ? `SELECT asset_group.id, asset_group.name, asset_group.status, campaign.advertising_channel_type, segments.month, metrics.clicks, metrics.conversions, metrics.cost_micros FROM asset_group WHERE campaign.id = ${campaignId} AND segments.date BETWEEN '${w.start}' AND '${w.today}'`
-    : `SELECT ad_group.id, ad_group.name, ad_group.status, campaign.advertising_channel_type, segments.month, metrics.clicks, metrics.conversions, metrics.cost_micros FROM ad_group WHERE campaign.id = ${campaignId} AND segments.date BETWEEN '${w.start}' AND '${w.today}'`;
+    ? `SELECT asset_group.id, asset_group.name, asset_group.status, campaign.advertising_channel_type, segments.month, metrics.clicks, metrics.conversions, metrics.cost_micros FROM asset_group WHERE campaign.id = ${campaignId} AND segments.date BETWEEN '${w.start}' AND '${w.end}'`
+    : `SELECT ad_group.id, ad_group.name, ad_group.status, campaign.advertising_channel_type, segments.month, metrics.clicks, metrics.conversions, metrics.cost_micros FROM ad_group WHERE campaign.id = ${campaignId} AND segments.date BETWEEN '${w.start}' AND '${w.end}'`;
   try {
-    const { v } = await cached(clientId, `trend3m_${pmax ? "asg" : "ag"}_${campaignId}`, w.start, w.today, () => query(customerId, gaql, pmax ? "assetGroup" : "adGroup"));
+    const { v } = await cached(clientId, `${w.level}_${pmax ? "asg" : "ag"}_${campaignId}`, w.start, w.end, () => query(customerId, gaql, pmax ? "assetGroup" : "adGroup", w.bucket));
     const rows = buildRows(v, w);
     let convErr: string | null = null;
     try {
-      const cl = await (await import("./google-conv-groups.server.ts")).readConvLeaves(clientId, pmax ? "asset_group" : "ad_group", campaignId);
+      const cl = await (await import("./google-conv-groups.server.ts")).readConvLeaves(clientId, pmax ? "asset_group" : "ad_group", campaignId, w);
       for (const r of rows) r.conv = cl.conv[r.id] || {};
     } catch (e) { convErr = e instanceof Error ? e.message : String(e); }
     return { kind, rows: sortRows(rows.map(strip)), error: null, conv_error: convErr };

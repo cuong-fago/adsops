@@ -5,6 +5,8 @@ import { GoogleConvMap } from "@/components/adsops/google-conv-map";
 import { scrollWhenReady, takeTrendFocus } from "@/components/adsops/google-trend-snapshot-ui";
 import { CHANNEL_LABEL, LOW_CLICKS, LOW_CONV, type ChannelGroup, type ChannelKey, type TreeRow, type TrendChildrenRead, type TrendMonth, type TrendTreeRead } from "@/lib/adsops/google-trend.types";
 import { cn } from "@/lib/cn";
+import { periodLabel, type PeriodMode } from "@/lib/adsops/google-trend-periods";
+export type TrendPeriodArg = { start: string; end: string; mode: PeriodMode } | null;
 
 type K = "cpc" | "cpa" | "cvr";
 const MET: Array<{ k: K; label: string; upBad: boolean; hint: string }> = [
@@ -17,7 +19,7 @@ const SORTS: Array<[SortKey, string]> = [["worst", "Xấu đi nhiều nhất"], 
 
 const dong = (v: number) => `${Math.round(v).toLocaleString("vi-VN")}đ`;
 const fmt = (k: K, v: number | null) => (v == null ? "-" : k === "cvr" ? `${(v * 100).toLocaleString("vi-VN", { maximumFractionDigits: 2 })}%` : dong(v));
-const mLabel = (m: string) => `T${Number(m.slice(5))}/${m.slice(2, 4)}`;
+const mLabel = (m: string) => (m.includes("_") ? periodLabel(m) : `T${Number(m.slice(5))}/${m.slice(2, 4)}`);
 const pctS = (d: number) => `${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)}%`;
 const mom = (a: number | null, b: number | null) => (a == null || b == null || a === 0 ? null : (b - a) / a);
 
@@ -165,15 +167,15 @@ function sortRows(rs: TreeRow[], key: SortKey, partial: boolean, cx: Cx): TreeRo
   return [...rs].sort((a, b) => (a.excluded_label ? 1 : 0) - (b.excluded_label ? 1 : 0) || (key === "name" ? a.name.localeCompare(b.name, "vi") : v(b) - v(a)));
 }
 
-function Children({ clientId, camp, partial, sort, cx }: { clientId: string; camp: TreeRow; partial: boolean; sort: SortKey; cx: Cx }) {
+function Children({ clientId, camp, partial, sort, cx, period }: { clientId: string; camp: TreeRow; partial: boolean; sort: SortKey; cx: Cx; period: TrendPeriodArg }) {
   const [d, setD] = useState<TrendChildrenRead | null>(null);
   const pmax = camp.channel === "pmax";
   useEffect(() => {
     let live = true;
-    readGoogleTrendChildrenFn({ data: { clientId, campaignId: camp.id, pmax } }).then((r) => live && setD(r)).catch((e: unknown) => live && setD({ kind: pmax ? "asset_group" : "ad_group", rows: [], error: e instanceof Error ? e.message : String(e) }));
+    readGoogleTrendChildrenFn({ data: { clientId, campaignId: camp.id, pmax, period } }).then((r) => live && setD(r)).catch((e: unknown) => live && setD({ kind: pmax ? "asset_group" : "ad_group", rows: [], error: e instanceof Error ? e.message : String(e) }));
     return () => { live = false; };
-  }, [clientId, camp.id, pmax]);
-  const span = 2 + MET.length * (partial ? 4 : 3);
+  }, [clientId, camp.id, pmax, period?.start, period?.end, period?.mode]);
+  const span = 2 + MET.length * (partial || period ? 4 : 3);
   if (!d) return <tr><td colSpan={span} className="px-2 py-1 pl-12 text-xs text-muted">Đang tải {pmax ? "nhóm tài sản" : "nhóm quảng cáo"}…</td></tr>;
   if (d.error) return <tr><td colSpan={span} className="px-2 py-1 pl-12 text-xs text-danger">{d.error}</td></tr>;
   if (!d.rows.length) return <tr><td colSpan={span} className="px-2 py-1 pl-12 text-xs text-muted">Không có {pmax ? "nhóm tài sản" : "nhóm quảng cáo"} có dữ liệu.</td></tr>;
@@ -181,16 +183,16 @@ function Children({ clientId, camp, partial, sort, cx }: { clientId: string; cam
 }
 
 function summary(g: ChannelGroup): string {
-  const b = g.like[1], c = g.like[2];
+  const b = g.like[g.like.length - 2], c = g.like[g.like.length - 1];
   const name = CHANNEL_LABEL[g.channel];
-  if (!g.like_count) return `${name}: chưa có chiến dịch chạy đủ 3 tháng để so sánh.`;
+  if (!g.like_count) return `${name}: chưa có chiến dịch chạy đủ ${g.like.length > 3 ? "các kỳ" : "3 tháng"} để so sánh.`;
   if (b.low_data || c.low_data) return `Cùng nhóm chiến dịch cũ (${name}, ${g.like_count} CD): ít dữ liệu, không đánh giá.`;
   const parts = MET.map((x) => { const d = mom(b[x.k], c[x.k]); return d == null ? `${x.label} -` : `${x.label} ${pctS(d)}`; });
   return `Cùng nhóm chiến dịch cũ (${name}, ${g.like_count}/${g.total_count} CD): ${parts.join(", ")} (${mLabel(c.month)} so với ${mLabel(b.month)}).`;
 }
 
 /** Staff-only trend table: Loại chiến dịch → Chiến dịch → Nhóm QC / Nhóm tài sản. Types are never aggregated together. */
-export function GoogleTrendTree({ clientId, partial }: { clientId: string; partial: boolean }) {
+export function GoogleTrendTree({ clientId, partial, period = null }: { clientId: string; partial: boolean; period?: TrendPeriodArg }) {
   const [d, setD] = useState<TrendTreeRead | null>(null);
   const [err, setErr] = useState("");
   const [off, setOff] = useState<Set<ChannelKey>>(new Set());
@@ -212,7 +214,7 @@ export function GoogleTrendTree({ clientId, partial }: { clientId: string; parti
   useEffect(() => {
     let live = true;
     setD(null); setErr("");
-    readGoogleTrendTreeFn({ data: { clientId } }).then((r) => {
+    readGoogleTrendTreeFn({ data: { clientId, period } }).then((r) => {
       if (!live) return;
       setD(r);
       const f = takeTrendFocus(clientId);
@@ -220,12 +222,12 @@ export function GoogleTrendTree({ clientId, partial }: { clientId: string; parti
       if (f?.campaignId) { setOpenC(new Set([f.campaignId])); scrollWhenReady(`trend-row-${f.campaignId}`); }
     }).catch((e: unknown) => live && setErr(e instanceof Error ? e.message : String(e)));
     return () => { live = false; };
-  }, [clientId]);
+  }, [clientId, period?.start, period?.end, period?.mode]);
   const groups = useMemo(() => {
     if (!d) return [];
     const gs = d.groups.filter((g) => !off.has(g.channel));
     if (sort === "name") return [...gs].sort((a, b) => CHANNEL_LABEL[a.channel].localeCompare(CHANNEL_LABEL[b.channel]));
-    if (sort === "spend") return [...gs].sort((a, b) => (b.like[2].spend ?? -1) - (a.like[2].spend ?? -1));
+    if (sort === "spend") return [...gs].sort((a, b) => (b.like[b.like.length - 1].spend ?? -1) - (a.like[a.like.length - 1].spend ?? -1));
     return gs;
   }, [d, off, sort]);
   const flip = <T,>(s: Set<T>, v: T) => { const n = new Set(s); if (n.has(v)) n.delete(v); else n.add(v); return n; };
@@ -233,7 +235,8 @@ export function GoogleTrendTree({ clientId, partial }: { clientId: string; parti
   if (err) return <p className="mt-4 text-sm text-danger">{err}</p>;
   if (!d) return <p className="mt-4 text-sm text-muted">Đang tải xu hướng theo loại chiến dịch…</p>;
   if (d.error) return <p className="mt-4 text-sm text-danger">{d.error}</p>;
-  const cols = partial ? [...d.months, d.current_month] : d.months;
+  const pm = !!d.periods;
+  const cols = partial && !pm ? [...d.months, d.current_month] : d.months;
   return (
     <ConvCx.Provider value={cx}>
     <div className="mt-5 border-t border-line pt-4">
@@ -244,9 +247,9 @@ export function GoogleTrendTree({ clientId, partial }: { clientId: string; parti
 
       <div className="mt-2 text-xs text-muted">
         <span className="font-medium text-ink" title="Tỷ trọng chi phí theo loại chiến dịch (tất cả chiến dịch). Thay đổi tỷ trọng làm CPC/CPA cấp tài khoản thay đổi dù từng loại không đổi.">Cơ cấu chi phí: </span>
-        {d.mix.filter((m) => partial || m.month !== d.current_month).map((m) => (
+        {d.mix.filter((m) => pm || partial || m.month !== d.current_month).map((m) => (
           <span key={m.month} className="mr-3 inline-block">
-            {mLabel(m.month)}{m.month === d.current_month ? " (chưa trọn)" : ""}: {m.total == null ? "-" : m.shares.map((s) => `${CHANNEL_LABEL[s.channel]} ${(s.share * 100).toFixed(0)}%`).join(" · ")}
+            {mLabel(m.month)}{!pm && m.month === d.current_month ? " (chưa trọn)" : ""}: {m.total == null ? "-" : m.shares.map((s) => `${CHANNEL_LABEL[s.channel]} ${(s.share * 100).toFixed(0)}%`).join(" · ")}
           </span>
         ))}
       </div>
@@ -287,16 +290,16 @@ export function GoogleTrendTree({ clientId, partial }: { clientId: string; parti
               <th rowSpan={2} className="border-l border-line px-2 py-1 text-right font-medium" title="Click · Chuyển đổi · Chi phí của cột tháng cuối. Rê chuột để xem từng tháng.">Bối cảnh ({mLabel(cols[cols.length - 1])})</th>
             </tr>
             <tr>
-              {MET.map((x) => cols.map((m, i) => <th key={x.k + m} className={cn("px-2 py-0.5 text-right font-normal", i === 0 && "border-l border-line")}>{mLabel(m)}{m === d.current_month ? "*" : ""}</th>))}
+              {MET.map((x) => cols.map((m, i) => <th key={x.k + m} className={cn("px-2 py-0.5 text-right font-normal", i === 0 && "border-l border-line")}>{mLabel(m)}{!pm && m === d.current_month ? "*" : ""}</th>))}
             </tr>
           </thead>
           <tbody>
             {groups.map((g) => {
-              const gms = partial ? [...g.like, g.like_current] : g.like;
+              const gms = partial && !pm ? [...g.like, g.like_current] : g.like;
               const open = openT.has(g.channel);
               return (
                 <Fragment key={g.channel}>
-                  <Row tone conv={d.conv_error ? undefined : g.conv ?? null} vtc={g.vtc} name={CHANNEL_LABEL[g.channel]} sub={`Cùng nhóm cũ: ${g.like_count}/${g.total_count} chiến dịch`} ms={gms} depth={0} excluded={g.like_count ? null : "Chưa đủ 3 tháng"} lowAll={g.like.every((m) => m.low_data)} open={open} toggle={() => setOpenT(flip(openT, g.channel))} />
+                  <Row tone conv={d.conv_error ? undefined : g.conv ?? null} vtc={g.vtc} name={CHANNEL_LABEL[g.channel]} sub={`Cùng nhóm cũ: ${g.like_count}/${g.total_count} chiến dịch`} ms={gms} depth={0} excluded={g.like_count ? null : pm ? "Chưa đủ các kỳ" : "Chưa đủ 3 tháng"} lowAll={g.like.every((m) => m.low_data)} open={open} toggle={() => setOpenT(flip(openT, g.channel))} />
                   {open && g.diagnoses.length ? (
                     <tr><td colSpan={2 + MET.length * cols.length} className="bg-warn-bg/30 px-2 py-1 pl-8 text-[11px] text-ink">
                       {g.diagnoses.map((x) => <p key={x.kind}><b>{x.title}:</b> {x.detail}</p>)}
@@ -306,8 +309,8 @@ export function GoogleTrendTree({ clientId, partial }: { clientId: string; parti
                     const co = openC.has(c.id);
                     return (
                       <Fragment key={c.id}>
-                        <Row rowId={`trend-row-${c.id}`} conv={d.conv_error ? undefined : c.conv ?? null} vtc={c.vtc} name={c.name} sub={c.status === "PAUSED" ? "Tạm dừng" : c.status === "REMOVED" ? "Đã xoá" : undefined} ms={partial ? [...c.months, c.current] : c.months} depth={1} excluded={c.excluded_label} lowAll={c.months.every((m) => m.low_data)} open={co} toggle={() => setOpenC(flip(openC, c.id))} />
-                        {co ? <Children clientId={clientId} camp={c} partial={partial} sort={sort} cx={cx} /> : null}
+                        <Row rowId={`trend-row-${c.id}`} conv={d.conv_error ? undefined : c.conv ?? null} vtc={c.vtc} name={c.name} sub={c.status === "PAUSED" ? "Tạm dừng" : c.status === "REMOVED" ? "Đã xoá" : undefined} ms={partial && !pm ? [...c.months, c.current] : c.months} depth={1} excluded={c.excluded_label} lowAll={c.months.every((m) => m.low_data)} open={co} toggle={() => setOpenC(flip(openC, c.id))} />
+                        {co ? <Children clientId={clientId} camp={c} partial={partial && !pm} sort={sort} cx={cx} period={period} /> : null}
                       </Fragment>
                     );
                   }) : null}
