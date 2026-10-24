@@ -157,24 +157,28 @@ export function renderInstallPageHtml(template, { host, url } = {}) {
     .replaceAll("{{APP_URL}}", escapeHtml(stripInstallParams(url)));
 }
 
-export function renderWebManifest(hostHeader) {
-  const name = appNameFromHost(hostHeader);
+export function renderWebManifest(_hostHeader) {
+  // AdsOps (Fago Group) manifest. Served from /__grok/manifest.webmanifest so the
+  // platform head injector never adds a second manifest link.
   return JSON.stringify(
     {
-      name,
-      short_name: name,
+      name: "AdsOps",
+      short_name: "AdsOps",
+      description: "AdsOps by Fago Group: theo dõi quảng cáo Google, Meta, TikTok",
+      lang: "vi",
       id: "/",
-      start_url: "/",
+      start_url: "/?source=pwa",
       scope: "/",
       display: "standalone",
-      background_color: "#000000",
-      theme_color: "#000000",
+      orientation: "portrait",
+      background_color: "#ffffff",
+      theme_color: "#3DB54A",
       icons: [
-        {
-          src: "/__grok/icon-180.png",
-          sizes: "180x180",
-          type: "image/png",
-        },
+        { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: "/icons/icon-maskable-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
+        { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        { src: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
       ],
     },
     null,

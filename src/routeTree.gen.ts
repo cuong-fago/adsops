@@ -15,10 +15,16 @@ import { Route as ApiAdsopsFileRouteImport } from './routes/api/adsops-file'
 import { Route as ApiAdsopsHealthRouteImport } from './routes/api/adsops-health'
 import { Route as ApiClientReportRouteImport } from './routes/api/client-report'
 import { Route as ApiOpenaiAdImageRouteImport } from './routes/api/openai-ad-image'
+import { Route as ApiTiktokAdImageRouteImport } from './routes/api/tiktok-ad-image'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronBudgetRunwayRouteImport } from './routes/api/cron/budget-runway'
 import { Route as ApiCronChangeLogRouteImport } from './routes/api/cron/change-log'
+import { Route as ApiCronGoogleInvoicesRouteImport } from './routes/api/cron/google-invoices'
 import { Route as ApiCronGoogleTrendRouteImport } from './routes/api/cron/google-trend'
+import { Route as ApiInvoicesAccountsRouteImport } from './routes/api/invoices/accounts'
+import { Route as ApiInvoicesIngestRouteImport } from './routes/api/invoices/ingest'
+import { Route as ApiTiktokCallbackRouteImport } from './routes/api/tiktok/callback'
+import { Route as ApiTiktokConnectRouteImport } from './routes/api/tiktok/connect'
 import { Route as ApiGoogleAdsOauthCallbackRouteImport } from './routes/api/google-ads/oauth/callback'
 import { Route as ApiGoogleAdsOauthStartRouteImport } from './routes/api/google-ads/oauth/start'
 
@@ -52,6 +58,11 @@ const ApiOpenaiAdImageRoute = ApiOpenaiAdImageRouteImport.update({
   path: '/api/openai-ad-image',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTiktokAdImageRoute = ApiTiktokAdImageRouteImport.update({
+  id: '/api/tiktok-ad-image',
+  path: '/api/tiktok-ad-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -67,9 +78,34 @@ const ApiCronChangeLogRoute = ApiCronChangeLogRouteImport.update({
   path: '/api/cron/change-log',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronGoogleInvoicesRoute = ApiCronGoogleInvoicesRouteImport.update({
+  id: '/api/cron/google-invoices',
+  path: '/api/cron/google-invoices',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCronGoogleTrendRoute = ApiCronGoogleTrendRouteImport.update({
   id: '/api/cron/google-trend',
   path: '/api/cron/google-trend',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInvoicesAccountsRoute = ApiInvoicesAccountsRouteImport.update({
+  id: '/api/invoices/accounts',
+  path: '/api/invoices/accounts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInvoicesIngestRoute = ApiInvoicesIngestRouteImport.update({
+  id: '/api/invoices/ingest',
+  path: '/api/invoices/ingest',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTiktokCallbackRoute = ApiTiktokCallbackRouteImport.update({
+  id: '/api/tiktok/callback',
+  path: '/api/tiktok/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTiktokConnectRoute = ApiTiktokConnectRouteImport.update({
+  id: '/api/tiktok/connect',
+  path: '/api/tiktok/connect',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGoogleAdsOauthCallbackRoute =
@@ -91,10 +127,16 @@ export interface FileRoutesByFullPath {
   '/api/adsops-health': typeof ApiAdsopsHealthRoute
   '/api/client-report': typeof ApiClientReportRoute
   '/api/openai-ad-image': typeof ApiOpenaiAdImageRoute
+  '/api/tiktok-ad-image': typeof ApiTiktokAdImageRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
+  '/api/cron/google-invoices': typeof ApiCronGoogleInvoicesRoute
   '/api/cron/google-trend': typeof ApiCronGoogleTrendRoute
+  '/api/invoices/accounts': typeof ApiInvoicesAccountsRoute
+  '/api/invoices/ingest': typeof ApiInvoicesIngestRoute
+  '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
+  '/api/tiktok/connect': typeof ApiTiktokConnectRoute
   '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
   '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
 }
@@ -105,10 +147,16 @@ export interface FileRoutesByTo {
   '/api/adsops-health': typeof ApiAdsopsHealthRoute
   '/api/client-report': typeof ApiClientReportRoute
   '/api/openai-ad-image': typeof ApiOpenaiAdImageRoute
+  '/api/tiktok-ad-image': typeof ApiTiktokAdImageRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
+  '/api/cron/google-invoices': typeof ApiCronGoogleInvoicesRoute
   '/api/cron/google-trend': typeof ApiCronGoogleTrendRoute
+  '/api/invoices/accounts': typeof ApiInvoicesAccountsRoute
+  '/api/invoices/ingest': typeof ApiInvoicesIngestRoute
+  '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
+  '/api/tiktok/connect': typeof ApiTiktokConnectRoute
   '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
   '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
 }
@@ -120,10 +168,16 @@ export interface FileRoutesById {
   '/api/adsops-health': typeof ApiAdsopsHealthRoute
   '/api/client-report': typeof ApiClientReportRoute
   '/api/openai-ad-image': typeof ApiOpenaiAdImageRoute
+  '/api/tiktok-ad-image': typeof ApiTiktokAdImageRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
+  '/api/cron/google-invoices': typeof ApiCronGoogleInvoicesRoute
   '/api/cron/google-trend': typeof ApiCronGoogleTrendRoute
+  '/api/invoices/accounts': typeof ApiInvoicesAccountsRoute
+  '/api/invoices/ingest': typeof ApiInvoicesIngestRoute
+  '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
+  '/api/tiktok/connect': typeof ApiTiktokConnectRoute
   '/api/google-ads/oauth/callback': typeof ApiGoogleAdsOauthCallbackRoute
   '/api/google-ads/oauth/start': typeof ApiGoogleAdsOauthStartRoute
 }
@@ -136,10 +190,16 @@ export interface FileRouteTypes {
     | '/api/adsops-health'
     | '/api/client-report'
     | '/api/openai-ad-image'
+    | '/api/tiktok-ad-image'
     | '/api/auth/$'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
+    | '/api/cron/google-invoices'
     | '/api/cron/google-trend'
+    | '/api/invoices/accounts'
+    | '/api/invoices/ingest'
+    | '/api/tiktok/callback'
+    | '/api/tiktok/connect'
     | '/api/google-ads/oauth/callback'
     | '/api/google-ads/oauth/start'
   fileRoutesByTo: FileRoutesByTo
@@ -150,10 +210,16 @@ export interface FileRouteTypes {
     | '/api/adsops-health'
     | '/api/client-report'
     | '/api/openai-ad-image'
+    | '/api/tiktok-ad-image'
     | '/api/auth/$'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
+    | '/api/cron/google-invoices'
     | '/api/cron/google-trend'
+    | '/api/invoices/accounts'
+    | '/api/invoices/ingest'
+    | '/api/tiktok/callback'
+    | '/api/tiktok/connect'
     | '/api/google-ads/oauth/callback'
     | '/api/google-ads/oauth/start'
   id:
@@ -164,10 +230,16 @@ export interface FileRouteTypes {
     | '/api/adsops-health'
     | '/api/client-report'
     | '/api/openai-ad-image'
+    | '/api/tiktok-ad-image'
     | '/api/auth/$'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
+    | '/api/cron/google-invoices'
     | '/api/cron/google-trend'
+    | '/api/invoices/accounts'
+    | '/api/invoices/ingest'
+    | '/api/tiktok/callback'
+    | '/api/tiktok/connect'
     | '/api/google-ads/oauth/callback'
     | '/api/google-ads/oauth/start'
   fileRoutesById: FileRoutesById
@@ -179,10 +251,16 @@ export interface RootRouteChildren {
   ApiAdsopsHealthRoute: typeof ApiAdsopsHealthRoute
   ApiClientReportRoute: typeof ApiClientReportRoute
   ApiOpenaiAdImageRoute: typeof ApiOpenaiAdImageRoute
+  ApiTiktokAdImageRoute: typeof ApiTiktokAdImageRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronBudgetRunwayRoute: typeof ApiCronBudgetRunwayRoute
   ApiCronChangeLogRoute: typeof ApiCronChangeLogRoute
+  ApiCronGoogleInvoicesRoute: typeof ApiCronGoogleInvoicesRoute
   ApiCronGoogleTrendRoute: typeof ApiCronGoogleTrendRoute
+  ApiInvoicesAccountsRoute: typeof ApiInvoicesAccountsRoute
+  ApiInvoicesIngestRoute: typeof ApiInvoicesIngestRoute
+  ApiTiktokCallbackRoute: typeof ApiTiktokCallbackRoute
+  ApiTiktokConnectRoute: typeof ApiTiktokConnectRoute
   ApiGoogleAdsOauthCallbackRoute: typeof ApiGoogleAdsOauthCallbackRoute
   ApiGoogleAdsOauthStartRoute: typeof ApiGoogleAdsOauthStartRoute
 }
@@ -231,6 +309,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOpenaiAdImageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tiktok-ad-image': {
+      id: '/api/tiktok-ad-image'
+      path: '/api/tiktok-ad-image'
+      fullPath: '/api/tiktok-ad-image'
+      preLoaderRoute: typeof ApiTiktokAdImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -252,11 +337,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronChangeLogRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/google-invoices': {
+      id: '/api/cron/google-invoices'
+      path: '/api/cron/google-invoices'
+      fullPath: '/api/cron/google-invoices'
+      preLoaderRoute: typeof ApiCronGoogleInvoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/google-trend': {
       id: '/api/cron/google-trend'
       path: '/api/cron/google-trend'
       fullPath: '/api/cron/google-trend'
       preLoaderRoute: typeof ApiCronGoogleTrendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/invoices/accounts': {
+      id: '/api/invoices/accounts'
+      path: '/api/invoices/accounts'
+      fullPath: '/api/invoices/accounts'
+      preLoaderRoute: typeof ApiInvoicesAccountsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/invoices/ingest': {
+      id: '/api/invoices/ingest'
+      path: '/api/invoices/ingest'
+      fullPath: '/api/invoices/ingest'
+      preLoaderRoute: typeof ApiInvoicesIngestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tiktok/callback': {
+      id: '/api/tiktok/callback'
+      path: '/api/tiktok/callback'
+      fullPath: '/api/tiktok/callback'
+      preLoaderRoute: typeof ApiTiktokCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tiktok/connect': {
+      id: '/api/tiktok/connect'
+      path: '/api/tiktok/connect'
+      fullPath: '/api/tiktok/connect'
+      preLoaderRoute: typeof ApiTiktokConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/google-ads/oauth/callback': {
@@ -283,10 +403,16 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdsopsHealthRoute: ApiAdsopsHealthRoute,
   ApiClientReportRoute: ApiClientReportRoute,
   ApiOpenaiAdImageRoute: ApiOpenaiAdImageRoute,
+  ApiTiktokAdImageRoute: ApiTiktokAdImageRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronBudgetRunwayRoute: ApiCronBudgetRunwayRoute,
   ApiCronChangeLogRoute: ApiCronChangeLogRoute,
+  ApiCronGoogleInvoicesRoute: ApiCronGoogleInvoicesRoute,
   ApiCronGoogleTrendRoute: ApiCronGoogleTrendRoute,
+  ApiInvoicesAccountsRoute: ApiInvoicesAccountsRoute,
+  ApiInvoicesIngestRoute: ApiInvoicesIngestRoute,
+  ApiTiktokCallbackRoute: ApiTiktokCallbackRoute,
+  ApiTiktokConnectRoute: ApiTiktokConnectRoute,
   ApiGoogleAdsOauthCallbackRoute: ApiGoogleAdsOauthCallbackRoute,
   ApiGoogleAdsOauthStartRoute: ApiGoogleAdsOauthStartRoute,
 }
