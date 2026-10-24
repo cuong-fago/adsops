@@ -271,6 +271,16 @@ async function principalByRef(kind: PrincipalKind, id: string): Promise<Principa
   };
 }
 
+/** Re-resolve a stored principal ref (push recipients); handles the hard-coded `admin:<email>` ids. */
+export async function principalForRef(kind: PrincipalKind, id: string): Promise<Principal | null> {
+  if (kind === "staff" && id.startsWith("admin:")) {
+    const email = id.slice(6).trim().toLowerCase();
+    if (!isSuperAdminEmail(email)) return null;
+    return { kind: "staff", id, userId: null, email, username: null, displayName: email, role: "admin", isSuperAdmin: true };
+  }
+  return principalByRef(kind, id);
+}
+
 export async function grantsFor(p: Principal): Promise<"all" | Set<string>> {
   if (p.isSuperAdmin) return "all";
   if (p.role === "pending") return new Set();

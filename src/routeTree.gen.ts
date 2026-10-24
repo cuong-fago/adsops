@@ -21,6 +21,7 @@ import { Route as ApiCronBudgetRunwayRouteImport } from './routes/api/cron/budge
 import { Route as ApiCronChangeLogRouteImport } from './routes/api/cron/change-log'
 import { Route as ApiCronGoogleInvoicesRouteImport } from './routes/api/cron/google-invoices'
 import { Route as ApiCronGoogleTrendRouteImport } from './routes/api/cron/google-trend'
+import { Route as ApiCronPushAlertsRouteImport } from './routes/api/cron/push-alerts'
 import { Route as ApiInvoicesAccountsRouteImport } from './routes/api/invoices/accounts'
 import { Route as ApiInvoicesIngestRouteImport } from './routes/api/invoices/ingest'
 import { Route as ApiTiktokCallbackRouteImport } from './routes/api/tiktok/callback'
@@ -88,6 +89,11 @@ const ApiCronGoogleTrendRoute = ApiCronGoogleTrendRouteImport.update({
   path: '/api/cron/google-trend',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronPushAlertsRoute = ApiCronPushAlertsRouteImport.update({
+  id: '/api/cron/push-alerts',
+  path: '/api/cron/push-alerts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInvoicesAccountsRoute = ApiInvoicesAccountsRouteImport.update({
   id: '/api/invoices/accounts',
   path: '/api/invoices/accounts',
@@ -133,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
   '/api/cron/google-invoices': typeof ApiCronGoogleInvoicesRoute
   '/api/cron/google-trend': typeof ApiCronGoogleTrendRoute
+  '/api/cron/push-alerts': typeof ApiCronPushAlertsRoute
   '/api/invoices/accounts': typeof ApiInvoicesAccountsRoute
   '/api/invoices/ingest': typeof ApiInvoicesIngestRoute
   '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
@@ -153,6 +160,7 @@ export interface FileRoutesByTo {
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
   '/api/cron/google-invoices': typeof ApiCronGoogleInvoicesRoute
   '/api/cron/google-trend': typeof ApiCronGoogleTrendRoute
+  '/api/cron/push-alerts': typeof ApiCronPushAlertsRoute
   '/api/invoices/accounts': typeof ApiInvoicesAccountsRoute
   '/api/invoices/ingest': typeof ApiInvoicesIngestRoute
   '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
@@ -174,6 +182,7 @@ export interface FileRoutesById {
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
   '/api/cron/google-invoices': typeof ApiCronGoogleInvoicesRoute
   '/api/cron/google-trend': typeof ApiCronGoogleTrendRoute
+  '/api/cron/push-alerts': typeof ApiCronPushAlertsRoute
   '/api/invoices/accounts': typeof ApiInvoicesAccountsRoute
   '/api/invoices/ingest': typeof ApiInvoicesIngestRoute
   '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
     | '/api/cron/change-log'
     | '/api/cron/google-invoices'
     | '/api/cron/google-trend'
+    | '/api/cron/push-alerts'
     | '/api/invoices/accounts'
     | '/api/invoices/ingest'
     | '/api/tiktok/callback'
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/api/cron/change-log'
     | '/api/cron/google-invoices'
     | '/api/cron/google-trend'
+    | '/api/cron/push-alerts'
     | '/api/invoices/accounts'
     | '/api/invoices/ingest'
     | '/api/tiktok/callback'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/api/cron/change-log'
     | '/api/cron/google-invoices'
     | '/api/cron/google-trend'
+    | '/api/cron/push-alerts'
     | '/api/invoices/accounts'
     | '/api/invoices/ingest'
     | '/api/tiktok/callback'
@@ -257,6 +269,7 @@ export interface RootRouteChildren {
   ApiCronChangeLogRoute: typeof ApiCronChangeLogRoute
   ApiCronGoogleInvoicesRoute: typeof ApiCronGoogleInvoicesRoute
   ApiCronGoogleTrendRoute: typeof ApiCronGoogleTrendRoute
+  ApiCronPushAlertsRoute: typeof ApiCronPushAlertsRoute
   ApiInvoicesAccountsRoute: typeof ApiInvoicesAccountsRoute
   ApiInvoicesIngestRoute: typeof ApiInvoicesIngestRoute
   ApiTiktokCallbackRoute: typeof ApiTiktokCallbackRoute
@@ -351,6 +364,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronGoogleTrendRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/push-alerts': {
+      id: '/api/cron/push-alerts'
+      path: '/api/cron/push-alerts'
+      fullPath: '/api/cron/push-alerts'
+      preLoaderRoute: typeof ApiCronPushAlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/invoices/accounts': {
       id: '/api/invoices/accounts'
       path: '/api/invoices/accounts'
@@ -409,6 +429,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronChangeLogRoute: ApiCronChangeLogRoute,
   ApiCronGoogleInvoicesRoute: ApiCronGoogleInvoicesRoute,
   ApiCronGoogleTrendRoute: ApiCronGoogleTrendRoute,
+  ApiCronPushAlertsRoute: ApiCronPushAlertsRoute,
   ApiInvoicesAccountsRoute: ApiInvoicesAccountsRoute,
   ApiInvoicesIngestRoute: ApiInvoicesIngestRoute,
   ApiTiktokCallbackRoute: ApiTiktokCallbackRoute,
