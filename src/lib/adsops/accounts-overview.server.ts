@@ -76,3 +76,50 @@ export async function readAccountsOverview(accounts: Acc[]): Promise<OverviewRow
     };
   });
 }
+
+/** Per-account cost today / last 7 stored days + conversions, from adsops_analytics_warehouse (stored only). */
+export async function readAccountKpis(ids: string[]): Promise<Record<string, import("./accounts-overview.types.ts").AccountKpi>> {
+  const out: Record<string, import("./accounts-overview.types.ts").AccountKpi> = {};
+  if (!ids.length) return out;
+  const { getSql } = await import("@/lib/db");
+  const sql = await getSql();
+  let rows: Array<{ client_id: string; currency: string | null; daily: unknown }> = [];
+  try {
+    rows = await sql.query(
+      `select client_id, payload->>'currency' as currency, payload->'daily'->'account' as daily
+         from adsops_analytics_warehouse where client_id = any($1::text[])`,
+      [ids],
+    );
+  } catch {
+    return out;
+  }
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Saigon" }).format(new Date());
+  for (const r of rows) {
+    const daily = (typeof r.daily === "string" ? JSON.parse(r.daily) : r.daily) as Array<{ date?: string; cost?: number; conversions?: number }> | null;
+    if (!Array.isArray(daily) || !daily.length) continue;
+    const by = new Map<string, { cost: number; conv: number }>();
+    for (const d of daily) {
+      if (!d?.date) continue;
+      const cur = by.get(d.date) || { cost: 0, conv: 0 };
+      cur.cost += Number(d.cost || 0);
+      cur.conv += Number(d.conversions || 0);
+      by.set(d.date, cur);
+    }
+    const dates = [...by.keys()].sort();
+    const end = dates[dates.length - 1] || null;
+    // Window = 7 calendar days ending at the latest stored complete day (today excluded).
+    const lastFull = dates.filter((d) => d < today).pop() || null;
+    let d7_cost: number | null = null;
+    let d7_conv: number | null = null;
+    if (lastFull) {
+      const start = new Date(Date.parse(`${lastFull}T00:00:00Z`) - 6 * 86_400_000).toISOString().slice(0, 10);
+      const win = dates.filter((d) => d >= start && d <= lastFull);
+      if (win.length) {
+        d7_cost = win.reduce((t, d) => t + by.get(d)!.cost, 0);
+        d7_conv = win.reduce((t, d) => t + by.get(d)!.conv, 0);
+      }
+    }
+    out[r.client_id] = { currency: r.currency, end: lastFull ?? end, today_cost: by.has(today) ? by.get(today)!.cost : null, d7_cost, d7_conv };
+  }
+  return out;
+}

@@ -28,3 +28,18 @@ export const readAccountsOverviewFn = createServerFn({ method: "POST" })
     const { readAccountsOverview } = await import("./accounts-overview.server");
     return { rows: await readAccountsOverview(accounts) };
   });
+
+/** Mobile home cards: spend today / 7 days + conversions from the stored warehouse (no Google call). */
+export const readAccountKpisFn = createServerFn({ method: "POST" })
+  .middleware([principalMiddleware])
+  .handler(async ({ context }): Promise<Record<string, import("./accounts-overview.types.ts").AccountKpi>> => {
+    const ctx = context.access;
+    const { ForbiddenError, canSeeAccount } = await import("./permissions.server");
+    if (ctx.principal.kind !== "staff" || ctx.principal.role === "pending") throw new ForbiddenError("Chỉ nhân sự xem được tổng quan tài khoản.");
+    const { loadWorkspaceDirectory } = await import("./access.server");
+    const { withPulledMccClients } = await import("./mcc-import.server");
+    const dir = await withPulledMccClients(await loadWorkspaceDirectory(ctx), ctx.allowed);
+    const ids = dir.clients.filter((c) => canSeeAccount(ctx, c.client_id)).map((c) => c.client_id);
+    const { readAccountKpis } = await import("./accounts-overview.server");
+    return readAccountKpis(ids);
+  });

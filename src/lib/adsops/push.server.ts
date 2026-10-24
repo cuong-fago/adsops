@@ -139,7 +139,7 @@ export async function runBudgetAlerts(): Promise<{ sent: number; accounts: numbe
       title: "Ngân sách sắp hết",
       body: `${r.name || r.client_id}: ngân sách còn ${fmtDays(days)} theo chi tiêu trung bình.`,
       tag: `budget-${r.client_id}`,
-      url: "/",
+      url: `/?tab=alerts&account=${encodeURIComponent(r.client_id)}`,
     }, list);
   }
   return { sent, accounts: rows.length };
@@ -197,7 +197,7 @@ export async function runConvDropAlerts(deadline: number): Promise<{ sent: numbe
             title: "Chuyển đổi giảm mạnh",
             body: `${a.display_name}: 7 ngày qua ${fmtN(last7!)} chuyển đổi, giảm ${pct}% so với 7 ngày trước (${fmtN(prev7!)}).`,
             tag: `conv-${a.id}`,
-            url: "/",
+            url: `/?tab=analytics&account=${encodeURIComponent(a.id)}`,
           }, list);
         }
       } catch (e) {
@@ -228,7 +228,7 @@ export async function notifyInvoicesUploaded(saved: number, issueDates: Array<st
       title: "Hóa đơn Google đã tải lên",
       body: `Đã thêm ${saved} hóa đơn Google${label ? ` (tháng ${label})` : ""}.`,
       tag: `invoices-${months.join("_") || stamp}`,
-      url: "/",
+      url: "/?tab=invoices",
     }, list);
   } catch (e) {
     console.error("[push] invoices notify failed", (e as Error)?.message);

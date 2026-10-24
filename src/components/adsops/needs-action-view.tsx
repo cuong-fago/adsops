@@ -107,8 +107,8 @@ export function NeedsActionView({ onOpen }: { onOpen?: (clientId: string, channe
         So sánh cùng loại chiến dịch, chỉ đối tượng chạy đủ 3 tháng trọn, chuyển đổi chính. Báo khi một trong hai bước tháng (T-2→T-1, T-1→T) xấu đi hơn {Math.round(th.step * 100)}%; bỏ qua tháng dưới {th.conv} chuyển đổi hoặc dưới {th.clicks} click. Sắp xếp: mức xấu đi × chi phí tháng gần nhất.
       </p>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Tìm tài khoản" className={cn(sel, "w-44")} />
+      <div className="grid grid-cols-2 items-center gap-2 md:flex md:flex-wrap [&>select]:max-md:h-11 [&>select]:max-md:w-full [&>select]:max-md:min-w-0 [&>label]:max-md:col-span-2 [&>label]:max-md:min-h-11">
+        <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Tìm tài khoản" className={cn(sel, "w-44 max-md:col-span-2 max-md:h-11 max-md:w-full")} />
         <select value={f.metric} onChange={(e) => setF({ ...f, metric: e.target.value as Filters["metric"] })} className={sel} aria-label="Chỉ số">
           <option value="all">Mọi chỉ số</option>{(["cpc", "cpa", "cvr"] as NeedMetric[]).map((m) => <option key={m} value={m}>{MET_LABEL[m]}</option>)}
         </select>
