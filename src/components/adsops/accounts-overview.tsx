@@ -5,7 +5,10 @@ import { TrendBadge } from "@/components/adsops/google-trend-snapshot-ui";
 import { readTrendSnapshotsFn, recomputeTrendFn } from "@/lib/adsops/connect.functions";
 import type { TrendSnapshot } from "@/lib/adsops/google-trend-snapshot.types";
 import { recheckAccountFn, recheckSpend10Fn } from "@/lib/adsops/recheck.functions";
-import { readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-overview.functions";
+import { readAccountKpisFn, readAccountsOverviewFn, type OverviewRow } from "@/lib/adsops/accounts-overview.functions";
+import { matchAccount, type AccountKpi } from "@/lib/adsops/accounts-overview.types";
+import { money } from "@/lib/adsops/format";
+import { PullToRefresh } from "@/components/adsops/mobile-kit";
 import { readPacingFn, type PacingRow } from "@/lib/adsops/budget-plan.functions";
 import { readBusinessAllFn, type BizMetrics } from "@/lib/adsops/outcomes.functions";
 import { ImportDialog } from "@/components/adsops/business-outcomes";
@@ -161,6 +164,18 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
   const onlyRed = tile === "action";
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>(saved.current?.sort || { key: "urgency", dir: -1 });
   const [epoch, setEpoch] = useState(0);
+  const [query, setQuery] = useState("");
+  const [kpi, setKpi] = useState<Record<string, AccountKpi> | null>(null);
+  const [kpiError, setKpiError] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || window.innerWidth >= 768) return; // mobile cards only
+    let off = false;
+    setKpiError(false);
+    readAccountKpisFn()
+      .then((r) => { if (!off) setKpi(r); })
+      .catch(() => { if (!off) { setKpi({}); setKpiError(true); } });
+    return () => { off = true; };
+  }, [epoch]);
   const [pace, setPace] = useState<Record<string, PacingRow>>({});
   PACE = pace;
   useEffect(() => {
@@ -270,6 +285,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
 
   useEffect(() => {
     let cancelled = false;
+    setError("");
     readAccountsOverviewFn()
       .then((res) => { if (!cancelled) setRows(res.rows); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error && err.message ? err.message : "Không đọc được tổng quan."); });
@@ -419,6 +435,12 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
     });
   }, [base, tile, sort, pace, trend]);
 
+  // Mobile list: every visible account (ignores the desktop "only selected" scope), searched by name / CID.
+  const mobileRows = useMemo(
+    () => (act.shown || []).filter(TILE_PRED[tile]).filter((r) => matchAccount(query, r.label, r.customer_id_dashed)).sort((a, b) => urgency(b) - urgency(a) || (a.runway.runway_days ?? Infinity) - (b.runway.runway_days ?? Infinity) || a.label.localeCompare(b.label, "vi")),
+    [act.shown, tile, query, pace, trend],
+  );
+
   const toggle = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "opt" || key === "urgency" || key === "checked" ? -1 : 1 }));
   const head = (key: SortKey, label: string, cls = th) => (
@@ -502,15 +524,16 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
 
   return (
     <section className="flex flex-col gap-4 rounded-xl bg-paper px-4 py-4 shadow-sheet md:px-5">
+      <PullToRefresh onRefresh={() => setEpoch((n) => n + 1)} />
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold tracking-tight">Tổng quan tài khoản</h2>
-          <p className="mt-0.5 text-sm text-muted">Ngân sách còn, điểm tối ưu và lần tối ưu từ khoá gần nhất của mọi tài khoản bạn được xem. Số đã lưu, không gọi Google.</p>
-          <p className="mt-1 text-xs text-subtle">
+          <p className="mt-0.5 hidden text-sm text-muted md:block">Ngân sách còn, điểm tối ưu và lần tối ưu từ khoá gần nhất của mọi tài khoản bạn được xem. Số đã lưu, không gọi Google.</p>
+          <p className="mt-1 hidden text-xs text-subtle md:block">
             Tối ưu từ khoá = thêm từ khoá, thêm phủ định, hoặc thêm phủ định vào danh sách dùng chung (Nhật ký tối ưu; danh sách dùng chung Google không ghi người sửa). Google chỉ trả lại khoảng 30 ngày gần nhất; thay đổi qua Google Ads Editor có thể không có trong nhật ký. "—" = chưa có số đã lưu.
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="hidden shrink-0 flex-wrap items-center gap-2 md:flex">
         <button
           type="button"
           disabled={Boolean(bulk) || !shown.length}
@@ -527,14 +550,14 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
         </div>
       </div>
       {biz ? (
-        <div className="flex justify-end">
+        <div className="hidden justify-end md:flex">
           <button type="button" onClick={() => setImportOpen(true)} title="Nhập lead hợp lệ, khách chốt, doanh thu từ file CSV / Excel" className="inline-flex h-8 items-center rounded-md border border-line bg-paper px-3 text-sm hover:bg-inset">Tải số liệu kinh doanh</button>
         </div>
       ) : null}
       {importOpen ? <ImportDialog onClose={(changed) => { setImportOpen(false); if (changed) setEpoch((n) => n + 1); }} /> : null}
       {bulk || rowState.__summary?.msg ? <p className="text-xs text-muted">{bulk || rowState.__summary?.msg}</p> : null}
       {rows && selectedRow ? (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <div className="hidden flex-wrap items-center gap-2 text-sm md:flex">
           {scoped ? (
             <>
               <span className="inline-flex min-h-7 items-center rounded-sm border border-accent-border bg-accent-soft px-2 py-0.5 font-medium text-accent [overflow-wrap:anywhere]">Chỉ tài khoản: {selectedRow.label}</span>
@@ -550,7 +573,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
         </div>
       ) : null}
       {rows ? (
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+        <div className="hidden grid-cols-2 gap-2 md:grid md:grid-cols-4 xl:grid-cols-8">
           {([
             ["all", "Tài khoản", counts.total, false],
             ["action", "Cần xử lý", counts.action, true],
@@ -582,12 +605,24 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
         </div>
       ) : null}
       {logProgress ? <p className="text-xs text-muted">{logProgress}</p> : null}
-      {error ? <ErrorState message={error} /> : null}
+      {error ? <ErrorState message={error} onRetry={() => setEpoch((n) => n + 1)} /> : null}
       {!rows && !error ? <TableSkeleton rows={8} cols={6} /> : null}
       {rows ? (
         <>
+        <MobileAccountList
+          rows={mobileRows}
+          kpi={kpi}
+          kpiError={kpiError}
+          query={query}
+          onQuery={setQuery}
+          onlyAction={tile === "action"}
+          actionCount={counts.action}
+          total={allCount}
+          onToggleAction={(on) => pickTile(on ? "action" : "all")}
+          onOpen={(id) => open(id, "detail")}
+        />
         {tile !== "all" ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div className="hidden flex-wrap items-center gap-2 text-sm md:flex">
             <span className="inline-flex h-7 items-center rounded-sm border border-accent-border bg-accent-soft px-2 font-medium text-accent">
               Đang lọc: {TILE_LABEL[tile]} ({shown.length})
             </span>
@@ -596,7 +631,7 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
             </button>
           </div>
         ) : null}
-        <div ref={tableRef} className="relative max-h-[70vh] overflow-auto rounded-lg border border-line">
+        <div ref={tableRef} className="relative hidden max-h-[70vh] overflow-auto rounded-lg border border-line md:block">
           <table className="min-w-full border-separate border-spacing-0 text-sm">
             <thead>
               <tr>
@@ -709,5 +744,91 @@ export function AccountsOverview({ onOpenAccount, selectedClientId, isAdmin, can
         </>
       ) : null}
     </section>
+  );
+}
+
+function budgetPill(r: OverviewRow): { text: string; cls: string } {
+  const w = r.runway;
+  const lv = budgetLevel(r);
+  let text = "—";
+  if (w.checked_at) {
+    if (w.infinite || w.status === "infinite") text = "Không giới hạn";
+    else if (w.status === "no_spend") text = "Không tiêu 7 ngày";
+    else if (w.runway_days != null) text = `${num(w.runway_days, 1)} ngày`;
+    else if (w.kind === "no_budget") text = "Không có số dư";
+    else if (w.kind === "error") text = "Chưa kiểm tra được";
+  }
+  if (w.expiring && w.budget_end) text += ` · hết hạn ${w.budget_end.slice(8, 10)}/${w.budget_end.slice(5, 7)}`;
+  const cls = lv === "red" ? "bg-danger-bg text-danger" : lv === "amber" ? "bg-warn-bg text-warn" : lv === "ok" ? "bg-ok-bg text-ok" : "bg-inset text-subtle";
+  return { text, cls };
+}
+
+function MobileAccountList(p: {
+  rows: OverviewRow[];
+  kpi: Record<string, AccountKpi> | null;
+  kpiError: boolean;
+  query: string;
+  onQuery: (q: string) => void;
+  onlyAction: boolean;
+  actionCount: number;
+  total: number;
+  onToggleAction: (on: boolean) => void;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 md:hidden">
+      <input
+        type="search"
+        inputMode="search"
+        value={p.query}
+        onChange={(e) => p.onQuery(e.target.value)}
+        placeholder="Tìm theo tên hoặc mã tài khoản (CID)"
+        aria-label="Tìm tài khoản"
+        className="h-11 w-full rounded-xl border border-line bg-paper px-3.5 text-base text-ink placeholder:text-subtle"
+      />
+      <div className="flex gap-2">
+        <button type="button" aria-pressed={!p.onlyAction} onClick={() => p.onToggleAction(false)} className={cn("h-10 rounded-full border px-4 text-sm font-medium", !p.onlyAction ? "border-accent bg-accent-soft text-accent" : "border-line bg-paper text-muted")}>
+          Tất cả ({p.total})
+        </button>
+        <button type="button" aria-pressed={p.onlyAction} onClick={() => p.onToggleAction(!p.onlyAction)} className={cn("h-10 rounded-full border px-4 text-sm font-medium", p.onlyAction ? "border-danger bg-danger-bg text-danger" : "border-line bg-paper text-muted")}>
+          Cần xử lý ({p.actionCount})
+        </button>
+      </div>
+      {p.kpiError ? <p className="text-xs text-muted">Chưa tải được số chi tiêu — kéo xuống để thử lại.</p> : null}
+      {!p.rows.length ? (
+        <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">{p.query ? "Không có tài khoản khớp tìm kiếm." : "Không có tài khoản."}</p>
+      ) : (
+        <ul className="flex flex-col gap-2.5">
+          {p.rows.map((r) => {
+            const k = p.kpi?.[r.client_id];
+            const cur = k?.currency || "VND";
+            const b = budgetPill(r);
+            const cpl = k && k.d7_cost != null && k.d7_conv ? k.d7_cost / k.d7_conv : null;
+            const loading = p.kpi == null;
+            const val = (v: string) => (loading ? <span className="inline-block h-4 w-16 animate-pulse rounded bg-inset align-middle" /> : v);
+            return (
+              <li key={r.client_id}>
+                <button type="button" onClick={() => p.onOpen(r.client_id)} className={cn("w-full rounded-xl border border-line bg-paper p-3.5 text-left shadow-sm active:bg-row-hover", rowRisk(r) === "red" ? "border-l-4 border-l-danger" : rowRisk(r) === "amber" ? "border-l-4 border-l-warn" : "")}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="line-clamp-2 text-[15px] font-semibold leading-snug text-ink [overflow-wrap:anywhere]">{r.label}</p>
+                      {r.customer_id_dashed ? <p className="mt-0.5 text-xs tabular-nums text-subtle">{r.customer_id_dashed}</p> : null}
+                    </div>
+                    <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold", b.cls)} title="Ngân sách còn">{b.text}</span>
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                    <div><dt className="text-xs text-muted">Chi tiêu hôm nay</dt><dd className="font-semibold tabular-nums text-ink">{val(money(k?.today_cost ?? null, cur))}</dd></div>
+                    <div><dt className="text-xs text-muted">Chi tiêu 7 ngày</dt><dd className="font-semibold tabular-nums text-ink">{val(money(k?.d7_cost ?? null, cur))}</dd></div>
+                    <div><dt className="text-xs text-muted">Chuyển đổi 7 ngày</dt><dd className="font-semibold tabular-nums text-ink">{val(num(k?.d7_conv ?? null, k?.d7_conv != null && k.d7_conv % 1 ? 1 : 0))}</dd></div>
+                    <div><dt className="text-xs text-muted">CPL 7 ngày</dt><dd className="font-semibold tabular-nums text-ink">{val(money(cpl, cur))}</dd></div>
+                  </dl>
+                  {k?.end ? <p className="mt-2 text-[11px] text-subtle">Số đã lưu đến {k.end.slice(8, 10)}/{k.end.slice(5, 7)}</p> : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

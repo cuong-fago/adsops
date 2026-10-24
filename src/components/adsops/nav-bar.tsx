@@ -163,14 +163,20 @@ function MoreBtn({ active, open, toggle }: { active: boolean; open: boolean; tog
  * Mobile bottom navigation (< md). Shows up to 4 destinations (the active one always included)
  * plus "Thêm", which opens a bottom sheet with every destination. 44px+ touch targets, safe-area aware.
  */
-export function BottomNav({ entries }: { entries: NavEntry[] }) {
+export function BottomNav({ entries, pin }: { entries: NavEntry[]; /** Fixed mobile bar (≤ 4) + "Thêm" for everything else. */ pin?: NavItem[] }) {
   const [open, setOpen] = useState(false);
   const all = entries.flatMap((e) => (e.kind === "tab" ? [e.item] : e.items));
   const MAX = all.length <= 5 ? 5 : 4;
   let shown = all.slice(0, MAX);
   const act = all.find((i) => i.active);
   if (act && !shown.includes(act)) shown = [...shown.slice(0, MAX - 1), act];
-  const more = all.length > shown.length;
+  let more = all.length > shown.length;
+  let moreActive = false;
+  if (pin && pin.length >= 2) {
+    shown = pin.slice(0, 4);
+    more = true;
+    moreActive = !shown.some((i) => i.active);
+  }
   useEffect(() => {
     if (!open) return;
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
@@ -208,7 +214,7 @@ export function BottomNav({ entries }: { entries: NavEntry[] }) {
       <nav aria-label="Điều hướng chính" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {shown.map((it) => <Btn key={it.id} it={it} />)}
         {more ? (
-          <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" className={cn("flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold", open ? "text-accent" : "text-muted")}>
+          <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" className={cn("flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold", open || moreActive ? "text-accent" : "text-muted")}>
             <MoreHorizontal className="size-5" /> Thêm
           </button>
         ) : null}

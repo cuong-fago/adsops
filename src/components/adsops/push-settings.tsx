@@ -46,7 +46,7 @@ export function PushSettingsButton() {
   );
 }
 
-function PushSettingsPanel({ onClose }: { onClose: () => void }) {
+export function PushSettingsPanel({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<PushState | null>(null);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);

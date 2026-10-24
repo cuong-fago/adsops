@@ -648,7 +648,19 @@ export function AnalyticsView({
     <div className="flex min-w-0 flex-col gap-4">
       {snap.budget_pace && <BudgetBanner pace={snap.budget_pace} currency={snap.currency} />}
 
-      <div className="z-30 -mx-4 bg-bg/90 px-4 pb-1 pt-2 backdrop-blur md:sticky md:top-0 md:-mx-1 md:px-1">
+      <div className="sticky z-[35] -mx-3 -mt-2 border-b border-line bg-bg/95 px-3 py-2 backdrop-blur sm:-mx-4 sm:px-4 md:hidden" style={{ top: "var(--hdr-h, 0px)" }}>
+        <p className="truncate text-sm font-semibold text-ink">{snap.display_name}</p>
+        <div className="mt-1 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none]">
+          <span className="shrink-0 text-xs font-medium tabular-nums text-muted">{rangeLabel} · {daySpan} ngày</span>
+          {calPresets.map((p) => (
+            <button key={p.id} type="button" onClick={() => applyRange(p.start, p.end)} aria-pressed={activePreset === p.id}
+              className={cn("h-9 shrink-0 whitespace-nowrap rounded-full border px-3 text-xs font-medium", activePreset === p.id ? "border-accent-border bg-accent-soft font-semibold text-accent" : "border-line bg-paper text-ink")}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="z-30 bg-bg/90 pb-1 pt-2 backdrop-blur md:sticky md:top-0 md:-mx-1 md:px-1">
         <div className={cn(card, "flex flex-col gap-3 p-3 md:p-4")}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <div className="min-w-0 flex-1">
@@ -697,16 +709,16 @@ export function AnalyticsView({
               {draftStart && draftEnd && draftStart > draftEnd ? <span className="pb-2.5 text-xs text-danger">Ngày bắt đầu sau ngày kết thúc.</span> : null}
               {allowCompare ? (
                 <>
-                  <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-inset px-3 text-sm"><input type="checkbox" checked={prevEqual} onChange={(e) => setPrevEqual(e.target.checked)} className="size-4 accent-accent" />So kỳ trước cùng độ dài{prevRange ? <span className="text-xs text-muted">({formatRangeShort(prevStart, prevEnd)})</span> : null}</label>
+                  <label className="col-span-2 flex min-h-11 flex-wrap items-center md:col-span-1 md:min-h-0 md:h-9 gap-2 rounded-md border border-line bg-inset px-3 text-sm"><input type="checkbox" checked={prevEqual} onChange={(e) => setPrevEqual(e.target.checked)} className="size-4 accent-accent" />So kỳ trước cùng độ dài{prevRange ? <span className="text-xs text-muted">({formatRangeShort(prevStart, prevEnd)})</span> : null}</label>
                   {snap.week_choices.length ? (
-                    <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-inset px-3 text-sm">Tuần
+                    <label className="col-span-2 flex min-h-11 flex-wrap items-center md:col-span-1 md:min-h-0 md:h-9 gap-2 rounded-md border border-line bg-inset px-3 text-sm">Tuần
                       <select value={weekN} onChange={(e) => { setWeekN(Number(e.target.value)); setMonthN(0); if (Number(e.target.value)) setTab("monthly"); }} className="h-8 bg-transparent text-sm">
                         <option value={0}>—</option>
                         {snap.week_choices.map((n) => <option key={n} value={n}>{n} tuần (T2–CN)</option>)}
                       </select>
                     </label>
                   ) : null}
-                  <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-inset px-3 text-sm">Các tháng trước
+                  <label className="col-span-2 flex min-h-11 flex-wrap items-center md:col-span-1 md:min-h-0 md:h-9 gap-2 rounded-md border border-line bg-inset px-3 text-sm">Các tháng trước
                     <select value={monthN} onChange={(e) => { setMonthN(Number(e.target.value)); setWeekN(0); if (Number(e.target.value)) setTab("monthly"); }} className="h-8 bg-transparent text-sm">
                       <option value={0}>—</option>
                       {(snap.month_choices.length ? snap.month_choices : [1, 2, 3, 4, 5, 6, 7, 8, 9]).map((n) => <option key={n} value={n}>{n} tháng</option>)}
@@ -739,18 +751,21 @@ export function AnalyticsView({
 
       {tab === "overview" ? <PacingCard clientId={snap.client_id} /> : null}
       {tab === "overview" ? <BusinessCard clientId={snap.client_id} /> : null}
-      {tab === "overview" && allowCompare ? <GoogleTrendCard clientId={snap.client_id} start={start} end={end} monthMode={!!monthN || activePreset === "month" || activePreset === "lastmonth" || activePreset === "all"} /> : null}
+      {tab === "overview" && allowCompare ? <MobileSection title="Xu hướng · Theo loại chiến dịch"><GoogleTrendCard clientId={snap.client_id} start={start} end={end} monthMode={!!monthN || activePreset === "month" || activePreset === "lastmonth" || activePreset === "all"} /></MobileSection> : null}
       {tab === "overview" ? (
+        <MobileSection title="Điểm chất lượng · Chi phí lãng phí" defaultOpen={false}>
         <div className="grid gap-4 lg:grid-cols-2">
           <QsOverviewCard data={qsData} loading={qsSt.loading} />
           <WasteCard data={wasteData} loading={wasteSt.loading} compact />
         </div>
+        </MobileSection>
       ) : null}
       {tab === "breakdown" ? <BreakdownView clientId={snap.client_id} start={start} end={end} campaigns={campaignOpts} /> : null}
       {tab === "calls" ? <CallsView clientId={snap.client_id} start={start} end={end} campaigns={campaignOpts} /> : null}
       {tableLayer === "search_term" ? <WasteCard data={wasteData} loading={wasteSt.loading} /> : null}
 
       {tableLayer ? (
+        <MobileSection title={TABLE_TITLE[tableLayer] || "Bảng số liệu"}>
         <section className={cn(card, "flex min-w-0 flex-col gap-3 p-3 md:p-4")}>
           {deepLayer ? (
             <ScopeFilters
@@ -815,7 +830,24 @@ export function AnalyticsView({
             );
           })()}
         </section>
+        </MobileSection>
       ) : null}
+    </div>
+  );
+}
+
+const TABLE_TITLE: Record<string, string> = { campaign: "Chiến dịch", ad_group: "Nhóm quảng cáo", keyword: "Từ khoá", search_term: "Search terms" };
+
+/** Mobile: collapsible section with a 44px header. Desktop: children only (unchanged). */
+function MobileSection({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex min-h-11 items-center justify-between rounded-xl bg-paper px-4 text-left text-sm font-semibold text-ink shadow-sm md:hidden">
+        {title}
+        <ChevronRight className={cn("size-4 text-muted transition-transform", open && "rotate-90")} />
+      </button>
+      <div className={cn("min-w-0", !open && "max-md:hidden")}>{children}</div>
     </div>
   );
 }
@@ -978,9 +1010,9 @@ function KpiCard({ def, metrics, prev, prevIncomplete, prevLoading, values, big 
   // Trend / previous-period only when `prev` is passed (staff with allowCompare). Clients never get it.
   const d = prev ? metricDelta(def.id, metrics, prev) : null;
   return (
-    <div className={cn(card, "flex min-w-0 flex-col gap-1.5 p-4", big && "border-accent-border")}>
+    <div className={cn(card, "flex min-w-0 flex-col gap-1.5 p-4 max-md:p-3", big && "border-accent-border")}>
       <p className="text-[13px] font-medium leading-[18px] text-muted" title={def.hint || def.label}>{def.label}</p>
-      <p className={cn("font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]", big ? "text-kpi" : "text-kpi-sm")}>{def.value(metrics)}</p>
+      <p className={cn("font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]", big ? "text-kpi max-md:text-[22px] max-md:leading-7" : "text-kpi-sm max-md:text-lg")}>{def.value(metrics)}</p>
       <Sparkline values={values} tone={def.tone} />
       {prevLoading ? (
         <p className="text-xs leading-4 text-subtle">Đang tải kỳ trước…</p>
@@ -1746,7 +1778,41 @@ function DataTable({
         </div>
       </div>
 
-      <div className={scrollBox}>
+      <ul className="flex flex-col gap-2 md:hidden" aria-label={`Danh sách ${firstLabel.toLowerCase()}`}>
+        {visible.length === 0 ? <li className="rounded-xl bg-inset px-4 py-6 text-center text-sm text-muted">{emptyText || "Không có dòng nào."}</li> : null}
+        {visible.map((row) => {
+          const pv = compare?.map.get(row.id);
+          const m = row.metrics;
+          const cell = (key: string, label: string, v: string) => {
+            const d = pv ? metricDelta(key, m, pv) : null;
+            return (
+              <div key={key} className="min-w-0">
+                <dt className="text-[11px] text-muted">{label}</dt>
+                <dd className="font-semibold tabular-nums text-ink">{v}{d ? <DeltaText d={d} className="ml-1 text-[11px] font-medium" /> : null}</dd>
+              </div>
+            );
+          };
+          const ctx = layer === "campaign" ? "" : contextLine(row);
+          const body = (
+            <>
+              <p className="line-clamp-2 text-sm font-semibold text-ink [overflow-wrap:anywhere]">{row.name}{row.pmax ? <span className="ml-1.5 rounded-sm bg-inset px-1.5 py-0.5 text-[11px] font-medium text-muted">PMax</span> : null}</p>
+              {ctx ? <p className="mt-0.5 truncate text-xs text-subtle">{ctx}</p> : null}
+              <dl className="mt-2 grid grid-cols-4 gap-2 text-sm">
+                {cell("cost", "Chi tiêu", dongShort(m.cost || 0))}
+                {cell("clicks", "Click", num(m.clicks || 0))}
+                {cell("conversions", "Conv", convNum(m.conversions || 0))}
+                {cell("cost_per_conversion", "CPL", m.conversions ? dongShort(m.cost_per_conversion || 0) : "—")}
+              </dl>
+            </>
+          );
+          return (
+            <li key={row.id} className="rounded-xl border border-line bg-paper p-3">
+              {canDrill ? <button type="button" onClick={() => onDrill(row)} className="block w-full text-left">{body}<span className="mt-1.5 inline-flex items-center gap-0.5 text-xs font-medium text-accent">Xem tầng dưới <ChevronRight className="size-3.5" /></span></button> : body}
+            </li>
+          );
+        })}
+      </ul>
+      <div className={cn(scrollBox, "hidden md:block")}>
         <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
           <thead>
             <tr>

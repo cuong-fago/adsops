@@ -1,4 +1,4 @@
-import { PushSettingsButton } from "./push-settings";
+import { PushSettingsButton, PushSettingsPanel } from "./push-settings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
@@ -53,6 +53,7 @@ import { cn } from "@/lib/cn";
 import {
   BarChart3, Bell, Gauge, Scale, Receipt, BookOpen, CheckCircle2, Database, FileText, History, LayoutGrid, Lightbulb, ShieldCheck, Tags, Users,
   type LucideIcon,
+  BellRing,
 } from "lucide-react";
 
 const TAB_ICON: Partial<Record<string, LucideIcon>> = {
@@ -276,6 +277,17 @@ export function AdsOpsApp() {
   const [metaFocus, setMetaFocus] = useState<MetaFocus | null>(null);
   /** Bumped by "Kiểm tra lại" so the budget / score pills re-read the stored result. */
   const [recheckN, setRecheckN] = useState(0);
+  const [pushOpen, setPushOpen] = useState(false);
+  // Header height → --hdr-h so mobile sticky bars sit right under it.
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty("--hdr-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+  const [ctxOpen, setCtxOpen] = useState(false);
   const [access, setAccess] = useState<AccessSnap | null>(null);
   const [accessError, setAccessError] = useState("");
   const [analytics, setAnalytics] = useState<AnalyticsSnap | null | undefined>(undefined);
@@ -339,7 +351,14 @@ export function AdsOpsApp() {
         else if (dir.access.caps.grant && !dir.access.read_only && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("gads")) {
           setTab("members");
         }
+        // Deep link (push notification tap / shared URL): ?tab=…&account=…, only within what this user may see.
+        const qs = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+        const qTab = qs?.get("tab") as TabId | null;
+        const qAcc = qs?.get("account") || "";
+        if (qTab && tabAllowed(dir.access as AccessSnap, qTab)) setTab(qTab);
+if ((qTab || qAcc) && typeof window !== "undefined") window.history.replaceState(null, "", window.location.pathname);
         setClientId((cur) => {
+          if (qAcc && rows.some((c) => c.client_id === qAcc)) return qAcc;
           if (cur && rows.some((c) => c.client_id === cur)) return cur;
           return rows[0]?.client_id || "";
         });
@@ -1113,6 +1132,20 @@ export function AdsOpsApp() {
               else if (ana.length) out.push({ kind: "group", id: "ana", label: "Phân tích", items: ana });
               return out;
             })() : [];
+  // Mobile bottom bar: Tài khoản · Cần xử lý · Phân tích · Thông báo + "Thêm" (only tabs this role may open).
+  const mobilePin: NavItem[] = (() => {
+    if (!access || access.role === "pending" || access.kind !== "staff") return [];
+    const all = navEntries.flatMap((e) => (e.kind === "tab" ? [e.item] : e.items));
+    const find = (id: string) => all.find((i) => i.id === id);
+    const pin: NavItem[] = [];
+    const ov = find("overview"); if (ov) pin.push({ ...ov, text: "Tài khoản", label: "Tài khoản" });
+    const nd = find("needs"); if (nd) pin.push({ ...nd, text: "Cần xử lý", label: "Cần xử lý" });
+    const an = find("analytics"); if (an) pin.push({ ...an, text: "Phân tích", label: "Phân tích" });
+    const al = find("alerts");
+    if (al) pin.push({ ...al, text: "Thông báo", label: "Thông báo", icon: BellRing });
+    else if (!access.read_only) pin.push({ id: "push", label: "Thông báo", text: "Thông báo", icon: BellRing, active: pushOpen, onClick: () => setPushOpen(true) });
+    return pin;
+  })();
   return (
     <div className="min-h-screen bg-bg text-ink">
       {access?.view_as ? (
@@ -1132,12 +1165,12 @@ export function AdsOpsApp() {
           </div>
         </div>
       ) : null}
-      <header className="sticky top-0 z-40 border-b border-line bg-paper/95 backdrop-blur supports-[backdrop-filter]:bg-paper/85">
+      <header ref={headerRef} className="sticky top-0 z-40 border-b border-line bg-paper/95 backdrop-blur supports-[backdrop-filter]:bg-paper/85">
         <div className="mx-auto flex min-h-14 max-w-[1800px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 md:px-6 lg:px-8">
           <BrandMark product={viewer ? "AdsOps Báo cáo" : "AdsOps"} />
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-3 sm:flex-none">
             {access && access.role !== "pending" && clients.length ? (
-              <div className="min-w-0 flex-1 sm:w-[22rem] sm:flex-none lg:w-[28rem]">
+              <div className="hidden min-w-0 flex-1 sm:w-[22rem] sm:flex-none md:block lg:w-[28rem]">
                 <AccountPicker
                   compact
                   label={access.all_clients ? `Tài khoản MCC ${mcc?.mcc_id_dashed || "532-145-0531"}` : "Tài khoản được cấp"}
@@ -1168,6 +1201,21 @@ export function AdsOpsApp() {
               <UserButton />
             )}
           </div>
+          {access && access.role !== "pending" && clients.length && shownTab !== "overview" ? (
+            <div className="w-full min-w-0 md:hidden">
+              <AccountPicker
+                compact
+                label={access.all_clients ? `Tài khoản MCC ${mcc?.mcc_id_dashed || "532-145-0531"}` : "Tài khoản được cấp"}
+                clients={clients}
+                value={clientId}
+                onChange={(id) => {
+                  setClientId(id);
+                  setAliasDraft(null);
+                  setAliasMsg("");
+                }}
+              />
+            </div>
+          ) : null}
         </div>
         {access && access.role !== "pending" ? (
           <div className="hidden border-t border-line bg-paper md:block">
@@ -1178,9 +1226,10 @@ export function AdsOpsApp() {
         ) : null}
       </header>
 
-      {navEntries.length ? <BottomNav entries={navEntries} /> : null}
+      {navEntries.length ? <BottomNav entries={navEntries} pin={mobilePin} /> : null}
+      {pushOpen ? <PushSettingsPanel onClose={() => setPushOpen(false)} /> : null}
       <main className="mx-auto max-w-[1800px] px-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4 sm:px-4 md:px-6 md:py-5 lg:px-8">
-        <section className="mb-5 flex flex-col gap-3 rounded-xl bg-paper px-4 py-3 shadow-sheet md:flex-row md:items-center md:justify-between md:px-5">
+        <section className={cn("mb-5 flex flex-col gap-3 rounded-xl bg-paper px-4 py-3 shadow-sheet md:flex-row md:items-center md:justify-between md:px-5", shownTab === "overview" && "max-md:hidden")}>
           <div className="min-w-0">
             {client && shownTab !== "members" && shownTab !== "overview" ? (
               <>
@@ -1197,11 +1246,11 @@ export function AdsOpsApp() {
                     .filter(Boolean)
                     .join(" · ")}
                   {freshText ? <span className="font-medium text-ok">{` · ${freshText}`}</span> : null}
-                  {shownTab === "analytics"
+                  <span className={cn(!ctxOpen && "max-md:hidden")}>{shownTab === "analytics"
                     ? " · lọc ngày → tầng → loại conv → ST/KW · không apply"
                     : viewer
                       ? " · CPA Google không phải Qualified Lead."
-                      : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}
+                      : " · Guard trước FINAL. Coverage ST chưa 100% thì không việc lớn. Phân loại ST trên tab riêng."}</span>
                 </p>
                 {access?.kind === "staff" ? (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1218,27 +1267,30 @@ export function AdsOpsApp() {
                     <RecheckButton key={`r-${client.client_id}`} clientId={client.client_id} onDone={() => setRecheckN((n) => n + 1)} />
                   </div>
                 ) : null}
-                {canPull && adsStatus?.message_vi ? <p className="mt-1 text-xs text-danger">{adsStatus.message_vi}</p> : null}
+                {canPull && adsStatus?.message_vi ? <p className={cn("mt-1 text-xs text-danger", !ctxOpen && "max-md:hidden")}>{adsStatus.message_vi}</p> : null}
               </>
             ) : null}
             {mcc && access?.all_clients && access.role !== "pending" && clients.length ? (
-              <p className="mt-0.5 text-xs text-subtle">
+              <p className={cn("mt-0.5 text-xs text-subtle", !ctxOpen && "max-md:hidden")}>
                 {mcc.mcc_display_name} · {adsCount}/{accessible} tài khoản
                 {mcc.roster_complete ? " đã kéo từ MCC" : " — chưa kéo đủ danh sách MCC"}
               </p>
             ) : null}
             {client && access?.kind === "staff" ? (
-              <GoogleAdsLink clientId={client.client_id} cid={client.customer_id_dashed} isAdmin={Boolean(access.real_is_admin && !access.read_only && access.role === "admin")} className="mt-1 block" />
+              <GoogleAdsLink clientId={client.client_id} cid={client.customer_id_dashed} isAdmin={Boolean(access.real_is_admin && !access.read_only && access.role === "admin")} className={cn("mt-1 block", !ctxOpen && "max-md:hidden")} />
             ) : null}
-            <p className="mt-1 text-xs text-subtle">
+            <p className={cn("mt-1 text-xs text-subtle", !ctxOpen && "max-md:hidden")}>
               {viewer
                 ? "Chỉ số của tài khoản được cấp. CPA Google không phải Qualified Lead."
                 : "Chỉ đề xuất, không apply Google Ads. CPA Google không phải Qualified Lead. Chỉ thấy tài khoản được cấp."}
             </p>
+            <button type="button" onClick={() => setCtxOpen((v) => !v)} aria-expanded={ctxOpen} className="mt-1 inline-flex h-10 items-center text-sm font-medium text-accent md:hidden">
+              {ctxOpen ? "Ẩn chi tiết" : "Chi tiết tài khoản"}
+            </button>
           </div>
           {access && access.real_is_admin && !access.read_only && client ? (
             <form
-              className="flex w-full shrink-0 flex-col gap-1 md:w-80"
+              className={cn("flex w-full shrink-0 flex-col gap-1 md:w-80", !ctxOpen && "max-md:hidden")}
               onSubmit={(e) => {
                 e.preventDefault();
                 const next = (aliasDraft ?? client.alias ?? "").trim();
