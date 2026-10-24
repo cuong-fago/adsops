@@ -17,6 +17,7 @@ import { Route as ApiClientReportRouteImport } from './routes/api/client-report'
 import { Route as ApiOpenaiAdImageRouteImport } from './routes/api/openai-ad-image'
 import { Route as ApiTiktokAdImageRouteImport } from './routes/api/tiktok-ad-image'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiBotOptimizeSummaryRouteImport } from './routes/api/bot/optimize-summary'
 import { Route as ApiCronBudgetRunwayRouteImport } from './routes/api/cron/budget-runway'
 import { Route as ApiCronChangeLogRouteImport } from './routes/api/cron/change-log'
 import { Route as ApiCronGoogleInvoicesRouteImport } from './routes/api/cron/google-invoices'
@@ -67,6 +68,11 @@ const ApiTiktokAdImageRoute = ApiTiktokAdImageRouteImport.update({
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBotOptimizeSummaryRoute = ApiBotOptimizeSummaryRouteImport.update({
+  id: '/api/bot/optimize-summary',
+  path: '/api/bot/optimize-summary',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCronBudgetRunwayRoute = ApiCronBudgetRunwayRouteImport.update({
@@ -135,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/api/openai-ad-image': typeof ApiOpenaiAdImageRoute
   '/api/tiktok-ad-image': typeof ApiTiktokAdImageRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/bot/optimize-summary': typeof ApiBotOptimizeSummaryRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
   '/api/cron/google-invoices': typeof ApiCronGoogleInvoicesRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/api/openai-ad-image': typeof ApiOpenaiAdImageRoute
   '/api/tiktok-ad-image': typeof ApiTiktokAdImageRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/bot/optimize-summary': typeof ApiBotOptimizeSummaryRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
   '/api/cron/google-invoices': typeof ApiCronGoogleInvoicesRoute
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/api/openai-ad-image': typeof ApiOpenaiAdImageRoute
   '/api/tiktok-ad-image': typeof ApiTiktokAdImageRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/bot/optimize-summary': typeof ApiBotOptimizeSummaryRoute
   '/api/cron/budget-runway': typeof ApiCronBudgetRunwayRoute
   '/api/cron/change-log': typeof ApiCronChangeLogRoute
   '/api/cron/google-invoices': typeof ApiCronGoogleInvoicesRoute
@@ -201,6 +210,7 @@ export interface FileRouteTypes {
     | '/api/openai-ad-image'
     | '/api/tiktok-ad-image'
     | '/api/auth/$'
+    | '/api/bot/optimize-summary'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
     | '/api/cron/google-invoices'
@@ -222,6 +232,7 @@ export interface FileRouteTypes {
     | '/api/openai-ad-image'
     | '/api/tiktok-ad-image'
     | '/api/auth/$'
+    | '/api/bot/optimize-summary'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
     | '/api/cron/google-invoices'
@@ -243,6 +254,7 @@ export interface FileRouteTypes {
     | '/api/openai-ad-image'
     | '/api/tiktok-ad-image'
     | '/api/auth/$'
+    | '/api/bot/optimize-summary'
     | '/api/cron/budget-runway'
     | '/api/cron/change-log'
     | '/api/cron/google-invoices'
@@ -265,6 +277,7 @@ export interface RootRouteChildren {
   ApiOpenaiAdImageRoute: typeof ApiOpenaiAdImageRoute
   ApiTiktokAdImageRoute: typeof ApiTiktokAdImageRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiBotOptimizeSummaryRoute: typeof ApiBotOptimizeSummaryRoute
   ApiCronBudgetRunwayRoute: typeof ApiCronBudgetRunwayRoute
   ApiCronChangeLogRoute: typeof ApiCronChangeLogRoute
   ApiCronGoogleInvoicesRoute: typeof ApiCronGoogleInvoicesRoute
@@ -334,6 +347,13 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/bot/optimize-summary': {
+      id: '/api/bot/optimize-summary'
+      path: '/api/bot/optimize-summary'
+      fullPath: '/api/bot/optimize-summary'
+      preLoaderRoute: typeof ApiBotOptimizeSummaryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/budget-runway': {
@@ -425,6 +445,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOpenaiAdImageRoute: ApiOpenaiAdImageRoute,
   ApiTiktokAdImageRoute: ApiTiktokAdImageRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiBotOptimizeSummaryRoute: ApiBotOptimizeSummaryRoute,
   ApiCronBudgetRunwayRoute: ApiCronBudgetRunwayRoute,
   ApiCronChangeLogRoute: ApiCronChangeLogRoute,
   ApiCronGoogleInvoicesRoute: ApiCronGoogleInvoicesRoute,
