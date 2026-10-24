@@ -473,11 +473,12 @@ test("escapes host-derived values in the install page", () => {
   assert.equal(html.includes("<script>alert(1)</script>"), false);
 });
 
-test("renders the manifest with the per-app name", () => {
-  const manifest = JSON.parse(renderWebManifest("wild-race.grok.me"));
-  assert.equal(manifest.name, "Wild Race");
-  assert.equal(manifest.short_name, "Wild Race");
-  assert.equal(manifest.icons[0].src, "/__grok/icon-180.png");
+test("renders the AdsOps manifest (Fago green, maskable icons)", () => {
+  const manifest = JSON.parse(renderWebManifest("ad.fagogroup.vn"));
+  assert.equal(manifest.name, "AdsOps");
+  assert.equal(manifest.display, "standalone");
+  assert.equal(manifest.theme_color, "#3DB54A");
+  assert.ok(manifest.icons.some((i) => i.purpose === "maskable" && i.sizes === "512x512"));
 });
 
 // Tripwires: the deployed-app path only works if Nitro scans server/ — an
