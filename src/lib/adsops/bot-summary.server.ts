@@ -75,6 +75,35 @@ function periods(rows: DailyRow[], date: string) {
   return { yesterday: y, avg_7d: d7, avg_30d: d30, diff_pct_vs_7d: pctDiff(y, d7), diff_pct_vs_30d: pctDiff(y, d30) };
 }
 
+/** Live daily budgets (read-only GAQL SELECT; not stored in the app DB). Null on any failure. */
+async function liveBudgets(clientId: string): Promise<{ total: number | null; byCampaign: Map<string, number> } | null> {
+  try {
+    const g = await import("./google-ads.server.ts");
+    const { customerIdFor } = await import("./warehouse.server.ts");
+    const cfg = await g.resolveAdsConfig();
+    if (!cfg.ready) return null;
+    const cid = customerIdFor(clientId);
+    if (cid.length !== 10) return null;
+    const { searchLeaf } = await import("./warehouse.server.ts");
+    const rows = await Promise.race([
+      searchLeaf(cfg, cid, `SELECT campaign.id, campaign_budget.resource_name, campaign_budget.amount_micros FROM campaign WHERE campaign.status = 'ENABLED'`),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 15000)),
+    ]);
+    const byCampaign = new Map<string, number>();
+    const seen = new Map<string, number>();
+    for (const r of rows as Array<Record<string, Record<string, unknown>>>) {
+      const amt = r.campaignBudget?.amountMicros;
+      if (amt == null) continue;
+      const v = Number(amt) / 1_000_000;
+      byCampaign.set(String(r.campaign?.id || ""), v);
+      seen.set(String(r.campaignBudget?.resourceName || r.campaign?.id), v);
+    }
+    return { total: seen.size ? [...seen.values()].reduce((a, b) => a + b, 0) : null, byCampaign };
+  } catch {
+    return null;
+  }
+}
+
 const iso = (v: Date | string | null) => (v == null ? null : v instanceof Date ? v.toISOString() : String(v));
 
 export async function optimizeSummary(name: string, date: string) {
@@ -112,15 +141,32 @@ export async function optimizeSummary(name: string, date: string) {
   const S = new Map(sc.map((r) => [r.client_id, r]));
   const O = new Map(opt.map((r) => [r.client_id, r.last]));
   const now = Date.now();
+  const [budgets, deepSt] = await Promise.all([
+    Promise.all(ids.map((id) => liveBudgets(id))),
+    sql.query<{ client_id: string; rows: unknown; cs: string; ce: string }>(
+      `select client_id, rows, to_char(covered_start,'YYYY-MM-DD') as cs, to_char(covered_end,'YYYY-MM-DD') as ce
+         from adsops_analytics_deep where client_id = any($1::text[]) and layer = 'search_term'
+          and covered_end >= $2::date and covered_start <= $3::date`, [ids, addDays(date, -6), date]).catch(() => []),
+  ]);
+  const B = new Map(ids.map((id, i) => [id, budgets[i]]));
+  const D = new Map<string, { rows: DailyRow[]; days: number }>();
+  for (const m of deepSt) {
+    const raw = typeof m.rows === "string" ? JSON.parse(m.rows) : m.rows;
+    const rows = (Array.isArray(raw) ? raw : (raw as { rows?: DailyRow[] })?.rows || []) as DailyRow[];
+    const lo = m.cs > addDays(date, -6) ? m.cs : addDays(date, -6), hi = m.ce < date ? m.ce : date;
+    const days = hi >= lo ? Math.round((Date.parse(hi) - Date.parse(lo)) / 86_400_000) + 1 : 0;
+    const e = D.get(m.client_id) || { rows: [], days: 0 };
+    e.rows.push(...rows); e.days += days;
+    D.set(m.client_id, e);
+  }
 
   return accs.map((a) => {
     const w = W.get(a.client_id);
     const snap = (w ? (typeof w.payload === "string" ? JSON.parse(w.payload) : w.payload) : null) as AnalyticsSnap | null;
     const daily = snap?.daily;
     const acct = periods(daily?.account || [], date);
-    const bp = snap?.budget_pace;
-    const tickets = bp && bp.status !== "missing" ? [...(bp.tickets || []), ...(bp.ok || [])] : [];
-    const dailyBudget = tickets.length ? tickets.reduce((t, x) => t + Number(x.daily_budget || 0), 0) : null;
+    const bud = B.get(a.client_id) ?? null;
+    const dailyBudget = bud?.total ?? null;
     const camps = new Map<string, { name: string; type: string | null; status: string | null; rows: DailyRow[] }>();
     for (const c of snap?.campaigns || []) camps.set(c.id, { name: c.name, type: c.type || null, status: c.status || null, rows: [] });
     for (const r of daily?.campaign || []) {
@@ -131,10 +177,12 @@ export async function optimizeSummary(name: string, date: string) {
     }
     const campaigns = [...camps.entries()]
       .filter(([, c]) => c.rows.some((r) => r.date >= addDays(date, -30) && r.date <= date))
-      .map(([id, c]) => ({ id, name: c.name, type: c.type, status: c.status, ...periods(c.rows, date) }))
+      .map(([id, c]) => ({ id, name: c.name, type: c.type, status: c.status, daily_budget: bud?.byCampaign.get(id) ?? null, ...periods(c.rows, date) }))
       .sort((x, y) => (y.avg_30d.cost ?? -1) - (x.avg_30d.cost ?? -1));
     const st = new Map<string, { query: string; campaign: string | null; cost: number; clicks: number; impressions: number; conversions: number }>();
-    for (const r of daily?.search_term || []) {
+    const deep = D.get(a.client_id);
+    const stRows: DailyRow[] = deep && deep.days > 0 ? deep.rows : daily?.search_term || [];
+    for (const r of stRows) {
       if (!r.query || r.date < addDays(date, -6) || r.date > date) continue;
       const k = `${r.query}\u0000${r.campaign_id || ""}`;
       const e = st.get(k) || { query: r.query, campaign: r.campaign_name || null, cost: 0, clicks: 0, impressions: 0, conversions: 0 };
@@ -148,7 +196,7 @@ export async function optimizeSummary(name: string, date: string) {
     const scoreRaw = s?.score ?? null;
     const last = O.get(a.client_id) ?? null;
     const r = R.get(a.client_id);
-    const searchCovered = (daily?.search_term || []).some((x) => x.date >= addDays(date, -6) && x.date <= date);
+    const searchCovered = stRows.some((x) => x.date >= addDays(date, -6) && x.date <= date);
     return {
       cid: (a.customer_id_dashed.match(/\d{3}-\d{3}-\d{4}/) || [null])[0],
       client_id: a.client_id,
@@ -167,6 +215,7 @@ export async function optimizeSummary(name: string, date: string) {
       metrics: acct,
       campaigns,
       wasted_search_terms_7d: searchCovered ? waste : null,
+      search_terms_covered_days_7d: deep ? Math.min(7, deep.days) : null,
     };
   });
 }
