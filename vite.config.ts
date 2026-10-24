@@ -209,6 +209,7 @@ export default defineConfig(({ command, isPreview }) => ({
                 "/api/cron/budget-runway": { maxDuration: 300 },
                 "/api/cron/google-trend": { maxDuration: 300 },
                 "/api/cron/google-invoices": { maxDuration: 300 },
+                "/api/cron/push-alerts": { maxDuration: 300 },
               },
             },
             // AdsOps data lives in server-data/adsops and is copied into the

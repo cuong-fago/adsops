@@ -612,6 +612,10 @@ export async function saveUploaded(docs: UploadDoc[], by: string): Promise<{ sav
     else duplicates.push(d.doc_no);
   }
   const mst_filled = saved ? await autofillMst().catch(() => 0) : 0;
+  if (saved) {
+    const { notifyInvoicesUploaded } = await import("./push.server.ts");
+    await notifyInvoicesUploaded(saved, docs.filter((d) => !duplicates.includes(d.doc_no)).map((d) => d.issue_date));
+  }
   return { saved, duplicates, mst_filled };
 }
 

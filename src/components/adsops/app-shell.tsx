@@ -1,3 +1,4 @@
+import { PushSettingsButton } from "./push-settings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsView } from "@/components/adsops/analytics-view";
 import { MetaAnalyticsView } from "@/components/adsops/meta-analytics-view";
@@ -1150,6 +1151,7 @@ export function AdsOpsApp() {
                 />
               </div>
             ) : null}
+            {access && access.role !== "pending" && !access.read_only ? <PushSettingsButton /> : null}
             <span className="hidden h-6 items-center whitespace-nowrap rounded-sm border border-line bg-inset px-2 text-xs font-medium text-muted lg:inline-flex">
               {roleVi}
               {access?.display_name && access.kind === "client" ? ` · ${access.display_name}` : ""}
