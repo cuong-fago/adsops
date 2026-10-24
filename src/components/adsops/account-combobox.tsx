@@ -62,7 +62,7 @@ export function AccountCombobox({ accounts, value, onChange, mode = "select", pl
           {items.length ? items.map((a, i) => (
             <li key={a.client_id} role="option" aria-selected={i === hi}
               onMouseDown={(e) => { e.preventDefault(); pick(a); }} onMouseEnter={() => setHi(i)}
-              className={`cursor-pointer px-2 py-1 ${i === hi ? "bg-brand/10" : ""} ${a.client_id === value ? "font-semibold" : ""}`}>
+              className={`cursor-pointer px-2 py-3 md:py-1 ${i === hi ? "bg-brand/10" : ""} ${a.client_id === value ? "font-semibold" : ""}`}>
               <span className="text-ink">{a.name}</span> <span className="text-muted">· {dash(a.cid)}</span>
             </li>
           )) : <li className="px-2 py-1 text-muted">{mode === "free" ? "Không khớp — vẫn dùng CID đã gõ" : "Không có tài khoản khớp"}</li>}

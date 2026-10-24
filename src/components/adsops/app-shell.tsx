@@ -33,7 +33,7 @@ import {
 import { adminUpdateAdAccount, stopViewAs } from "@/lib/adsops/admin.functions";
 import { AccountPicker } from "@/components/adsops/account-picker";
 import { BrandMark } from "@/components/adsops/brand";
-import { NavBar, type NavEntry, type NavItem } from "@/components/adsops/nav-bar";
+import { BottomNav, NavBar, type NavEntry, type NavItem } from "@/components/adsops/nav-bar";
 import { ChangeLogView } from "@/components/adsops/change-log-view";
 import { GoogleAdsLink } from "@/components/adsops/google-ads-link-ui";
 import { GoogleInvoicesView } from "./google-invoices-view";
@@ -1091,6 +1091,27 @@ export function AdsOpsApp() {
     );
   }
 
+  const navEntries: NavEntry[] = access && access.role !== "pending" ? (() => {
+              const tab = (id: TabId, label: string, icon?: NavItem["icon"], extra: Partial<NavItem> = {}): NavItem => ({ id, label, text: label, icon, active: shownTab === id, onClick: () => goTab(id), ...extra });
+              const out: NavEntry[] = [];
+              if (access.kind === "staff") {
+                if (tabAllowed(access, "overview")) out.push({ kind: "tab", item: tab("overview", "Tổng quan tài khoản", TAB_ICON.overview) });
+                if (tabAllowed(access, "needs")) out.push({ kind: "tab", item: tab("needs", "Cần xử lý (3 tháng)", Bell) });
+                if (tabAllowed(access, "manager")) out.push({ kind: "tab", item: tab("manager", "Bảng điều hành", Gauge) });
+                if (tabAllowed(access, "creports")) out.push({ kind: "tab", item: tab("creports", "Báo cáo khách hàng", FileText, { badge: reportDrafts || undefined }) });
+              }
+              const ops = opsTabs.map((it) => tab(it.id, it.label, TAB_ICON[it.id], { badge: it.id === "alerts" ? alertCount || undefined : undefined }));
+              if (tabAllowed(access, "invoices")) ops.push(tab("invoices", "Hóa đơn Google", Receipt));
+              if (ops.length === 1) out.push({ kind: "tab", item: ops[0] });
+              else if (ops.length) out.push({ kind: "group", id: "ops", label: viewer ? "Báo cáo" : "Vận hành", items: ops });
+              const ana: NavItem[] = [];
+              if (caps?.analytics) ana.push(tab("analytics", "Phân tích", TAB_ICON.analytics, { dot: Boolean(firing) }));
+              if (caps?.changeLog) ana.push(tab("changelog", "Nhật ký tối ưu", TAB_ICON.changelog));
+              if (tabAllowed(access, "compare")) ana.push(tab("compare", "So sánh tài khoản", Scale));
+              if (ana.length === 1) out.push({ kind: "tab", item: ana[0] });
+              else if (ana.length) out.push({ kind: "group", id: "ana", label: "Phân tích", items: ana });
+              return out;
+            })() : [];
   return (
     <div className="min-h-screen bg-bg text-ink">
       {access?.view_as ? (
@@ -1147,35 +1168,16 @@ export function AdsOpsApp() {
           </div>
         </div>
         {access && access.role !== "pending" ? (
-          <div className="border-t border-line bg-paper">
-          <nav aria-label="Điều hướng" className="mx-auto flex max-w-[1800px] items-center px-4 py-2 md:px-6 lg:px-8">
-            <NavBar entries={(() => {
-              const tab = (id: TabId, label: string, icon?: NavItem["icon"], extra: Partial<NavItem> = {}): NavItem => ({ id, label, text: label, icon, active: shownTab === id, onClick: () => goTab(id), ...extra });
-              const out: NavEntry[] = [];
-              if (access.kind === "staff") {
-                if (tabAllowed(access, "overview")) out.push({ kind: "tab", item: tab("overview", "Tổng quan tài khoản", TAB_ICON.overview) });
-                if (tabAllowed(access, "needs")) out.push({ kind: "tab", item: tab("needs", "Cần xử lý (3 tháng)", Bell) });
-                if (tabAllowed(access, "manager")) out.push({ kind: "tab", item: tab("manager", "Bảng điều hành", Gauge) });
-                if (tabAllowed(access, "creports")) out.push({ kind: "tab", item: tab("creports", "Báo cáo khách hàng", FileText, { badge: reportDrafts || undefined }) });
-              }
-              const ops = opsTabs.map((it) => tab(it.id, it.label, TAB_ICON[it.id], { badge: it.id === "alerts" ? alertCount || undefined : undefined }));
-              if (tabAllowed(access, "invoices")) ops.push(tab("invoices", "Hóa đơn Google", Receipt));
-              if (ops.length === 1) out.push({ kind: "tab", item: ops[0] });
-              else if (ops.length) out.push({ kind: "group", id: "ops", label: viewer ? "Báo cáo" : "Vận hành", items: ops });
-              const ana: NavItem[] = [];
-              if (caps?.analytics) ana.push(tab("analytics", "Phân tích", TAB_ICON.analytics, { dot: Boolean(firing) }));
-              if (caps?.changeLog) ana.push(tab("changelog", "Nhật ký tối ưu", TAB_ICON.changelog));
-              if (tabAllowed(access, "compare")) ana.push(tab("compare", "So sánh tài khoản", Scale));
-              if (ana.length === 1) out.push({ kind: "tab", item: ana[0] });
-              else if (ana.length) out.push({ kind: "group", id: "ana", label: "Phân tích", items: ana });
-              return out;
-            })()} />
+          <div className="hidden border-t border-line bg-paper md:block">
+          <nav aria-label="Điều hướng" className="mx-auto hidden md:flex max-w-[1800px] items-center px-4 py-2 md:px-6 lg:px-8">
+            <NavBar entries={navEntries} />
           </nav>
           </div>
         ) : null}
       </header>
 
-      <main className="mx-auto max-w-[1800px] px-4 py-5 md:px-6 lg:px-8">
+      {navEntries.length ? <BottomNav entries={navEntries} /> : null}
+      <main className="mx-auto max-w-[1800px] px-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4 sm:px-4 md:px-6 md:py-5 lg:px-8">
         <section className="mb-5 flex flex-col gap-3 rounded-xl bg-paper px-4 py-3 shadow-sheet md:flex-row md:items-center md:justify-between md:px-5">
           <div className="min-w-0">
             {client && shownTab !== "members" && shownTab !== "overview" ? (

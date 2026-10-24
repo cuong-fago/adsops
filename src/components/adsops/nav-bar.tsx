@@ -158,3 +158,61 @@ function MoreBtn({ active, open, toggle }: { active: boolean; open: boolean; tog
     </button>
   );
 }
+
+/**
+ * Mobile bottom navigation (< md). Shows up to 4 destinations (the active one always included)
+ * plus "Thêm", which opens a bottom sheet with every destination. 44px+ touch targets, safe-area aware.
+ */
+export function BottomNav({ entries }: { entries: NavEntry[] }) {
+  const [open, setOpen] = useState(false);
+  const all = entries.flatMap((e) => (e.kind === "tab" ? [e.item] : e.items));
+  const MAX = all.length <= 5 ? 5 : 4;
+  let shown = all.slice(0, MAX);
+  const act = all.find((i) => i.active);
+  if (act && !shown.includes(act)) shown = [...shown.slice(0, MAX - 1), act];
+  const more = all.length > shown.length;
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [open]);
+  const short = (t: string) => t.replace(/ \(.*\)$/, "").replace("Tổng quan tài khoản", "Tổng quan").replace("Báo cáo khách hàng", "Báo cáo KH").replace("Nhật ký tối ưu", "Nhật ký").replace("So sánh tài khoản", "So sánh").replace("Bảng điều hành", "Điều hành");
+  const Btn = ({ it }: { it: NavItem }) => {
+    const I = it.icon;
+    return (
+      <button type="button" onClick={() => { it.onClick(); setOpen(false); }} aria-current={it.active ? "page" : undefined}
+        className={cn("relative flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-semibold", it.active ? "text-accent" : "text-muted")}>
+        {I ? <I className="size-5" /> : null}
+        <span className="max-w-full truncate">{short(it.text)}</span>
+        {it.badge ? <span className="absolute right-[18%] top-1 rounded-sm bg-danger px-1 text-[10px] font-bold text-white">{it.badge > 99 ? "99+" : it.badge}</span> : it.dot ? <span className="absolute right-[30%] top-2 size-1.5 rounded-full bg-danger" /> : null}
+      </button>
+    );
+  };
+  return (
+    <>
+      {open ? (
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Tất cả mục">
+          <button type="button" aria-label="Đóng" className="absolute inset-0 bg-black/30" onClick={() => setOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 max-h-[75vh] overflow-y-auto rounded-t-2xl bg-paper p-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-sheet">
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-line" />
+            {entries.map((e) => e.kind === "tab" ? <MenuItem key={e.item.id} it={e.item} close={() => setOpen(false)} /> : (
+              <div key={e.id} className="py-1">
+                <p className="px-3 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-subtle">{e.label}</p>
+                {e.items.map((it) => <MenuItem key={it.id} it={it} close={() => setOpen(false)} />)}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <nav aria-label="Điều hướng chính" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        {shown.map((it) => <Btn key={it.id} it={it} />)}
+        {more ? (
+          <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" className={cn("flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold", open ? "text-accent" : "text-muted")}>
+            <MoreHorizontal className="size-5" /> Thêm
+          </button>
+        ) : null}
+      </nav>
+    </>
+  );
+}

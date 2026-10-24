@@ -106,7 +106,7 @@ export function AccountPicker({
         className={
           compact
             ? cn(
-                "h-9 w-full truncate rounded-lg border border-line bg-inset pl-9 pr-9 text-sm text-ink transition-colors hover:border-line-strong focus:bg-paper",
+                "h-11 w-full truncate rounded-lg md:h-9 border border-line bg-inset pl-9 pr-9 text-sm text-ink transition-colors hover:border-line-strong focus:bg-paper",
                 !open && selectedLabel ? "placeholder:font-medium placeholder:text-ink" : "placeholder:text-subtle",
               )
             : "h-11 w-full rounded-lg border border-line bg-paper px-3 text-base text-ink"
@@ -122,7 +122,7 @@ export function AccountPicker({
           id="adsops-account-list"
           role="listbox"
           className={cn(
-            "absolute top-full z-50 mt-1 max-h-80 overflow-auto rounded-lg border border-line bg-paper py-1 shadow-sheet",
+            "absolute top-full z-50 mt-1 max-h-[60vh] overflow-auto overscroll-contain md:max-h-80 rounded-lg border border-line bg-paper py-1 shadow-sheet",
             compact ? "right-0 w-[min(36rem,calc(100vw-2rem))]" : "left-0 right-0",
           )}
         >
@@ -134,7 +134,7 @@ export function AccountPicker({
                   role="option"
                   aria-selected={c.client_id === value}
                   className={cn(
-                    "block w-full px-3 py-2 text-left text-sm text-ink",
+                    "block w-full px-3 py-3 text-left text-sm text-ink md:py-2",
                     c.client_id === value ? "bg-accent-soft font-medium" : "hover:bg-inset",
                   )}
                   onClick={() => choose(c.client_id)}
