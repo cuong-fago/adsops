@@ -147,3 +147,23 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---- Mobile (< md): touch targets, wide tables, bottom nav ---- */
+@media (max-width: 767px) {
+  /* 16px stops iOS Safari from zooming into focused fields. */
+  input, select, textarea { font-size: 16px !important; }
+  input[type="date"], input[type="month"], input[type="week"], select { min-height: 44px; }
+  [role="listbox"] [role="option"], [role="listbox"] > li { min-height: 44px; display: flex; align-items: center; }
+  [role="menuitem"] { min-height: 44px; }
+  /* Every table scrolls sideways inside its own box; the first column (names) stays put. */
+  div:has(> table) { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  table > thead > tr > th:first-child,
+  table > tbody > tr > td:first-child,
+  table > tbody > tr > th:first-child,
+  table > tfoot > tr > td:first-child {
+    position: sticky; left: 0; z-index: 2;
+    background-color: var(--color-paper);
+    box-shadow: 1px 0 0 var(--color-line);
+    max-width: 58vw;
+  }
+}

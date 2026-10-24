@@ -677,21 +677,21 @@ export function AnalyticsView({
           </div>
 
           <div className="flex flex-col gap-2 border-t border-line pt-3" role="group" aria-label="Khoảng thời gian">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-sm font-semibold text-ink">Khoảng thời gian</span>
+            <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] md:flex-wrap md:overflow-visible md:pb-0">
+              <span className="mr-1 shrink-0 text-sm font-semibold text-ink">Khoảng thời gian</span>
               {calPresets.map((p) => (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => applyRange(p.start, p.end)}
                   aria-pressed={activePreset === p.id}
-                  className={cn("h-9 rounded-md border px-3 text-sm font-medium transition-colors", activePreset === p.id ? "border-accent-border bg-accent-soft font-semibold text-accent" : "border-line bg-paper text-ink hover:bg-inset")}
+                  className={cn("h-11 shrink-0 whitespace-nowrap rounded-md border px-3 text-sm font-medium transition-colors md:h-9", activePreset === p.id ? "border-accent-border bg-accent-soft font-semibold text-accent" : "border-line bg-paper text-ink hover:bg-inset")}
                 >
                   {p.label}
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap items-end gap-2">
+            <div className="grid grid-cols-2 items-end gap-2 md:flex md:flex-wrap">
               <label className="flex flex-col gap-1 text-xs font-medium text-muted">Từ<input type="date" value={draftStart} min={snap.warehouse_start || undefined} max={warehouseEnd} onChange={(e) => pickDate(e.target.value, draftEnd)} className="h-10 rounded-md border border-line bg-bg px-2.5 text-sm text-ink" /></label>
               <label className="flex flex-col gap-1 text-xs font-medium text-muted">Đến<input type="date" value={draftEnd} min={snap.warehouse_start || undefined} max={warehouseEnd} onChange={(e) => pickDate(draftStart, e.target.value)} className="h-10 rounded-md border border-line bg-bg px-2.5 text-sm text-ink" /></label>
               {draftStart && draftEnd && draftStart > draftEnd ? <span className="pb-2.5 text-xs text-danger">Ngày bắt đầu sau ngày kết thúc.</span> : null}
